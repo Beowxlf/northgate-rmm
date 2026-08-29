@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "owner": "Beowxlf",
   "repository": "northgate-rmm",
-  "visibility": "private",
+  "visibility": "public",
   "repositorySettings": {
     "hasIssues": true,
     "hasProjects": false,
@@ -22,18 +22,19 @@
     "shaPinningRequired": true
   },
   "security": {
-    "privateVulnerabilityReporting": "not-applicable-while-private",
+    "privateVulnerabilityReporting": true,
     "dependabotAlerts": true,
     "dependabotSecurityUpdates": true,
-    "secretScanning": "required-if-plan-available",
-    "pushProtection": "required-if-plan-available",
-    "codeql": "replaced-by-free-checks-while-private"
+    "secretScanning": "required",
+    "pushProtection": "required",
+    "codeql": "deferred-until-product-language-exists"
   },
   "mainProtection": {
     "required": true,
+    "reviewMode": "single-maintainer",
     "requirePullRequest": true,
-    "requiredApprovingReviewCount": 1,
-    "requireCodeOwnerReview": true,
+    "requiredApprovingReviewCount": 0,
+    "requireCodeOwnerReview": false,
     "dismissStaleReviews": true,
     "requireConversationResolution": true,
     "requireLinearHistory": true,

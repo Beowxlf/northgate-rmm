@@ -12,3 +12,10 @@ their status.
 | 0005 | PostgreSQL-backed queue before a dedicated broker          | Accepted |
 | 0006 | Python control plane and simulator; Go endpoint agent      | Accepted |
 | 0007 | Brokered native protocols for cross-platform remote access | Accepted |
+
+## Governance decisions
+
+| ID      | Decision                                          | Status   | Record                            |
+| ------- | ------------------------------------------------- | -------- | --------------------------------- |
+| LIC-001 | Publish the project under Apache License 2.0      | Accepted | `docs/governance/LICENSING.md`    |
+| PUB-001 | Use a public repository to enforce protected main | Accepted | `governance/github-baseline.json` |

@@ -25,6 +25,7 @@ then complete [Module 1: The RMM Problem Map](docs/modules/01_RMM_PROBLEM_MAP.md
 - [Project charter](PROJECT_CHARTER.md)
 - [Development phases](docs/governance/PHASES.md)
 - [Authorization gates](docs/governance/AUTHORIZATION_GATES.md)
+- [Licensing policy](docs/governance/LICENSING.md)
 - [Required free-software checks](docs/governance/REQUIRED_CHECKS.md)
 - [Architecture overview](docs/architecture/OVERVIEW.md)
 - [Cross-platform remote access](docs/architecture/REMOTE_ACCESS.md)
@@ -36,3 +37,9 @@ then complete [Module 1: The RMM Problem Map](docs/modules/01_RMM_PROBLEM_MAP.md
 The repository is currently in **Phase 0: Govern and design**. Product code is
 forbidden until the pre-code audit passes and the G1 authorization record is
 committed.
+
+## License
+
+NorthGate RMM is available under the [Apache License 2.0](LICENSE). See the
+[licensing policy](docs/governance/LICENSING.md) for contribution, dependency,
+notice, and relicensing controls.

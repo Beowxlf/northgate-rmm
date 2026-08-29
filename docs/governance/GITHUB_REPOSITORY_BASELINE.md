@@ -8,7 +8,7 @@ baseline or a plan-limited control is replaced by the documented local check.
 
 - owner: `Beowxlf`;
 - repository: `northgate-rmm`;
-- visibility: private until licensing and public-release gates pass;
+- visibility: public under Apache License 2.0;
 - default branch: `main`;
 - issues enabled; projects and wiki disabled initially;
 - no secrets, private endpoint data, or production infrastructure details.
@@ -20,7 +20,11 @@ baseline or a plan-limited control is replaced by the documented local check.
 - web commit sign-off required;
 - no direct pushes to protected `main` after bootstrap;
 - no force pushes or branch deletion;
-- one approving review and CODEOWNERS review;
+- pull requests are mandatory;
+- while `Beowxlf` is the only maintainer, external approval and CODEOWNERS review
+  are not required because an author cannot approve their own pull request;
+- when a second trusted maintainer is onboarded, require one approval and
+  CODEOWNERS review before merge;
 - stale approvals dismissed;
 - all review conversations resolved;
 - linear history;
@@ -47,8 +51,7 @@ The bootstrap exception ends when protection is verified.
 
 ## Security features
 
-- private vulnerability reporting is not applicable while the repository is
-  private; it must be enabled before any later public release;
+- private vulnerability reporting enabled;
 - Dependabot alerts and security updates enabled;
 - dependency graph enabled if required by Dependabot;
 - secret scanning and push protection enabled if available on the account plan;
@@ -75,10 +78,14 @@ After authentication and push, capture sanitized API results for:
 The evidence is summarized in the pre-code audit. Tokens and raw sensitive account
 metadata are never stored in the repository.
 
-## Account-plan constraint
+## Account-plan and maintainer constraints
 
-GitHub documents that private-repository branch rules and rulesets require a plan
-that supports them. If the current account cannot enforce the desired rule, G1
-remains closed until either the account is upgraded, the repository is made public
-under a separately approved license/public-release gate, or an equally strong
-server-side control is approved. Local convention alone is not branch protection.
+GitHub documents that GitHub Free supports protected branches on public
+repositories. The repository is public under the approved Apache-2.0 license so
+the server-side rule must be verified before G1 opens. Local convention alone is
+not branch protection.
+
+The temporary single-maintainer review mode is not a waiver of required CI. It
+exists to avoid an impossible self-review requirement. Onboarding a second trusted
+maintainer automatically triggers a baseline change requiring one independent
+approval and CODEOWNERS review.

@@ -48,20 +48,18 @@ if (
 ) {
   error("GitHub baseline targets an unexpected repository.");
 }
-if (githubBaseline.visibility !== "private")
-  error("Pre-license GitHub repository must be private.");
+if (githubBaseline.visibility !== "public")
+  error(
+    "Licensed GitHub repository must be public for free branch protection.",
+  );
 if (githubBaseline.actions.defaultWorkflowPermissions !== "read")
   error("GitHub Actions default permissions must be read-only.");
 if (githubBaseline.actions.canApprovePullRequestReviews !== false)
   error("GitHub Actions must not approve pull requests.");
-if (
-  githubBaseline.security.privateVulnerabilityReporting !==
-  "not-applicable-while-private"
-) {
+if (githubBaseline.security.privateVulnerabilityReporting !== true)
   error(
-    "Private vulnerability reporting must be marked not applicable while the repository is private.",
+    "Private vulnerability reporting must be required for the public repository.",
   );
-}
 if (
   !githubBaseline.security.dependabotAlerts ||
   !githubBaseline.security.dependabotSecurityUpdates
@@ -81,6 +79,13 @@ if (
   githubBaseline.mainProtection.allowDeletions
 ) {
   error("GitHub baseline permits force pushes or deletions on main.");
+}
+if (
+  githubBaseline.mainProtection.reviewMode !== "single-maintainer" ||
+  githubBaseline.mainProtection.requiredApprovingReviewCount !== 0 ||
+  githubBaseline.mainProtection.requireCodeOwnerReview !== false
+) {
+  error("GitHub review settings do not match approved single-maintainer mode.");
 }
 
 const gateIds = gates.gates.map((gate) => gate.id);
@@ -213,8 +218,20 @@ if (!exists(".github/pull_request_template.md"))
 if (!exists(".github/dependabot.yml"))
   error("Missing Dependabot configuration.");
 
-if (!exists("LICENSE"))
-  warning("No public distribution license; repository must remain private.");
+if (!exists("LICENSE")) {
+  error("Public repository lacks a LICENSE file.");
+} else {
+  const licenseText = read("LICENSE");
+  if (
+    !licenseText.includes("Apache License") ||
+    !licenseText.includes("Version 2.0, January 2004") ||
+    !licenseText.includes("END OF TERMS AND CONDITIONS")
+  ) {
+    error("LICENSE is not recognizable as Apache License 2.0.");
+  }
+}
+if (!exists("NOTICE")) error("Apache-2.0 project lacks NOTICE attribution.");
+if (!exists("docs/governance/LICENSING.md")) error("Missing licensing policy.");
 
 for (const item of warnings) console.warn(`WARN: ${item}`);
 for (const item of errors) console.error(`ERROR: ${item}`);

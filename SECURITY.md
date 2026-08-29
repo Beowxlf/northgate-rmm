@@ -8,8 +8,8 @@ to isolated test environments.
 ## Reporting a vulnerability
 
 Do not open a public issue for a suspected vulnerability, exposed credential, or
-private infrastructure detail. Use GitHub private vulnerability reporting after
-it is enabled. Until then, contact the repository owner through a previously
+private infrastructure detail. Use GitHub private vulnerability reporting. If
+that mechanism is unavailable, contact the repository owner through a previously
 established private channel.
 
 Do not include secrets, private keys, tokens, production data, private hostnames,

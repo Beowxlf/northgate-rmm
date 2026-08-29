@@ -2,6 +2,7 @@
   "name": "northgate-rmm-repository-tools",
   "version": "0.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "Governance and audit tooling for the NorthGate RMM repository",
   "type": "module",
   "engines": {

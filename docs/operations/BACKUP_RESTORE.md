@@ -13,7 +13,8 @@ reconnection.
 - authorization policy and phase-gate state;
 - audit events and integrity checkpoints;
 - configuration excluding plaintext secrets;
-- artifact/update metadata, SBOMs, provenance, and public verification keys;
+- separately verified signed recovery packages, artifact/update metadata, SBOMs,
+  provenance, and public verification keys;
 - encrypted gateway/session metadata if enabled;
 - source commit and deployment manifests;
 - secret-store backup through its own approved mechanism.

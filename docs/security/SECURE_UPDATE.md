@@ -25,7 +25,8 @@ replace a privileged fleet component.
 6. Verify signatures, provenance, version, platform, and policy before publishing.
 7. Roll out to development, test, canary, then approved broader rings.
 8. Pause automatically on defined health or security failures.
-9. Preserve a separately verified recovery artifact and procedure.
+9. Preserve a separately signature/digest-verified signed package, its metadata,
+   trust material, and recovery procedure in the immutable Z6 recovery set.
 
 The permitted hardware-backed service flow and the alternative offline exchange,
 including request contents and evidence, are defined in the

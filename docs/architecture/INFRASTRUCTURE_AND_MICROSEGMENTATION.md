@@ -216,7 +216,7 @@ named gate and design evidence exist.
 | Z5 audit archive exporter              | Z6 backup target                         | Approved backup protocol    | Required           | Audit/checkpoint scope; write-only identity, immutable destination                                  |
 | Z6 backup/recovery monitor             | Z5 telemetry sink                        | Approved TLS port           | Required           | Write-only capacity, backup, retention, integrity, and restore-test health; no recovery content     |
 | Z6 source-record collector             | Approved source/deployment repository    | TCP 443                     | Required           | Read-only exact commit, signed tag, and deployment-manifest scope                                   |
-| Artifact repository backup identity    | Z6 backup target                         | Approved backup protocol    | G6                 | Metadata, SBOM, provenance, and public-key scope; no artifact publication                           |
+| Artifact repository backup identity    | Z6 backup target                         | Approved backup protocol    | G6                 | Signed packages, metadata, SBOM, provenance, and public keys; write-only immutable recovery copy    |
 | Z8 metadata exporter                   | Z6 backup target                         | Approved backup protocol    | G7 conditional     | Encrypted session/gateway metadata only; write-only identity, no delete                             |
 | Approved secret-store recovery service | Dedicated secret recovery target         | Provider-approved mechanism | When present       | Separate authority, encryption, audit, retention, and restore test                                  |
 | Z6 recovery service                    | Isolated restore target                  | Approved restore protocol   | Recovery only      | Exact authorization, no endpoint/operator ingress, reconcile before use                             |
@@ -261,7 +261,7 @@ mechanisms rather than one broadly privileged application backup account.
 | Audit events and integrity checkpoints                                                                  | Z5 protected audit archive exports append-only records and checkpoints                                                                                                          | Z6 immutable backup set          | Required before G2                |
 | Configuration and certificate state, excluding plaintext secrets                                        | Z2 backup exporter writes an encrypted, schema-versioned bundle                                                                                                                 | Z6 backup target                 | Required                          |
 | Source commit and deployment manifests                                                                  | Z6 collector reads only the exact commit/tag and deployment records named by the recovery set                                                                                   | Z6 signed recovery catalog       | Required                          |
-| Update metadata, SBOMs, provenance, and public verification keys                                        | Artifact-repository backup identity exports only release metadata and trust material; it cannot publish or revoke                                                               | Z6 immutable backup set          | G6                                |
+| Signed recovery packages, update metadata, SBOMs, provenance, and public verification keys              | Artifact-repository backup identity exports a separately signature/digest-verified release set; it cannot publish, replace, revoke, delete, or sign                             | Z6 immutable backup set          | G6                                |
 | Gateway and session metadata                                                                            | Z8 exporter encrypts the bounded metadata set before write-only transfer                                                                                                        | Z6 backup target                 | G7                                |
 | Secret-store state                                                                                      | The approved secret provider's recovery service uses its own separate backup authority and destination; no RMM runtime, Z2 exporter, or Z6 collector receives plaintext secrets | Dedicated secret recovery target | When a secret store is introduced |
 
@@ -323,8 +323,8 @@ Provisioning is unacceptable unless testing proves that:
 - Z5 cannot issue RMM jobs or alter RMM policy;
 - Z6 cannot become a general application or endpoint share;
 - one Z4 endpoint cannot reach another through RMM-created network paths;
-- a quarantined asset cannot reach Z2 except through an explicitly approved,
-  time-bounded evidence path; and
+- a quarantined asset cannot reach Z2 under any incident or evidence-export
+  condition; the only RMM-defined evidence path is the listed Z9-to-Z5 flow; and
 - equivalent IPv6 tests do not reveal a path denied only for IPv4.
 
 ## Enforcement layers

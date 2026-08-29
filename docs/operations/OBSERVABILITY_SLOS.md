@@ -15,6 +15,12 @@
 - update rings, failures, pauses, and rollback/recovery;
 - audit-write success, lag, and integrity checkpoint status.
 
+For G6, a constrained Z5 evaluator produces a signed rollout-health attestation
+binding the exact artifact, observed ring, window, sample size, required
+availability/security thresholds, result, evidence digest, and freshness. It
+cannot approve a rollout or alter release state; the status authority uses the
+attestation only alongside a separately signed rollout decision.
+
 Metrics must avoid endpoint names, job IDs, user IDs, or other unbounded sensitive
 labels.
 

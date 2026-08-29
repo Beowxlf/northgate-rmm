@@ -28,9 +28,11 @@ replace a privileged fleet component.
    publishing.
 7. Require an independent protected audit acknowledgement before every
    authority-increasing signing, publication, rollout-start/advance, or resumption
-   transition. Never block an emergency freeze, revocation, or pause because both
-   audit sinks are unavailable; retain signed recovery-client evidence, raise
-   incident severity, and reconcile it after recovery.
+   transition. Rollout start/advance/resume also requires a request-bound decision
+   from a separate authorized approver and current signed health-gate evidence.
+   Never block an emergency freeze, revocation, or pause because both audit sinks
+   are unavailable; retain signed recovery-client evidence, raise incident
+   severity, and reconcile it after recovery.
 8. Roll out to development, test, canary, then approved broader rings.
 9. Pause automatically on defined health or security failures.
 10. Preserve a separately signature/digest-verified signed package, its metadata,
@@ -47,6 +49,9 @@ acknowledgement, append its signed result to Z5 or Z6, and obtain a result
 acknowledgement that the repository verifies before activating an
 authority-increasing status. Only a Z1-authorized higher-sequence
 freeze/revocation/pause may proceed when both evidence sinks are unavailable.
+An audit acknowledgement alone is not rollout authority: the status signer and
+repository also verify the independently signed approval and exact current-ring or
+pre-deployment health-attestation digests bound into the status request.
 
 ## Agent behavior
 

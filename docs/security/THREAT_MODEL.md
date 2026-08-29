@@ -100,6 +100,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-35 | Staged update installs after release freeze/revoke    | fresh signed release status, monotonic sequence, 60-second expiry, fail-closed install            | reject replacement, preserve package/status evidence, freeze rollout     |
 | TM-36 | Same operator's valid login masks revoked RMM session | exact IdP tuple in grant, protected opaque handle, direct Z8 status, case-scoped recovery lookup  | revoke exact handle, isolate Z2, terminate Z8 session, preserve evidence |
 | TM-37 | Status signer bypasses protected release audit        | intent ack verified by signer; signer appends result; repository verifies both acknowledgements   | reject status activation, freeze rollout, preserve/reconcile evidence    |
+| TM-38 | Compromised coordinator bypasses rollout health gates | separate signed approval, signed Z5 health attestation, exact request/digest binding              | reject status, isolate coordinator, freeze rollout, preserve evidence    |
 
 ## Denial-of-service considerations
 

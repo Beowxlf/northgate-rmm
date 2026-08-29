@@ -111,7 +111,9 @@ tests, audits, risks, and exceptions.
   before installation.
 - **SR-UPD-003:** Update design MUST address rollback, freeze, mix-and-match,
   expiry, and signing-key compromise.
-- **SR-UPD-004:** Rollout MUST use canary rings, health gates, pause, and recovery.
+- **SR-UPD-004:** Rollout MUST use canary rings, a separately authorized
+  request-bound rollout decision, independently signed current health-gate
+  evidence, pause, and recovery.
 - **SR-UPD-005:** Dependencies and CI actions MUST be locked and continuously
   scanned.
 - **SR-UPD-006:** Immediately before installation, agents MUST obtain current,

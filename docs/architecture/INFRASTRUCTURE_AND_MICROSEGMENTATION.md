@@ -196,6 +196,7 @@ flowchart LR
   Service -->|Digest-pinned read| Artifacts
   Endpoints -. G6 endpoint/key/artifact-bound authorized read .-> Artifacts
   Endpoints -. G6 fresh signed release status before install .-> Artifacts
+  Endpoints -. G6 current sequence checkpoint after state uncertainty .-> UpdateStatus
   Admin -. G6 incident freeze and revoke .-> Artifacts
   Admin -. G6 incident signed status freeze and revoke .-> UpdateStatus
   Service -. G7 grants and termination .-> Session[Z8 Remote assistance]
@@ -260,6 +261,7 @@ named gate and design evidence exist.
 | Z6 recovery service                      | Isolated restore target                            | Approved restore protocol     | Recovery only         | Exact authorization, no endpoint/operator ingress, reconcile before use                                                              |
 | Z2 runtime                               | Artifact repository                                | TCP 443                       | G6                    | Read-only, signed metadata, digest and expiry verification                                                                           |
 | Z4 enrolled endpoint                     | Artifact repository and update-status endpoint     | TCP 443                       | G6                    | mTLS download authorization plus fresh independently signed release status immediately before install                                |
+| Z4 enrolled endpoint                     | Approved update metadata/status authority          | TCP 443                       | G6 state recovery     | mTLS read-only current signed sequence checkpoint after restart/reinstall/rollback/restore/missing state; no signing/admin authority |
 | Z7 publisher                             | Artifact repository                                | TCP 443                       | G6                    | Separate identity; require valid signing-intent and signing-result intake acknowledgements bound to the artifact                     |
 | Approved update metadata/status role     | Artifact repository update-status endpoint         | Approved publication protocol | G6                    | Exact signed status plus current intent/result acknowledgements; repository verifies all; only Z1-authorized restrictive exception   |
 | Z7 status coordinator                    | Approved update metadata/status authority          | TCP 443                       | G6                    | Exact request with protected ack, separate signed rollout decision, and applicable signed health-attestation digest                  |
@@ -591,12 +593,23 @@ replacing the agent, the endpoint retrieves current release status through the
 listed update-status endpoint and verifies a signature from the separated update
 metadata role. The status binds the exact artifact digest, version, rollout ring,
 metadata sequence, freeze/revocation state, and a maximum 60-second expiry. The
-agent records the highest sequence seen and rejects missing, invalid, expired,
+agent records the highest sequence seen in OS-protected rollback-resistant state
+outside the replaceable agent binaries and rejects missing, invalid, expired,
 replayed, rolled-back, frozen, revoked, wrong-ring, or wrong-digest status. It
 does not install when the status endpoint is unavailable. Emergency freeze or
 revocation stops new status issuance and publishes a higher signed sequence, so
 a previously staged artifact loses install eligibility no later than the prior
 status object's 60-second expiry.
+
+The sequence floor must survive service restart, agent reinstall, update rollback,
+and recovery to the prior agent version. An eligible platform uses a TPM-backed
+monotonic value or another approved host-protected store plus a signed checkpoint
+from the separated status authority. After restart, reinstall, rollback, VM/OS
+restore, or any missing/corrupt/inconsistent local state, the endpoint retrieves a
+current signed sequence checkpoint directly from the status authority over the
+listed read-only mTLS path before considering installation. It atomically raises
+its local floor and fails closed if the authority or checkpoint is unavailable or
+invalid. The artifact repository cannot initialize or lower the floor.
 
 The repository cannot create or modify release status. It serves only signed
 objects received through the listed status-publication path. The constrained
@@ -678,6 +691,9 @@ Provisioning is unacceptable unless testing proves that:
 - a staged update cannot install with missing, invalid, unavailable, expired,
   replayed, rolled-back, frozen, revoked, wrong-ring, or wrong-digest release
   status;
+- agent restart, reinstall, update rollback, VM/OS restore, or local sequence-state
+  loss/corruption cannot lower the accepted release-status floor or use the
+  artifact repository alone to reinitialize it;
 - a G6 publisher or repository cannot complete an authority-increasing signing,
   publication, rollout-start/advance, or resumption transition without an
   acknowledgement from the independent Z5 protected intake or, only while Z5 is
@@ -879,6 +895,10 @@ The deployment change packet must contain:
 - a G6 staged-package test that freezes and revokes the release before install,
   proves fresh status and sequence enforcement reject it within 60 seconds, and
   proves unavailable or replayed status cannot authorize replacement;
+- a G6 rollback-state test that restarts, reinstalls, rolls back, and restores the
+  prior agent, then removes/corrupts local sequence state and proves a lower signed
+  status is rejected; uncertain state must require a direct current signed
+  authority checkpoint, and unavailable authority must block installation;
 - agent no-listener and cross-endpoint isolation evidence;
 - backup/restore and revocation-invariant results;
 - capacity baseline and alert tests;

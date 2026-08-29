@@ -64,6 +64,14 @@ unavailable, replayed, rolled-back, frozen, or revoked status blocks installatio
 even when the package was downloaded earlier. Installation is atomic where
 possible and leaves a recoverable prior version. A failed update does not erase
 identity, revocation, or audit state.
+
+The highest accepted release-status sequence lives in OS-protected,
+rollback-resistant state outside the replaceable agent payload. It survives
+restart, reinstall, and agent-version rollback. After VM/OS restore or any
+missing, corrupt, or inconsistent sequence state, the agent must obtain a current
+signed checkpoint directly from the separated status authority over mTLS and
+atomically raise its floor; repository data alone cannot reinitialize or lower it.
+Failure to verify the checkpoint blocks installation.
 Each download also requires the short-lived, single-use, endpoint-key and
 artifact-bound authorization defined in the
 [infrastructure flow](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#revocation-aware-update-download-and-installation).

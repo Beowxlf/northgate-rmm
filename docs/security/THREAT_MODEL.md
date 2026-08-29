@@ -101,6 +101,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-36 | Same operator's valid login masks revoked RMM session | exact IdP tuple in grant, protected opaque handle, direct Z8 status, case-scoped recovery lookup  | revoke exact handle, isolate Z2, terminate Z8 session, preserve evidence |
 | TM-37 | Status signer bypasses protected release audit        | intent ack verified by signer; signer appends result; repository verifies both acknowledgements   | reject status activation, freeze rollout, preserve/reconcile evidence    |
 | TM-38 | Compromised coordinator bypasses rollout health gates | separate signed approval, signed Z5 health attestation, exact request/digest binding              | reject status, isolate coordinator, freeze rollout, preserve evidence    |
+| TM-39 | Agent rollback erases the release-status sequence     | rollback-resistant external state, direct signed authority checkpoint, fail-closed recovery       | reject lower status, restore sequence floor, investigate state rollback  |
 
 ## Denial-of-service considerations
 

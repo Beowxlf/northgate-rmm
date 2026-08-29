@@ -51,4 +51,6 @@ cannot delete every recovery copy.
 - active leases and remote sessions restore as expired/closed;
 - audit chain/checkpoints reconcile;
 - update trust does not regress to an unauthorized root/version;
+- restored or rolled-back agent state cannot lower the accepted release-status
+  sequence and must obtain a current signed authority checkpoint when uncertain;
 - no restored environment contacts real endpoints during validation.

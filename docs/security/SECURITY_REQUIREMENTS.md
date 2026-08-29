@@ -118,7 +118,10 @@ tests, audits, risks, and exceptions.
   scanned.
 - **SR-UPD-006:** Immediately before installation, agents MUST obtain current,
   independently signed release status with a maximum 60-second lifetime and MUST
-  reject unavailable, stale, replayed, frozen, revoked, or mismatched status.
+  reject unavailable, stale, replayed, frozen, revoked, or mismatched status. The
+  highest accepted sequence MUST survive agent restart/reinstall/rollback, and
+  uncertain restored state MUST be reestablished directly with the status
+  authority before installation.
 
 ## Remote access
 

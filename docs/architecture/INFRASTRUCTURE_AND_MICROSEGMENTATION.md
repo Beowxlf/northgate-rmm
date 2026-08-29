@@ -163,7 +163,7 @@ flowchart LR
   Admin -. Incident exact IdP handle lookup .-> Observe
   Session -. G7 operator session status, maximum 60-second cache .-> IdP
   Service -->|HTTPS 443, server certificate lifecycle| ServerPKI[Approved server PKI]
-  Admin -. Incident exact-certificate revoke/rollover .-> ServerPKI
+  Admin -. Disable Z2 PKI client, then revoke/roll certificate .-> ServerPKI
   Admin -. Signed emergency-recovery intent/result .-> Observe
   Admin -. Z5-unavailable signed emergency-evidence fallback .-> Recovery
   Admin -->|Signed server-certificate status only| ServerPKI
@@ -183,7 +183,10 @@ flowchart LR
   Build[Z7 Build and update] -->|G6 digest-bound request or offline bundle| Signer[Separated signing authority]
   Signer -->|Detached signatures and signed metadata only| Build
   Build -->|Signed artifacts only| Artifacts[Artifact repository]
-  UpdateStatus[Separated update metadata/status authority] -->|G6 signed release status only| Artifacts
+  Build -->|G6 acknowledgement-bound status request| UpdateStatus[Separated update metadata/status authority]
+  UpdateStatus -->|G6 signed release status only| Artifacts
+  UpdateStatus -->|G6 protected status result acknowledgement| Observe
+  UpdateStatus -. Z5-unavailable G6 status result acknowledgement .-> Recovery
   Build -->|G6 protected intent/result acknowledgements| Observe
   Artifacts -->|G6 append-only publication/revocation events| Observe
   Build -. Z5-unavailable G6 intent/result acknowledgements .-> Recovery
@@ -230,7 +233,7 @@ named gate and design evidence exist.
 | Z2 control plane                         | Approved endpoint issuer                           | TCP 443                       | G2/G3               | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs                                                           |
 | Z1 recovery operator                     | Endpoint issuer emergency revocation               | TCP 443                       | Incident only       | Dedicated MFA identity; revoke exact scope only, no issuance or renewal                                                              |
 | Z2 TLS service                           | Approved server PKI                                | TCP 443                       | Required            | Authenticated issuance, renewal, revocation/status endpoints only                                                                    |
-| Z1 PKI recovery operator                 | Approved server PKI                                | TCP 443                       | Incident only       | Independent MFA; revoke/roll over exact Z2 certificate only, no other issuance                                                       |
+| Z1 PKI recovery operator                 | Approved server PKI emergency containment          | TCP 443                       | Incident only       | Independent MFA; first disable/rotate exact Z2 issuance-client identity, then revoke/roll exact certificate; no unrelated authority  |
 | Z1 security recovery operators           | Z5 protected recovery-audit intake                 | TCP 443                       | Incident only       | Signed intent/result for exact human/certificate/session/tunnel/grant/release scope and outcome                                      |
 | Z1 security recovery operators           | Z6 immutable emergency-evidence intake             | Approved evidence protocol    | Z5-unavailable only | Signed append-only fallback bundle; no restore/delete authority; reconcile to Z5 after recovery                                      |
 | Z1 managed TLS client                    | Approved server-PKI status service                 | TCP 443                       | Required            | Signed OCSP/CRL status only; independent of Z2; missing/stale/unknown/revoked fails closed                                           |
@@ -257,7 +260,10 @@ named gate and design evidence exist.
 | Z2 runtime                               | Artifact repository                                | TCP 443                       | G6                  | Read-only, signed metadata, digest and expiry verification                                                                           |
 | Z4 enrolled endpoint                     | Artifact repository and update-status endpoint     | TCP 443                       | G6                  | mTLS download authorization plus fresh independently signed release status immediately before install                                |
 | Z7 publisher                             | Artifact repository                                | TCP 443                       | G6                  | Separate identity; require valid signing-intent and signing-result intake acknowledgements bound to the artifact                     |
-| Approved update metadata/status role     | Artifact repository update-status endpoint         | Approved publication protocol | G6                  | Signed status objects only; exact artifact/ring/sequence/expiry; no artifact upload or release-role change                           |
+| Approved update metadata/status role     | Artifact repository update-status endpoint         | Approved publication protocol | G6                  | Exact signed status plus current intent/result acknowledgements; repository verifies all; only Z1-authorized restrictive exception   |
+| Z7 status coordinator                    | Approved update metadata/status authority          | TCP 443                       | G6                  | Exact status request with current Z5/Z6 intent acknowledgement; authority verifies digest/action/ring/sequence/expiry                |
+| Approved update metadata/status role     | Z5 protected release-audit intake                  | Approved TLS port             | G6                  | Append signed status result bound to request/output digest; require acknowledgement before authority-increasing publication          |
+| Approved update metadata/status role     | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable  | Same write-only result and independent acknowledgement; no release, read, restore, or delete authority                               |
 | Z7 release services                      | Z5 protected release-audit intake                  | Approved TLS port             | G6                  | Workload mTLS; append-only decisions/attempts/results, digest-bound, no read/delete/control authority                                |
 | Artifact repository audit emitter        | Z5 protected release-audit intake                  | Approved TLS port             | G6                  | Append-only publish/freeze/revoke events; signed sequence/correlation, no read/delete authority                                      |
 | Z7 release services                      | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable  | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                             |
@@ -307,6 +313,14 @@ correlation ID. The PKI returns a signed result receipt containing the request
 digest, authority/key identifier, revocation-status version or replacement public
 certificate identifier, outcome, and time. Neither record contains private keys,
 authentication tokens, or recovery factors.
+
+For a suspected Z2 TLS service, the recovery order is mandatory: the independent
+Z1 PKI recovery operator first disables or rotates the exact PKI client identity
+that Z2 uses for issuance and renewal, verifies that the old client can no longer
+obtain a certificate, and only then revokes or rolls over the served certificate.
+Replacement issuance authority is delivered to a rebuilt/verified Z2 through the
+approved secret-provisioning path under a separate recovery decision. The served
+TLS certificate and the PKI client credential are different identities.
 
 Before privileged use, Z2 registers the IdP issuer/tenant and exact signed
 subject/session/client tuple in Z5, together with the RMM session correlation and
@@ -499,6 +513,15 @@ sequence- and correlation-bound event through its write-only identity to the
 immutable Z6 release-audit fallback and requires that independent acknowledgement
 instead.
 
+The same invariant applies to signed release-status transitions. Z7 obtains the
+intent acknowledgement and binds it to the exact status request. The separated
+metadata/status authority pins the Z5/Z6 acknowledgement keys and rejects a
+missing, invalid, expired, wrong-action, wrong-ring, wrong-sequence, or
+wrong-digest acknowledgement. After signing the status object, the authority
+itself appends the result to Z5 or Z6 and obtains a second acknowledgement. The
+artifact repository verifies the status signature plus both acknowledgements
+before making an authority-increasing status active.
+
 The Z6 fallback grants no release, artifact, read, restore, or delete authority.
 Its accepted events are reconciled into Z5 after recovery while preserving the
 original signature, sequence, acknowledgement, and time. A buffer controlled by
@@ -513,6 +536,9 @@ client retains signed intent and result receipts, raises incident severity, and
 reconciles them after protected evidence service is restored, as required by the
 emergency-recovery evidence rules above. The publisher or repository's own buffer
 does not satisfy this exception.
+The status authority may sign a higher-sequence restrictive status without Z5/Z6
+acknowledgement only after validating the independent Z1 recovery authorization;
+that exception cannot start, advance, resume, or unfreeze a rollout.
 
 ### Revocation-aware update download and installation
 
@@ -547,7 +573,7 @@ The repository cannot create or modify release status. It serves only signed
 objects received through the listed status-publication path. The constrained
 metadata/status role cannot upload artifacts, alter release roles, sign agent
 packages, or authorize a release that lacks the required protected signing
-acknowledgements.
+and status-transition acknowledgements.
 
 ### Explicit deny tests
 
@@ -561,7 +587,10 @@ Provisioning is unacceptable unless testing proves that:
 - the Z1 recovery identity cannot create, extend, view, or join a Z8 session;
 - the Z1 recovery identity cannot issue or renew endpoint certificates;
 - the Z1 PKI recovery identity cannot issue an endpoint, intermediate, or
-  unrelated server certificate or change PKI policy;
+  unrelated server certificate, alter another workload's PKI client identity, or
+  change PKI policy;
+- after the Z1 recovery operator disables the exact Z2 PKI issuance-client
+  identity, that old identity cannot issue or renew any server certificate;
 - the Z1 identity-recovery operator cannot issue a token, create/alter a user,
   role, client, or IdP policy, enumerate IdP sessions, or revoke outside the exact
   incident handle/session scope;
@@ -608,6 +637,10 @@ Provisioning is unacceptable unless testing proves that:
   without both exact signing-intent and signing-result acknowledgements;
 - the artifact repository cannot accept or publish a signed artifact without
   independently validating those same exact acknowledgements;
+- the update metadata/status authority cannot sign an authority-increasing status
+  without an exact current Z5/Z6 intent acknowledgement, and the repository cannot
+  activate it without the matching result acknowledgement; the no-ack exception
+  permits only a higher-sequence freeze, revocation, or pause authorized by Z1;
 - a staged update cannot install with missing, invalid, unavailable, expired,
   replayed, rolled-back, frozen, revoked, wrong-ring, or wrong-digest release
   status;
@@ -762,7 +795,9 @@ The deployment change packet must contain:
   missing/stale/unknown/revoked hard-fail cases;
 - emergency endpoint/server PKI tests proving signed intent/result receipts reach
   Z5, then proving Z6 immutable fallback and later Z5 reconciliation when Z5 is
-  unavailable;
+  unavailable; the server test first disables the old Z2 issuance-client identity,
+  proves it cannot obtain a replacement certificate, and only then revokes/rolls
+  the served certificate and provisions a new client identity to verified Z2;
 - an operator-session incident test proving exact revocation at the IdP and
   rejection by Z2 and Z8 within 60 seconds, followed by a Z2-suspected test that
   begins with only the case and RMM session, retrieves the bounded opaque IdP
@@ -797,6 +832,10 @@ The deployment change packet must contain:
 - G6 tests proving the signer rejects missing, invalid, stale, wrong-role, and
   wrong-digest intake acknowledgements and the publisher rejects a signature
   without matching signing-intent and signing-result acknowledgements;
+- G6 status tests proving the metadata/status authority rejects missing, invalid,
+  stale, wrong-action/ring/sequence/digest intent acknowledgements and the
+  repository rejects missing result acknowledgements; with both sinks down, only
+  Z1-authorized higher-sequence freeze/revoke/pause status may proceed;
 - a G6 staged-package test that freezes and revokes the release before install,
   proves fresh status and sequence enforcement reject it within 60 seconds, and
   proves unavailable or replayed status cannot authorize replacement;

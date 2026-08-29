@@ -77,7 +77,8 @@ tests, audits, risks, and exceptions.
 - **SR-CRYPTO-002:** TLS server identity MUST be validated; post-enrollment agent
   traffic MUST use mutual authentication.
 - **SR-CRYPTO-003:** Keys MUST have documented purpose, owner, storage, rotation,
-  revocation, backup, and compromise procedures.
+  revocation, backup, and compromise procedures; a TLS service's PKI client
+  identity MUST be separately revocable from its served certificate.
 - **SR-CRYPTO-004:** Release/update signing authority MUST be separate from online
   application and ordinary operator credentials.
 - **SR-CRYPTO-005:** Secrets MUST NOT appear in repository content, URLs, command

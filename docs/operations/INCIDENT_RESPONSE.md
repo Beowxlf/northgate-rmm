@@ -47,6 +47,11 @@ or, when Z5 is unavailable, the append-only Z6 emergency evidence intake. Failur
 of both paths is incomplete containment and must not be reported as a fully
 evidenced recovery.
 
+When the Z2 TLS service is suspected, first disable or rotate its exact PKI
+issuance-client identity and verify the old client cannot obtain a replacement.
+Only then revoke/roll the served certificate; restore issuance authority solely
+to a rebuilt and verified Z2 through the approved secret-provisioning path.
+
 ## Mandatory emergency capabilities before operational gates
 
 - disable new enrollment;

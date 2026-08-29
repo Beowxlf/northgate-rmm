@@ -42,6 +42,11 @@ including request contents and evidence, are defined in the
 The normal Z5 acknowledgement, independently controlled Z6 fallback, fail-closed
 behavior, and reconciliation requirement are defined in
 [release-transition audit acknowledgement](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#release-transition-audit-acknowledgement).
+The separated metadata/status authority must verify the exact pre-action
+acknowledgement, append its signed result to Z5 or Z6, and obtain a result
+acknowledgement that the repository verifies before activating an
+authority-increasing status. Only a Z1-authorized higher-sequence
+freeze/revocation/pause may proceed when both evidence sinks are unavailable.
 
 ## Agent behavior
 

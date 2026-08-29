@@ -40,14 +40,21 @@ sequenceDiagram
   A->>G: Establish outbound encrypted tunnel
   O->>G: Redeem single-use browser session
   G->>B: Request exact-session JIT credential
-  B->>I: Issue exact actor/endpoint/protocol credential
-  I-->>B: Credential plus opaque revocation handle
-  B->>E: Append issuance metadata and revocation handle
-  alt Immutable append confirmed
-    E-->>B: Append receipt
+  B->>I: Signed grant for exact actor/endpoint/protocol
+  I->>E: Append signed issuance receipt and opaque handle
+  alt Authority receipt confirmed
+    E-->>I: Immutable append receipt
+    I-->>B: Credential plus opaque revocation handle
+    B->>E: Append broker delivery event linked to authority receipt
+  else Authority receipt unavailable or rejected
+    E--xI: No valid append receipt
+    I--xB: No credential issued
+  end
+  alt Broker delivery event confirmed
+    E-->>B: Immutable append receipt
     B-->>G: Deliver JIT credential
-  else Append unavailable or rejected
-    E--xB: No valid append receipt
+  else Broker delivery event unavailable or rejected
+    E--xB: No valid delivery receipt
     B->>I: Compensating revoke by opaque handle
     I-->>B: Signed revocation result
     B->>X: Signed handle/session/cleanup-state alert
@@ -131,15 +138,20 @@ manager integration, and user consent require explicit qualification.
 Always record metadata: requester, approver, endpoint, protocol, source zone,
 start/end, termination reason, policy, gateway/tunnel IDs, capability flags,
 credential issuer, and an opaque non-secret credential/revocation identifier.
-The broker must append the issuance metadata and identifier to protected Z5
-evidence before releasing credential material to the gateway. Failure to confirm
-that append fails session establishment closed. The broker retains the non-secret
-handle, performs compensating revocation, and verifies the authority's revocation
-receipt before discarding the handle. If cleanup cannot be confirmed, it sends a
-signed, bounded alert containing issuer, handle, session/grant, and cleanup state
-directly to the approved independent incident destination; the alert contains no
-credential secret. It also retains a host-protected pending-revocation record for
-retry and operator reconciliation.
+The OS identity authority validates the signed session grant and appends its own
+signed issuance receipt and identifier directly to protected Z5 evidence before
+returning credential material or the handle to Z8. The broker then appends a
+separate delivery event linked to the authority receipt before releasing the
+credential to the gateway. Failure of either append fails session establishment
+closed, so a compromised broker cannot be the sole source of the recovery handle.
+
+If the broker delivery append fails after issuance, the broker retains the
+non-secret handle, performs compensating revocation, and verifies the authority's
+revocation receipt before discarding the handle. If cleanup cannot be confirmed,
+it sends a signed, bounded alert containing issuer, handle, session/grant, and
+cleanup state directly to the approved independent incident destination; the
+alert contains no credential secret. It also retains a host-protected
+pending-revocation record for retry and operator reconciliation.
 
 Screen recording and terminal transcription are not universally enabled. The
 project must decide retention, access, notification, redaction, and legal/privacy

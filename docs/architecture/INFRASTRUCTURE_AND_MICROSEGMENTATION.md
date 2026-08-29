@@ -158,6 +158,7 @@ flowchart LR
   Admin -->|HTTPS 443, authorization| IdP[Approved human IdP]
   Admin -. Incident exact operator-session revoke .-> IdP
   Service -->|HTTPS 443, named OIDC endpoints| IdP
+  Session -. G7 operator session status, maximum 60-second cache .-> IdP
   Service -->|HTTPS 443, server certificate lifecycle| ServerPKI[Approved server PKI]
   Admin -. Incident exact-certificate revoke/rollover .-> ServerPKI
   Admin -. Signed emergency-recovery intent/result .-> Observe
@@ -213,7 +214,7 @@ named gate and design evidence exist.
 | Z1 admin path                            | Z2 operator ingress                                | TCP 443                     | Required            | OIDC MFA, device/source policy, RBAC, audit                                                                |
 | Z1 admin path                            | Z2 control-plane host                              | TCP 22                      | Required            | Exact source; dedicated key-only identity, no password/root login, audit                                   |
 | Z1 browser                               | Approved human IdP                                 | TCP 443                     | Required            | Authorization endpoint only; TLS and IdP policy                                                            |
-| Z2 control plane                         | Approved human IdP                                 | TCP 443                     | Required            | Named OIDC discovery, token, key, revocation/logout endpoints                                              |
+| Z2 control plane                         | Approved human IdP                                 | TCP 443                     | Required            | OIDC endpoints plus current session/token status; positive cache no more than 60 seconds                   |
 | Z1 identity recovery operator            | Approved human IdP emergency revocation            | TCP 443                     | Incident only       | Independent MFA; revoke exact user/session/client scope only, no token/user/role/policy authority          |
 | Z2 control plane                         | Approved endpoint issuer                           | TCP 443                     | G2/G3               | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs                                 |
 | Z1 recovery operator                     | Endpoint issuer emergency revocation               | TCP 443                     | Incident only       | Dedicated MFA identity; revoke exact scope only, no issuance or renewal                                    |
@@ -224,6 +225,7 @@ named gate and design evidence exist.
 | Z1 managed TLS client                    | Approved server-PKI status service                 | TCP 443                     | Required            | Signed OCSP/CRL status only; independent of Z2; missing/stale/unknown/revoked fails closed                 |
 | Z4 endpoint TLS client                   | Approved server-PKI status service                 | TCP 443                     | G2/G3               | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                       |
 | Z8 session gateway TLS client            | Approved server-PKI status service                 | TCP 443                     | G7 conditional      | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                       |
+| Z8 session gateway                       | Approved human IdP session-status service          | TCP 443                     | G7 conditional      | Exact subject/session/client status; positive cache no more than 60 seconds; no token/user admin           |
 | Z4 unenrolled canary                     | Z2 enrollment ingress                              | TCP 443                     | G2/G3               | Server-authenticated TLS; single-use exact-scope grant, key proof, limits                                  |
 | Z4 enrolled endpoint                     | Z2 agent ingress                                   | TCP 443                     | G2/G3               | Outbound mTLS, revocation, endpoint binding, rate and size limits                                          |
 | Z2 application                           | Z3 PostgreSQL                                      | TCP 5432 or local socket    | Required            | Named workload role, TLS if networked, least SQL privilege                                                 |
@@ -346,6 +348,28 @@ five-minute propagation bound and before certificate expiry. New and resumed
 connections are also rejected. Testing proves status-only identities cannot reach
 issuance, renewal, private-key, or revocation-administration functions.
 
+### Human-session revocation propagation
+
+Revoking an operator at the IdP must terminate authority already established in
+the RMM. Z2 revalidates the exact IdP subject, session, and client on every
+privileged request. A positive status may be cached for no more than 60 seconds.
+Z8 independently revalidates the same status at least every 60 seconds throughout
+an interactive session; it does not rely on Z2 to relay revocation.
+
+The implementation may use online introspection or back-channel logout, or a
+signed session/access assertion with an absolute lifetime no greater than 60
+seconds whose refresh occurs only at the IdP. Revoked, unknown, unavailable, or
+stale status fails closed: Z2 rejects browser/API activity, Z8 closes the remote
+stream and endpoint tunnel, and the credential broker starts exact JIT-credential
+revocation. If Z2 is suspected, the Z1 IdP revocation is paired with independent
+policy-enforcement-point isolation; containment does not trust Z2 to enforce its
+own loss of authority.
+
+Acceptance testing establishes active Z2 and Z8 sessions, revokes the exact IdP
+session through Z1, and proves both stop privileged activity within 60 seconds.
+A second test treats Z2 as compromised and proves the independent enforcement
+point isolates it while Z8 terminates the session and tunnel directly.
+
 ### JIT credential revocation propagation
 
 Every G7 credential profile declares how the endpoint enforces revocation before
@@ -447,6 +471,8 @@ Provisioning is unacceptable unless testing proves that:
   unrelated server certificate or change PKI policy;
 - the Z1 identity-recovery operator cannot issue a token, create/alter a user,
   role, client, or IdP policy, or revoke outside the exact incident scope;
+- Z2 or Z8 cannot continue privileged activity when operator-session status is
+  revoked, unknown, unavailable, or more than 60 seconds stale;
 - the security-recovery evidence identity cannot read/alter protected records, access
   general backup/restore functions, or omit both Z5 and Z6 acknowledgement while
   claiming the containment action complete;
@@ -628,9 +654,10 @@ The deployment change packet must contain:
 - emergency endpoint/server PKI tests proving signed intent/result receipts reach
   Z5, then proving Z6 immutable fallback and later Z5 reconciliation when Z5 is
   unavailable;
-- an operator-session incident test with Z2 unavailable/suspected, proving exact
-  revocation at the IdP, a signed IdP result, rejected session state, and Z5/Z6
-  emergency evidence;
+- an operator-session incident test proving exact revocation at the IdP and
+  rejection by Z2 and Z8 within 60 seconds, followed by a Z2-suspected test that
+  proves independent policy-enforcement-point isolation, direct Z8 stream/tunnel
+  termination, the signed IdP result, and Z5/Z6 emergency evidence;
 - a G6 emergency freeze/revocation test with the artifact service suspected,
   proving Z1 signed intent, claimed result, and independently observed outcome
   reach Z5 and use Z6 fallback when Z5 is unavailable;

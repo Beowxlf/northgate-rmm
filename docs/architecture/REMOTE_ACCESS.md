@@ -95,6 +95,10 @@ Every session grant binds:
 
 Authorization is rechecked at request, approval, tunnel establishment, browser
 redemption, and reconnect. An open UI page is not authorization to reconnect.
+Z8 also revalidates the exact operator subject, IdP session, and client directly
+with the IdP at least every 60 seconds during an active session. Revoked, unknown,
+unavailable, or stale status closes the browser stream and endpoint tunnel and
+starts exact JIT-credential revocation without waiting for Z2.
 
 ## Default-denied capabilities
 

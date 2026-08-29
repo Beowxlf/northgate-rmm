@@ -95,6 +95,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-30 | Emergency Z8 termination is suppressed by Z2          | Z1 signed intent/result, Z8 direct protected event, Z6 fallback, observed-vs-claimed outcome      | reconcile tunnel/session state, preserve receipts, isolate Z2 and Z8     |
 | TM-31 | Suspected artifact service suppresses recovery audit  | Z1 signed intent/result, independent observation, Z5 protected intake, immutable Z6 fallback      | isolate artifact path, reconcile metadata/PEP state, preserve receipts   |
 | TM-32 | Suspected Z2 blocks operator-session revocation       | independent exact-scope Z1-to-IdP revoke, signed IdP receipt, Z5/Z6 emergency evidence            | invalidate session at IdP, verify rejection, preserve/reconcile receipt  |
+| TM-33 | Revoked operator session remains accepted by Z2/Z8    | direct IdP status, 60-second bound, stream/tunnel/JIT teardown, independent PEP isolation         | deny work, terminate access, isolate suspected Z2, preserve evidence     |
 
 ## Denial-of-service considerations
 

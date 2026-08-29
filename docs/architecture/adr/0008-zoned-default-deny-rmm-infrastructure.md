@@ -50,7 +50,7 @@ change.
 This decision adds network policy/enforcement state, the protected Z5 audit
 archive, and recovery credentials to the protected asset set. It adds trust
 boundaries between every logical zone and external dependency. Abuse cases and
-controls are recorded as TM-17 through TM-32 in
+controls are recorded as TM-17 through TM-33 in
 [`THREAT_MODEL.md`](../../security/THREAT_MODEL.md).
 
 ## Alternatives rejected

@@ -83,6 +83,8 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-18 | Compromised runtime suppresses or rewrites audit     | dedicated append-only writer, integrity chain/checkpoints, protected Z5 archive             | gap/sequence alert, independent export and immutable backup              |
 | TM-19 | Compromised TLS service blocks its own containment   | independent PKI recovery identity, exact-certificate revoke/rollover-only route             | certificate alert, revoke/replace externally, preserve service evidence  |
 | TM-20 | Signing handoff is substituted or over-authorized    | canonical digest-bound request, separate quorum, non-exportable/offline key, signed receipt | hash/signature verification, chain-of-custody audit, reject publication  |
+| TM-21 | Revoked endpoint reuses an old update assignment     | fresh revocation check, single-use endpoint-key/artifact-bound authorization, short expiry  | deny/replay audit, emergency token revocation, freeze rollout            |
+| TM-22 | Compromised broker leaves a JIT credential usable    | independent exact-credential revocation route, short expiry, no standing credential         | revoke at OS authority, isolate gateway, reconcile session evidence      |
 
 ## Denial-of-service considerations
 

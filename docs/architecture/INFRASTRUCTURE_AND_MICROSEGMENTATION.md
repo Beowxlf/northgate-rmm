@@ -175,12 +175,13 @@ flowchart LR
   Signer -->|Detached signatures and signed metadata only| Build
   Build -->|Signed artifacts only| Artifacts[Artifact repository]
   Service -->|Digest-pinned read| Artifacts
-  Endpoints -. G6 signed update read .-> Artifacts
+  Endpoints -. G6 endpoint/key/artifact-bound authorized read .-> Artifacts
   Admin -. G6 incident freeze and revoke .-> Artifacts
   Service -. G7 grants and termination .-> Session[Z8 Remote assistance]
   Admin -. G7 emergency terminate only .-> Session
   Session -. G7 lifecycle events .-> Service
   Session -. G7 logs and metrics .-> Observe
+  Admin -. G7 incident exact-JIT-credential revoke .-> OSIdentity[Approved OS identity authority]
   Endpoints -. G7 outbound expiring tunnel .-> Session
   Hypervisor[Z0 Hypervisor management] -. No application flow .- Service
   Quarantine[Z9 Quarantine] -. Evidence export only .-> Observe
@@ -221,7 +222,7 @@ named gate and design evidence exist.
 | Approved secret-store recovery service | Dedicated secret recovery target         | Provider-approved mechanism | When present       | Separate authority, encryption, audit, retention, and restore test                                  |
 | Z6 recovery service                    | Isolated restore target                  | Approved restore protocol   | Recovery only      | Exact authorization, no endpoint/operator ingress, reconcile before use                             |
 | Z2 runtime                             | Artifact repository                      | TCP 443                     | G6                 | Read-only, signed metadata, digest and expiry verification                                          |
-| Z4 enrolled endpoint                   | Artifact repository                      | TCP 443                     | G6                 | Read-only signed update for the endpoint's assigned rollout ring                                    |
+| Z4 enrolled endpoint                   | Artifact repository                      | TCP 443                     | G6                 | mTLS proof plus single-use short-lived endpoint-key/artifact/ring-bound authorization               |
 | Z7 publisher                           | Artifact repository                      | TCP 443                     | G6                 | Separate publication identity; provenance and audit                                                 |
 | Z1 release recovery operator           | Artifact emergency metadata API          | TCP 443                     | G6 incident        | Independent MFA; freeze/revoke only, offline-root authorization, no upload                          |
 | Z2/Z3/Z5/Z6/Z8 host updaters           | Approved OS repositories                 | TCP 443                     | Maintenance        | Separate exact-source rules; named repositories, signatures, change window                          |
@@ -240,6 +241,7 @@ named gate and design evidence exist.
 | Z8 session gateway                     | Z2 event ingress                         | TCP 443                     | G7 conditional     | Workload mTLS; bounded lifecycle events, no job or policy authority                                 |
 | Z8 session gateway                     | Z8 credential broker                     | Authenticated IPC or mTLS   | G7 conditional     | One-session retrieval; credential never reaches browser or RMM database                             |
 | Z8 credential broker                   | Approved OS identity authority           | Approved identity protocol  | G7 conditional     | JIT credential for one actor, endpoint, protocol, and expiry                                        |
+| Z1 session recovery operator           | Approved OS identity authority           | Approved identity protocol  | G7 incident        | Independent MFA; revoke exact issued JIT credential only, no issuance/renewal/policy change         |
 | Z8 session gateway                     | Z5 telemetry sink                        | Approved TLS port           | G7 conditional     | Write-only security and availability telemetry                                                      |
 | Z4 exact endpoint                      | Z8 session gateway                       | Outbound expiring tunnel    | G7 conditional     | Stateful return only; one protocol, port, grant, and expiry                                         |
 | Z9 quarantined asset                   | Z5 evidence intake                       | Approved evidence protocol  | Incident only      | Exact source, write-only bounded export, expiry, malware-safe handling                              |
@@ -298,6 +300,23 @@ publication digest as G6 evidence. A mismatch, expired request, unexpected role,
 or unavailable evidence fails closed and cannot be overridden by the RMM control
 plane.
 
+### Revocation-aware update download
+
+An assigned rollout ring is not download authority. Immediately before issuing a
+download authorization, Z2 verifies the endpoint's current certificate status,
+identity lineage, policy, artifact digest, platform/version, and rollout
+eligibility. It then returns through the existing agent channel a single-use
+authorization bound to the endpoint public key, exact artifact digest, rollout
+ring, token identifier, and a maximum five-minute expiry.
+
+The endpoint proves possession of that key to the artifact repository. The
+repository validates the signed authorization against a pinned authorization key,
+rejects replay and expiry, and serves only the named digest. It does not infer
+eligibility from hostname, address, a prior assignment, or possession of an old
+URL. Revocation stops new authorizations; emergency freeze/revocation also denies
+unused token identifiers at the repository. G6 evidence includes revoked,
+expired, replayed, wrong-key, wrong-ring, and wrong-digest denial tests.
+
 ### Explicit deny tests
 
 Provisioning is unacceptable unless testing proves that:
@@ -311,11 +330,15 @@ Provisioning is unacceptable unless testing proves that:
 - the Z1 recovery identity cannot issue or renew endpoint certificates;
 - the Z1 PKI recovery identity cannot issue an endpoint, intermediate, or
   unrelated server certificate or change PKI policy;
+- the Z1 session-recovery identity cannot issue, extend, inspect, or change the
+  scope of a JIT credential or alter OS identity policy;
 - the incident auditor cannot alter/delete evidence or exercise RMM authority;
 - the Z2 audit writer cannot read, alter, or delete the Z5 protected archive or
   submit a record without its assigned identity, sequence, and integrity proof;
 - the release-recovery identity cannot upload an artifact or resume a frozen
   rollout without separately authorized, valid update metadata;
+- an endpoint with a revoked identity, stale assignment, expired/replayed token,
+  different key, or different artifact digest cannot download an update;
 - the Z7 builder/publisher cannot retrieve signing private keys, change signing
   policy, or cause the signer to fetch or publish an artifact;
 - the Z6 monitor cannot send backup content, keys, or restored data to Z5 or

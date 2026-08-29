@@ -51,6 +51,9 @@ Terminate the gateway session and endpoint tunnel, revoke the grant and JIT
 credential, disable redirection, preserve session metadata/authorized recording,
 inspect endpoint authentication and network logs, and determine whether the
 gateway or endpoint was used to pivot.
+If the gateway or credential broker is suspected, revoke the exact JIT credential
+at the OS identity authority through the independent Z1 session-recovery route;
+do not use the suspected broker for containment.
 
 ## Recovery criteria
 

@@ -38,6 +38,9 @@ The agent verifies trusted root/metadata chain, signatures, digest, length,
 platform, architecture, version policy, expiry, rollout assignment, and disk
 preconditions. Installation is atomic where possible and leaves a recoverable
 prior version. A failed update does not erase identity, revocation, or audit state.
+Each download also requires the short-lived, single-use, endpoint-key and
+artifact-bound authorization defined in the
+[infrastructure flow](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#revocation-aware-update-download).
 
 ## Key compromise
 

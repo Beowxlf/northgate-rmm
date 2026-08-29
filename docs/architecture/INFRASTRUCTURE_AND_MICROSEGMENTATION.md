@@ -159,7 +159,9 @@ flowchart LR
   Service -->|HTTPS 443, named OIDC endpoints| IdP
   Service -->|HTTPS 443, server certificate lifecycle| ServerPKI[Approved server PKI]
   Admin -. Incident exact-certificate revoke/rollover .-> ServerPKI
+  Admin -->|Signed server-certificate status only| ServerPKI
   Endpoints[Z4 Managed endpoints] -->|Bootstrap TLS, then mTLS| Service
+  Endpoints -->|Signed server-certificate status only| ServerPKI
   Service -->|G2/G3 issuance and status API| Issuer[Restricted endpoint issuer]
   Admin -. Incident revoke only .-> Issuer
   Service -->|Authenticated database session| Data[(Z3 RMM data)]
@@ -184,6 +186,7 @@ flowchart LR
   Session -. G7 append opaque JIT revocation handle .-> Observe
   Admin -. G7 exact-session revocation-handle lookup .-> Observe
   Admin -. G7 incident exact-JIT-credential revoke .-> OSIdentity[Approved OS identity authority]
+  Session -. G7 signed Z2-certificate status only .-> ServerPKI
   Endpoints -. G7 outbound expiring tunnel .-> Session
   Hypervisor[Z0 Hypervisor management] -. No application flow .- Service
   Quarantine[Z9 Quarantine] -. Evidence export only .-> Observe
@@ -206,6 +209,9 @@ named gate and design evidence exist.
 | Z1 recovery operator                   | Endpoint issuer emergency revocation     | TCP 443                     | Incident only      | Dedicated MFA identity; revoke exact scope only, no issuance or renewal                             |
 | Z2 TLS service                         | Approved server PKI                      | TCP 443                     | Required           | Authenticated issuance, renewal, revocation/status endpoints only                                   |
 | Z1 PKI recovery operator               | Approved server PKI                      | TCP 443                     | Incident only      | Independent MFA; revoke/roll over exact Z2 certificate only, no other issuance                      |
+| Z1 managed TLS client                  | Approved server-PKI status service       | TCP 443                     | Required           | Signed OCSP/CRL status only; independent of Z2; missing/stale/unknown/revoked fails closed          |
+| Z4 endpoint TLS client                 | Approved server-PKI status service       | TCP 443                     | G2/G3              | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                |
+| Z8 session gateway TLS client          | Approved server-PKI status service       | TCP 443                     | G7 conditional     | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                |
 | Z4 unenrolled canary                   | Z2 enrollment ingress                    | TCP 443                     | G2/G3              | Server-authenticated TLS; single-use exact-scope grant, key proof, limits                           |
 | Z4 enrolled endpoint                   | Z2 agent ingress                         | TCP 443                     | G2/G3              | Outbound mTLS, revocation, endpoint binding, rate and size limits                                   |
 | Z2 application                         | Z3 PostgreSQL                            | TCP 5432 or local socket    | Required           | Named workload role, TLS if networked, least SQL privilege                                          |
@@ -255,6 +261,28 @@ the ordinary RMM control plane and, when the primary IdP is in scope for the
 incident, an independently authenticated recovery method. These identities are
 disabled or access-restricted when not in use, cannot perform ordinary RMM work,
 and require reason, alerting, short expiry, and retrospective review.
+
+### Server-certificate revocation propagation
+
+Revocation at the server PKI is not complete until every client rejects the
+certificate. Z2 server certificates use short lifetimes and OCSP Must-Staple or
+an equivalently enforced signed-status mechanism. Z2 obtains a signed response
+through its existing PKI lifecycle path and staples it to TLS handshakes; the
+response has a maximum five-minute freshness/next-update window.
+
+Z1 managed clients, Z4 endpoint clients, and G7 Z8 gateway clients independently
+validate chain, name, key usage, expiry, and the signed status response. The
+listed status-service routes provide direct refresh/fallback without trusting Z2.
+Missing, invalid, stale, unknown, or revoked status fails a new connection closed;
+soft-fail clients are not approved. The hardened Z1 browser/client policy must
+enforce this behavior before it can access RMM. The status service and its signing
+authority remain operationally independent of Z2.
+
+Acceptance testing revokes a disposable Z2 server certificate through Z1,
+attempts connections from every activated client class, and proves rejection
+within the five-minute propagation bound and before certificate expiry. It also
+proves status-only identities cannot reach issuance, renewal, private-key, or
+revocation-administration functions.
 
 ### Backup coverage
 
@@ -334,6 +362,9 @@ Provisioning is unacceptable unless testing proves that:
 - the Z1 recovery identity cannot issue or renew endpoint certificates;
 - the Z1 PKI recovery identity cannot issue an endpoint, intermediate, or
   unrelated server certificate or change PKI policy;
+- a Z1, Z4, or Z8 status-only client cannot access server-PKI issuance, renewal,
+  private-key, or revocation-administration functions, and cannot connect to Z2
+  with missing, stale, unknown, or revoked server-certificate status;
 - the Z1 session-recovery identity cannot issue, extend, inspect, or change the
   scope of JIT credential material or alter OS identity policy; it may retrieve
   only the exact session's opaque revocation handle and issuer from Z5;
@@ -493,6 +524,8 @@ The deployment change packet must contain:
 - negative results for inactive conditional rows and every expected deny;
 - guest listener and host-firewall inventory;
 - TLS/mTLS identity, expiry, and revocation test results without private keys;
+- server-certificate status propagation results for each activated Z1, Z4, and
+  Z8 client class, including missing/stale/unknown/revoked hard-fail cases;
 - database-role and unauthorized-access tests;
 - protected-audit access/export tests proving denied and successful attempts
   produce immutable correlated intent/result events without evidence payloads;

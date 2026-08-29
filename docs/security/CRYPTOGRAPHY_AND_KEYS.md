@@ -31,6 +31,14 @@ Generate locally, enroll with public key, activate after first mTLS proof, rotat
 with an authenticated overlap, revoke immediately on compromise/retirement, and
 destroy during verified uninstall. VM clones must not silently share identity.
 
+## TLS server revocation
+
+Z2 server certificates use short lifetimes and a signed status mechanism with a
+maximum five-minute freshness window. Approved Z1, Z4, and Z8 clients hard-fail
+missing, invalid, stale, unknown, or revoked status and can reach the independent
+server-PKI status service without trusting Z2. Emergency revocation and rollover
+use the independent Z1 recovery identity and are tested before endpoint reliance.
+
 ## Update trust
 
 Adopt TUF-style separated roles and metadata as the update design matures. Root

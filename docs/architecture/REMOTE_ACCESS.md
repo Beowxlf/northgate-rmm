@@ -64,6 +64,7 @@ sequenceDiagram
   G-->>C: Start, activity, termination events
   C-->>O: Authorized interactive session
   C->>G: Force termination on expiry/revocation
+  G->>B: Revoke exact session/grant/opaque handle
 ```
 
 ## Trust separation
@@ -128,6 +129,8 @@ Credential issuance and revocation are separate from endpoint enrollment keys.
 The broker's workload identity cannot enumerate or inspect credentials, revoke a
 credential from another session/grant, or change OS identity policy. The OS
 identity authority enforces the exact session/grant/opaque-handle binding.
+The gateway may trigger broker revocation only for its exact active session,
+grant, and opaque handle. The broker rejects a missing or cross-session binding.
 Every credential profile must enforce revocation at the endpoint through online
 authority validation or the signed, monotonically versioned KRL/status mechanism
 defined in the

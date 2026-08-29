@@ -104,18 +104,29 @@
         "SR-DATA-003",
         "SR-AUDIT-001",
         "SR-AUDIT-002",
-        "SR-AUDIT-003"
+        "SR-AUDIT-003",
+        "SR-AUDIT-004"
       ],
       "evidence": [
         "docs/security/DATA_CLASSIFICATION_RETENTION.md",
-        "docs/operations/OBSERVABILITY_SLOS.md"
+        "docs/operations/OBSERVABILITY_SLOS.md",
+        "docs/architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md"
       ]
     },
     {
       "id": "CTRL-09",
       "name": "Secure updates",
-      "requirements": ["SR-UPD-001", "SR-UPD-002", "SR-UPD-003", "SR-UPD-004"],
-      "evidence": ["docs/security/SECURE_UPDATE.md"]
+      "requirements": [
+        "SR-UPD-001",
+        "SR-UPD-002",
+        "SR-UPD-003",
+        "SR-UPD-004",
+        "SR-UPD-006"
+      ],
+      "evidence": [
+        "docs/security/SECURE_UPDATE.md",
+        "docs/architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md"
+      ]
     },
     {
       "id": "CTRL-10",

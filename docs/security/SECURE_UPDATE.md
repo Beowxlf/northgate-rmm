@@ -21,8 +21,10 @@ replace a privileged fleet component.
 2. Run required tests and scans.
 3. Generate SBOM and provenance.
 4. Produce platform-specific signed packages.
-5. Authorize artifacts through separated update metadata/signing roles.
-6. Verify signatures, provenance, version, platform, and policy before publishing.
+5. Authorize artifacts through separated update metadata/signing roles only after
+   the signer validates an exact protected signing-intent acknowledgement.
+6. Verify signatures, provenance, version, platform, policy, and both protected
+   signing acknowledgements before publishing.
 7. Require an independent protected audit acknowledgement before every
    authority-increasing signing, publication, rollout-start/advance, or resumption
    transition. Never block an emergency freeze, revocation, or pause because both
@@ -44,11 +46,16 @@ behavior, and reconciliation requirement are defined in
 
 The agent verifies trusted root/metadata chain, signatures, digest, length,
 platform, architecture, version policy, expiry, rollout assignment, and disk
-preconditions. Installation is atomic where possible and leaves a recoverable
-prior version. A failed update does not erase identity, revocation, or audit state.
+preconditions. Immediately before replacement it also retrieves and verifies the
+current independently signed release-status object, whose exact artifact, ring,
+sequence, and freeze/revocation state expire within 60 seconds. Missing, stale,
+unavailable, replayed, rolled-back, frozen, or revoked status blocks installation
+even when the package was downloaded earlier. Installation is atomic where
+possible and leaves a recoverable prior version. A failed update does not erase
+identity, revocation, or audit state.
 Each download also requires the short-lived, single-use, endpoint-key and
 artifact-bound authorization defined in the
-[infrastructure flow](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#revocation-aware-update-download).
+[infrastructure flow](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#revocation-aware-update-download-and-installation).
 
 ## Key compromise
 

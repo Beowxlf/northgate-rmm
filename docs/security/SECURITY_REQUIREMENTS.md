@@ -97,6 +97,10 @@ tests, audits, risks, and exceptions.
 - **SR-AUDIT-002:** Audit events MUST use server time and correlation IDs and MUST
   be protected from ordinary application modification.
 - **SR-AUDIT-003:** Audit access and export MUST themselves be audited.
+- **SR-AUDIT-004:** Authority-increasing release transitions MUST require an
+  independently protected audit acknowledgement, while emergency freeze,
+  revocation, and pause MUST remain possible during audit-service failure with
+  signed pending evidence and raised incident severity.
 
 ## Updates and supply chain
 
@@ -109,6 +113,9 @@ tests, audits, risks, and exceptions.
 - **SR-UPD-004:** Rollout MUST use canary rings, health gates, pause, and recovery.
 - **SR-UPD-005:** Dependencies and CI actions MUST be locked and continuously
   scanned.
+- **SR-UPD-006:** Immediately before installation, agents MUST obtain current,
+  independently signed release status with a maximum 60-second lifetime and MUST
+  reject unavailable, stale, replayed, frozen, revoked, or mismatched status.
 
 ## Remote access
 

@@ -82,7 +82,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-17 | Segmentation error grants unintended lateral reach    | default-deny matrix, exact flows, layered enforcement, separate network approval                  | flow-deny tests, policy-hash drift alert, isolate and restore policy     |
 | TM-18 | Compromised runtime suppresses or rewrites audit      | dedicated append-only writer, integrity chain/checkpoints, protected Z5 archive                   | gap/sequence alert, independent export and immutable backup              |
 | TM-19 | Compromised TLS service blocks its own containment    | independent PKI recovery identity, exact-certificate revoke/rollover-only route                   | certificate alert, revoke/replace externally, preserve service evidence  |
-| TM-20 | Signing handoff is substituted or over-authorized     | canonical digest-bound request, separate quorum, non-exportable/offline key, signed receipt       | hash/signature verification, chain-of-custody audit, reject publication  |
+| TM-20 | Signing handoff is substituted or over-authorized     | digest-bound request, signer-verified Z5/Z6 intent ack, separate quorum, result ack               | reject signing/publication, chain-of-custody audit, freeze release       |
 | TM-21 | Revoked endpoint reuses an old update assignment      | fresh revocation check, single-use endpoint-key/artifact-bound authorization, short expiry        | deny/replay audit, emergency token revocation, freeze rollout            |
 | TM-22 | Compromised broker leaves a JIT credential usable     | authority-direct signed Z5 issuance receipt/handle, exact-credential recovery route, short expiry | retrieve handle outside Z8, revoke at OS authority, isolate gateway      |
 | TM-23 | Authorized audit export occurs without accountability | immutable intent/result events, exact case/time scope, result digest, fail-closed export          | audit gap alert, revoke auditor, investigate destination and access      |
@@ -96,6 +96,8 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-31 | Suspected artifact service suppresses recovery audit  | Z1 signed intent/result, independent observation, Z5 protected intake, immutable Z6 fallback      | isolate artifact path, reconcile metadata/PEP state, preserve receipts   |
 | TM-32 | Suspected Z2 blocks operator-session revocation       | independent exact-scope Z1-to-IdP revoke, signed IdP receipt, Z5/Z6 emergency evidence            | invalidate session at IdP, verify rejection, preserve/reconcile receipt  |
 | TM-33 | Revoked operator session remains accepted by Z2/Z8    | direct IdP status, 60-second bound, stream/tunnel/JIT teardown, independent PEP isolation         | deny work, terminate access, isolate suspected Z2, preserve evidence     |
+| TM-34 | Gateway revokes another session's JIT credential      | exact session/grant/opaque-handle binding at gateway, broker, and authority                       | deny request, alert on binding mismatch, terminate suspect gateway       |
+| TM-35 | Staged update installs after release freeze/revoke    | fresh signed release status, monotonic sequence, 60-second expiry, fail-closed install            | reject replacement, preserve package/status evidence, freeze rollout     |
 
 ## Denial-of-service considerations
 

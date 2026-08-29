@@ -180,13 +180,14 @@ flowchart LR
   Build[Z7 Build and update] -->|G6 digest-bound request or offline bundle| Signer[Separated signing authority]
   Signer -->|Detached signatures and signed metadata only| Build
   Build -->|Signed artifacts only| Artifacts[Artifact repository]
-  Build -->|G6 append-only release decisions/events| Observe
+  Build -->|G6 protected intent/result acknowledgements| Observe
   Artifacts -->|G6 append-only publication/revocation events| Observe
-  Build -. Z5-unavailable G6 immutable audit fallback .-> Recovery
+  Build -. Z5-unavailable G6 intent/result acknowledgements .-> Recovery
   Artifacts -. Z5-unavailable G6 immutable audit fallback .-> Recovery
   Recovery -. G6 signed audit reconciliation after Z5 recovery .-> Observe
   Service -->|Digest-pinned read| Artifacts
   Endpoints -. G6 endpoint/key/artifact-bound authorized read .-> Artifacts
+  Endpoints -. G6 fresh signed release status before install .-> Artifacts
   Admin -. G6 incident freeze and revoke .-> Artifacts
   Service -. G7 grants and termination .-> Session[Z8 Remote assistance]
   Admin -. G7 emergency terminate only .-> Session
@@ -247,8 +248,8 @@ named gate and design evidence exist.
 | Approved secret-store recovery service   | Dedicated secret recovery target                   | Provider-approved mechanism | When present        | Separate authority, encryption, audit, retention, and restore test                                                                   |
 | Z6 recovery service                      | Isolated restore target                            | Approved restore protocol   | Recovery only       | Exact authorization, no endpoint/operator ingress, reconcile before use                                                              |
 | Z2 runtime                               | Artifact repository                                | TCP 443                     | G6                  | Read-only, signed metadata, digest and expiry verification                                                                           |
-| Z4 enrolled endpoint                     | Artifact repository                                | TCP 443                     | G6                  | mTLS proof plus single-use short-lived endpoint-key/artifact/ring-bound authorization                                                |
-| Z7 publisher                             | Artifact repository                                | TCP 443                     | G6                  | Separate publication identity; provenance and audit                                                                                  |
+| Z4 enrolled endpoint                     | Artifact repository and update-status endpoint     | TCP 443                     | G6                  | mTLS download authorization plus fresh independently signed release status immediately before install                                |
+| Z7 publisher                             | Artifact repository                                | TCP 443                     | G6                  | Separate identity; require valid signing-intent and signing-result intake acknowledgements bound to the artifact                     |
 | Z7 release services                      | Z5 protected release-audit intake                  | Approved TLS port           | G6                  | Workload mTLS; append-only decisions/attempts/results, digest-bound, no read/delete/control authority                                |
 | Artifact repository audit emitter        | Z5 protected release-audit intake                  | Approved TLS port           | G6                  | Append-only publish/freeze/revoke events; signed sequence/correlation, no read/delete authority                                      |
 | Z7 release services                      | Z6 immutable release-audit fallback                | Approved evidence protocol  | G6, Z5 unavailable  | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                             |
@@ -258,7 +259,7 @@ named gate and design evidence exist.
 | Z2/Z3/Z5/Z6/Z8 host updaters             | Approved OS repositories                           | TCP 443                     | Maintenance         | Separate exact-source rules; named repositories, signatures, change window                                                           |
 | Z7 builder                               | Approved source/dependency registries              | TCP 443                     | G6                  | Read-only locked inputs, digest/provenance checks, no runtime secrets                                                                |
 | Z7 builder                               | Approved CI workload IdP                           | TCP 443                     | G6                  | Ephemeral workload identity with exact audience and short expiry                                                                     |
-| Z7 signing coordinator                   | Approved hardware-backed signing service           | TCP 443                     | G6 conditional      | Digest-bound request, ephemeral identity, signing policy/quorum; stateful return of signatures only                                  |
+| Z7 signing coordinator                   | Approved hardware-backed signing service           | TCP 443                     | G6 conditional      | Digest-bound request plus verifiable Z5/Z6 intent acknowledgement; signing policy/quorum; signatures only                            |
 | Z1 recovery path                         | Z6 recovery service                                | Approved admin protocol     | Required            | Recovery role, MFA, reason, alert, evidence                                                                                          |
 | Z1 network recovery operator             | Approved firewall/PEP management                   | Approved admin protocol     | Incident/change     | Independent MFA; exact device and rules, audit, expiry, tested rollback                                                              |
 | Z2 control plane                         | Internal DNS and time                              | UDP/TCP 53; approved NTP    | Required            | Named servers only; monitor failure and drift                                                                                        |
@@ -270,7 +271,7 @@ named gate and design evidence exist.
 | Z2 control plane                         | Z8 gateway control API                             | TCP 443                     | G7 conditional      | Workload mTLS; signed one-session grant, revoke, and force termination                                                               |
 | Z8 session gateway                       | Z2 event ingress                                   | TCP 443                     | G7 conditional      | Workload mTLS; bounded lifecycle events, no job or policy authority                                                                  |
 | Z8 session gateway                       | Z5 protected session evidence                      | Approved TLS port           | G7 conditional      | Direct signed append-only start/activity/termination events with session/grant sequence and correlation                              |
-| Z8 session gateway                       | Z8 credential broker                               | Authenticated IPC or mTLS   | G7 conditional      | One-session retrieval; credential never reaches browser or RMM database                                                              |
+| Z8 session gateway                       | Z8 credential broker                               | Authenticated IPC or mTLS   | G7 conditional      | One-session retrieval or exact session/grant/handle-bound revocation trigger; no cross-session action                                |
 | Z8 credential broker                     | Approved OS identity authority                     | Approved identity protocol  | G7 conditional      | Issue one session-bound credential; revoke only that credential by returned opaque handle; no list, inspect, policy, or broad revoke |
 | Approved OS identity authority           | Z5 protected session evidence                      | Approved TLS port           | G7 conditional      | Direct signed append-only issuance/revocation receipt with session/grant, opaque handle, expiry; no secret                           |
 | Z8 credential broker                     | Z5 protected session evidence                      | Approved TLS port           | G7 conditional      | Workload mTLS; delivery/cleanup event linked to authority receipt; no credential secret                                              |
@@ -430,17 +431,26 @@ The G6 authorization selects and tests exactly one signing pattern; no signing
 private key may be present on a Z2 runtime, Z7 builder/publisher, artifact
 repository, or managed endpoint.
 
+Before requesting a signature, Z7 appends a signing-intent event to Z5 or its
+approved Z6 fallback and receives a signed intake acknowledgement bound to the
+canonical request digest, action, update role, correlation ID, and short expiry.
+That acknowledgement is part of the canonical signing request. The signer pins
+the approved Z5/Z6 acknowledgement keys and rejects a missing, invalid, expired,
+wrong-action, wrong-role, or wrong-digest acknowledgement.
+
 1. **Hardware-backed service:** the Z7 signing coordinator submits only a
    canonical request containing artifact digests, immutable source commit, SBOM
-   and provenance digests, platform/version, update-role, and metadata expiry.
-   An approved signing policy and required quorum authorize a non-exportable key.
+   and provenance digests, platform/version, update-role, metadata expiry, and
+   the protected-intake acknowledgement. The service verifies the acknowledgement;
+   an approved signing policy and required quorum authorize a non-exportable key.
    Stateful return traffic contains only detached signatures, signed metadata,
    key identifiers, and a signed receipt. The signer cannot fetch arbitrary
    artifacts or publish to the repository.
 2. **Offline authority:** the same canonical request is hash-verified onto
    single-purpose sanitized transfer media under dual control. The offline signer
-   remains disconnected, displays the digest and release scope for approval, and
-   returns only detached signatures, signed metadata, and a signed receipt. The
+   remains disconnected, verifies and displays the protected-intake
+   acknowledgement, digest, and release scope for approval, and returns only
+   detached signatures, signed metadata, and a signed receipt. The
    intake host scans the media, verifies request/response hashes and signatures,
    records chain of custody, and securely reinitializes or destroys the media
    according to its classification.
@@ -450,6 +460,12 @@ version, approvals, timestamps, verification result, source commit, and eventual
 publication digest as G6 evidence. A mismatch, expired request, unexpected role,
 or unavailable evidence fails closed and cannot be overridden by the RMM control
 plane.
+
+After signing, Z7 appends a result event bound to the request, signature, and
+metadata digests and obtains a second protected-intake acknowledgement. The
+publisher independently verifies both the signing-intent and signing-result
+acknowledgements before accepting the artifact. Possession of a valid signature
+alone is not publication authority.
 
 ### Release-transition audit acknowledgement
 
@@ -476,7 +492,7 @@ reconciles them after protected evidence service is restored, as required by the
 emergency-recovery evidence rules above. The publisher or repository's own buffer
 does not satisfy this exception.
 
-### Revocation-aware update download
+### Revocation-aware update download and installation
 
 An assigned rollout ring is not download authority. Immediately before issuing a
 download authorization, Z2 verifies the endpoint's current certificate status,
@@ -492,6 +508,18 @@ eligibility from hostname, address, a prior assignment, or possession of an old
 URL. Revocation stops new authorizations; emergency freeze/revocation also denies
 unused token identifiers at the repository. G6 evidence includes revoked,
 expired, replayed, wrong-key, wrong-ring, and wrong-digest denial tests.
+
+A download authorization is not installation authority. Immediately before
+replacing the agent, the endpoint retrieves current release status through the
+listed update-status endpoint and verifies a signature from the separated update
+metadata role. The status binds the exact artifact digest, version, rollout ring,
+metadata sequence, freeze/revocation state, and a maximum 60-second expiry. The
+agent records the highest sequence seen and rejects missing, invalid, expired,
+replayed, rolled-back, frozen, revoked, wrong-ring, or wrong-digest status. It
+does not install when the status endpoint is unavailable. Emergency freeze or
+revocation stops new status issuance and publishes a higher signed sequence, so
+a previously staged artifact loses install eligibility no later than the prior
+status object's 60-second expiry.
 
 ### Explicit deny tests
 
@@ -537,11 +565,19 @@ Provisioning is unacceptable unless testing proves that:
   an independent signed alert and retained pending-revocation record;
 - the broker cannot enumerate credentials or revoke a credential whose opaque
   handle is not bound to its exact issued session and grant;
+- the Z8 gateway cannot ask the broker to revoke a credential outside the exact
+  session, grant, and opaque handle bound to that gateway operation;
 - a Z4 G7 authentication service cannot accept missing, stale, invalid, or
   rolled-back online revocation/KRL state or use its retrieval identity to issue
   a credential;
 - the Z7 builder/publisher cannot retrieve signing private keys, change signing
   policy, or cause the signer to fetch or publish an artifact;
+- the signer cannot sign without a current protected-intake acknowledgement bound
+  to the exact canonical request, and the publisher cannot accept the result
+  without both exact signing-intent and signing-result acknowledgements;
+- a staged update cannot install with missing, invalid, unavailable, expired,
+  replayed, rolled-back, frozen, revoked, wrong-ring, or wrong-digest release
+  status;
 - a G6 publisher or repository cannot complete an authority-increasing signing,
   publication, rollout-start/advance, or resumption transition without an
   acknowledgement from the independent Z5 protected intake or, only while Z5 is
@@ -723,6 +759,12 @@ The deployment change packet must contain:
   reconciliation; loss of both intakes must block authority-increasing work but
   still allow a Z1-authorized freeze/revocation/pause with retained signed
   receipts, raised incident severity, and later reconciliation;
+- G6 tests proving the signer rejects missing, invalid, stale, wrong-role, and
+  wrong-digest intake acknowledgements and the publisher rejects a signature
+  without matching signing-intent and signing-result acknowledgements;
+- a G6 staged-package test that freezes and revokes the release before install,
+  proves fresh status and sequence enforcement reject it within 60 seconds, and
+  proves unavailable or replayed status cannot authorize replacement;
 - agent no-listener and cross-endpoint isolation evidence;
 - backup/restore and revocation-invariant results;
 - capacity baseline and alert tests;

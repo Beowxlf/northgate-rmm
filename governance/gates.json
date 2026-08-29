@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "project": "northgate-rmm",
+  "currentPhase": 0,
+  "productCodeAuthorized": false,
+  "productCodePaths": [
+    "src",
+    "agent",
+    "control-plane",
+    "migrations",
+    "packages"
+  ],
+  "gates": [
+    {
+      "id": "G0",
+      "name": "Repository establishment",
+      "status": "open",
+      "authorization": "docs/governance/authorizations/G0-REPOSITORY-ESTABLISHMENT.md"
+    },
+    {
+      "id": "G1",
+      "name": "Product coding",
+      "status": "closed",
+      "authorization": "docs/governance/authorizations/G1-PRODUCT-CODING.md"
+    },
+    {
+      "id": "G2",
+      "name": "Linux endpoint installation",
+      "status": "closed"
+    },
+    {
+      "id": "G3",
+      "name": "Windows endpoint installation",
+      "status": "closed"
+    },
+    {
+      "id": "G4",
+      "name": "Remote job delivery",
+      "status": "closed"
+    },
+    {
+      "id": "G5",
+      "name": "State-changing or privileged action",
+      "status": "closed"
+    },
+    {
+      "id": "G6",
+      "name": "Agent update release",
+      "status": "closed"
+    },
+    {
+      "id": "G7",
+      "name": "Interactive remote access",
+      "status": "closed"
+    },
+    {
+      "id": "G8",
+      "name": "Production or public deployment",
+      "status": "closed"
+    }
+  ],
+  "requiredPhase0Artifacts": [
+    "PROJECT_CHARTER.md",
+    "GOVERNANCE.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "docs/governance/PHASES.md",
+    "docs/governance/AUTHORIZATION_GATES.md",
+    "docs/governance/REQUIRED_CHECKS.md",
+    "docs/governance/DEFINITION_OF_DONE.md",
+    "docs/architecture/OVERVIEW.md",
+    "docs/architecture/COMPONENTS.md",
+    "docs/architecture/DATA_MODEL.md",
+    "docs/architecture/PROTOCOL.md",
+    "docs/architecture/DEPLOYMENT.md",
+    "docs/architecture/REMOTE_ACCESS.md",
+    "docs/security/THREAT_MODEL.md",
+    "docs/security/SECURITY_REQUIREMENTS.md",
+    "docs/security/AUTHORIZATION_MODEL.md",
+    "docs/security/CRYPTOGRAPHY_AND_KEYS.md",
+    "docs/security/SECURE_UPDATE.md",
+    "docs/security/DATA_CLASSIFICATION_RETENTION.md",
+    "docs/security/RISK_REGISTER.md",
+    "docs/security/DEPENDENCY_POLICY.md",
+    "docs/security/SECURITY_TEST_PLAN.md",
+    "docs/operations/INCIDENT_RESPONSE.md",
+    "docs/operations/BACKUP_RESTORE.md",
+    "docs/operations/OBSERVABILITY_SLOS.md",
+    "docs/operations/SUPPORT_MATRIX.md",
+    "docs/operations/RUNBOOK_INDEX.md"
+  ]
+}
+

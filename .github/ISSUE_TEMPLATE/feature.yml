@@ -1,0 +1,38 @@
+name: Capability proposal
+description: Propose an RMM capability through its problem and authority.
+title: "[Capability]: "
+labels: ["proposal"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and user outcome
+      description: Describe the problem without naming a preferred UI control.
+    validations:
+      required: true
+  - type: textarea
+    id: authority
+    attributes:
+      label: New authority and data
+      description: Identify new identity, privilege, data, network, update, or session authority.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Success, failure, and recovery evidence
+    validations:
+      required: true
+  - type: dropdown
+    id: platforms
+    attributes:
+      label: Platforms
+      multiple: true
+      options:
+        - Control plane only
+        - Linux
+        - Windows
+        - Cross-platform remote access
+    validations:
+      required: true
+

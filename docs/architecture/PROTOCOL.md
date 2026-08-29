@@ -1,0 +1,85 @@
+# Agent Protocol
+
+## Transport
+
+- TLS 1.3 preferred; TLS 1.2 allowed only when required by an approved supported
+  platform and configured with modern suites;
+- server authentication during enrollment;
+- mutual TLS after enrollment;
+- agent-initiated outbound connection;
+- no secrets in URL query strings;
+- bounded request bodies, response bodies, headers, and decompression ratios;
+- idle, request, job, and shutdown timeouts.
+
+## Envelope
+
+Every post-enrollment message includes:
+
+- protocol version;
+- message ID;
+- authenticated endpoint binding;
+- message type and schema version;
+- boot/session ID and monotonic sequence when applicable;
+- creation time and expiry where applicable;
+- correlation ID;
+- payload length and digest;
+- replay context.
+
+Transport identity, not a caller-provided endpoint field, determines the endpoint.
+Revocation is checked during TLS authentication, before accepting a message, and
+again before any future job or remote-session dispatch.
+
+## Enrollment
+
+1. Operator creates a single-use, short-lived grant bound to intended scope.
+2. Agent generates a key pair locally using an operating-system CSPRNG.
+3. Agent validates server trust and submits public key plus grant.
+4. Server atomically consumes the grant, creates endpoint and identity records,
+   and returns certificate/trust metadata.
+5. Agent protects key material using supported OS permissions or secure storage.
+6. First mTLS heartbeat confirms activation; failure leaves an inspectable pending
+   state rather than silently repeating enrollment.
+
+Enrollment grants are bootstrap authorization, not agent identities.
+
+## Heartbeat and inventory
+
+Heartbeat contains minimal liveness/capability state. Inventory is independent,
+versioned, less frequent, and collector-specific. Partial inventory does not make
+the heartbeat invalid.
+
+Server receipt time defines communication freshness. Agent time is retained as an
+observation and evaluated for skew.
+
+## Job delivery
+
+No endpoint job exists before Phase 4. When enabled, a job includes exact target,
+typed action/version, immutable parameter digest, approval reference, not-before,
+expiry, timeout, idempotency class, attempt, lease/fencing token, and result size
+limits.
+
+Agent checks, in order:
+
+1. server and message authenticity;
+2. endpoint target match;
+3. protocol/action support;
+4. approval/action digest match;
+5. not-before and expiry with allowed skew;
+6. replay and attempt policy;
+7. local authorization and resource policy;
+8. concurrency and maintenance constraints.
+
+## Outcomes
+
+`succeeded`, `failed`, `rejected`, `timed_out`, `cancelled`, `expired`,
+`unsupported`, and `result_unknown` are distinct. Transport acknowledgement and
+domain postcondition success are distinct.
+
+## Compatibility
+
+- additive optional fields are preferred;
+- unknown critical fields or unsupported required capabilities reject safely;
+- control plane supports at least the current and previous qualified agent
+  protocol during staged rollout;
+- compatibility fixtures are preserved across releases;
+- downgrade behavior is explicit and tested.

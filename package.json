@@ -1,0 +1,21 @@
+{
+  "name": "northgate-rmm-repository-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Governance and audit tooling for the NorthGate RMM repository",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "audit:governance": "node scripts/audit-governance.mjs",
+    "audit:workflows": "node scripts/audit-workflows.mjs",
+    "audit:secrets-lite": "node scripts/audit-secrets-lite.mjs",
+    "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.tools\" \"#.venv\"",
+    "audit:pre-code": "npm run audit:governance && npm run audit:workflows && npm run audit:secrets-lite && npm run lint:markdown",
+    "gate:g1": "node scripts/check-gate.mjs G1"
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "0.23.2"
+  }
+}

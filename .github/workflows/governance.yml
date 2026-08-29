@@ -1,0 +1,35 @@
+name: Governance and documentation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Pre-code governance audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install locked repository tooling
+        run: npm ci --ignore-scripts
+      - name: Run governance, workflow, secret-pattern, and Markdown checks
+        run: npm run audit:pre-code
+

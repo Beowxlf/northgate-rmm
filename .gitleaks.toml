@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated and local audit tool directories"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.git/''',
+  '''(^|/)\.tools/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)artifacts/'''
+]

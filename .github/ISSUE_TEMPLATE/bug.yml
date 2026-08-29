@@ -1,0 +1,33 @@
+name: Bug report
+description: Report incorrect behavior without sensitive data.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, private hostnames, addresses, endpoint output, or exploit details. Use private vulnerability reporting for security issues.
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized evidence
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Qualified platform and version
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Safety, authority, and recovery impact
+    validations:
+      required: true
+

@@ -69,7 +69,9 @@ jobs:
             https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
           echo "1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a  $RUNNER_TEMP/lychee.tar.gz" | sha256sum --check --strict
           mkdir "$RUNNER_TEMP/lychee"
-          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee"
+          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" \
+            --strip-components=1 \
+            -C "$RUNNER_TEMP/lychee"
       - name: Scan for secrets with Gitleaks
         run: '"$RUNNER_TEMP/gitleaks/gitleaks" dir . --redact --no-banner --verbose --config .gitleaks.toml'
       - name: Validate workflows with actionlint

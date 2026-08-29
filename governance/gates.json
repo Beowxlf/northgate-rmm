@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "project": "northgate-rmm",
-  "currentPhase": 0,
-  "productCodeAuthorized": false,
+  "currentPhase": 1,
+  "productCodeAuthorized": true,
   "productCodePaths": [
     "src",
     "agent",
@@ -20,7 +20,7 @@
     {
       "id": "G1",
       "name": "Product coding",
-      "status": "closed",
+      "status": "open",
       "authorization": "docs/governance/authorizations/G1-PRODUCT-CODING.md"
     },
     {

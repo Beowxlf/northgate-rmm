@@ -4,4 +4,6 @@ Records in this directory authorize a bounded phase transition. Templates are no
 authorization. A valid record names the gate, exact commit, evidence, approver,
 date, scope, expiration or supersession condition, and unresolved accepted risks.
 
-The G1 record will be created only after the pre-code audit passes.
+`PUB-001-PUBLIC-REPOSITORY.md` records the separately approved licensing and
+public-repository transition. `G1-PRODUCT-CODING.md` authorizes only the bounded
+Phase 1 simulation and development scope named in that record.

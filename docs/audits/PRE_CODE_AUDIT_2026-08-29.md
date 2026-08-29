@@ -1,7 +1,7 @@
 # Pre-Code Audit — 2026-08-29
 
-Status: Blocked by unavailable private-branch enforcement  
-Audited local and remote candidate: `2a37f2163e10b6e9aef56e094b11a1fe5a4ee0c0`  
+Status: Pass  
+Audited licensed public baseline: `f426a7a1fc9108145de1d1456e6cdc4cd175fa2a`  
 Auditor: Codex acting under project-owner authorization  
 Gate: G1 — Product coding
 
@@ -18,31 +18,32 @@ production deployment.
 
 ## Requirement evidence
 
-| Requirement                            | Evidence                                       | Result                 |
-| -------------------------------------- | ---------------------------------------------- | ---------------------- |
-| Charter and cross-platform scope       | `PROJECT_CHARTER.md`                           | Pass                   |
-| Phased development                     | `docs/governance/PHASES.md`                    | Pass                   |
-| Machine-enforced authorization gates   | `governance/gates.json`, gate scripts          | Pass                   |
-| Control mapping                        | `governance/controls.json`                     | Pass                   |
-| Architecture and component boundaries  | `docs/architecture/`                           | Pass                   |
-| Windows and Linux remote access        | `docs/architecture/REMOTE_ACCESS.md`, ADR 0007 | Pass                   |
-| Identity/protocol/job model            | protocol and data-model documents              | Pass                   |
-| Threat model and risk register         | `docs/security/`                               | Pass                   |
-| Security requirements                  | 55 uniquely identified requirements            | Pass                   |
-| Secure update and supply chain         | update and dependency policies                 | Pass                   |
-| Data classification and retention      | data policy                                    | Pass                   |
-| Incident response and recovery         | `docs/operations/`                             | Pass                   |
-| Required free-software checks          | required-check matrix and CI workflows         | Pass                   |
-| GitHub desired-state baseline          | documentation and machine-readable JSON        | Pass                   |
-| Product code absent while G1 closed    | governance audit and path inspection           | Pass                   |
-| Private GitHub repository exists       | `Beowxlf/northgate-rmm`                        | Pass                   |
-| Merge and Actions settings             | GitHub API verification                        | Pass                   |
-| Dependabot alerts and security updates | GitHub API verification                        | Pass                   |
-| Secret scanning                        | GitHub API verification                        | Plan unavailable       |
-| Protected `main`                       | GitHub branch-protection API                   | Fail: plan unavailable |
-| Remote commit matches candidate        | local and remote `main` SHA                    | Pass                   |
-| Remote governance CI                   | Actions run `33261462133`                      | Pass                   |
-| Remote security CI                     | Actions run `33261462153`                      | Pass                   |
+| Requirement                            | Evidence                                       | Result |
+| -------------------------------------- | ---------------------------------------------- | ------ |
+| Charter and cross-platform scope       | `PROJECT_CHARTER.md`                           | Pass   |
+| Phased development                     | `docs/governance/PHASES.md`                    | Pass   |
+| Machine-enforced authorization gates   | `governance/gates.json`, gate scripts          | Pass   |
+| Control mapping                        | `governance/controls.json`                     | Pass   |
+| Architecture and component boundaries  | `docs/architecture/`                           | Pass   |
+| Windows and Linux remote access        | `docs/architecture/REMOTE_ACCESS.md`, ADR 0007 | Pass   |
+| Identity/protocol/job model            | protocol and data-model documents              | Pass   |
+| Threat model and risk register         | `docs/security/`                               | Pass   |
+| Security requirements                  | 55 uniquely identified requirements            | Pass   |
+| Secure update and supply chain         | update and dependency policies                 | Pass   |
+| Data classification and retention      | data policy                                    | Pass   |
+| Incident response and recovery         | `docs/operations/`                             | Pass   |
+| Required free-software checks          | required-check matrix and CI workflows         | Pass   |
+| GitHub desired-state baseline          | documentation and machine-readable JSON        | Pass   |
+| Product code absent while G1 closed    | governance audit and path inspection           | Pass   |
+| Public Apache-2.0 repository exists    | `Beowxlf/northgate-rmm`                        | Pass   |
+| Merge and Actions settings             | GitHub API verification                        | Pass   |
+| Dependabot alerts and security updates | GitHub API verification                        | Pass   |
+| Secret scanning and push protection    | GitHub API verification                        | Pass   |
+| Private vulnerability reporting        | GitHub API verification                        | Pass   |
+| Protected `main`                       | GitHub branch-protection API                   | Pass   |
+| Remote commit matches candidate        | local and remote `main` SHA                    | Pass   |
+| Remote governance CI                   | Actions run `33262548272`                      | Pass   |
+| Remote security CI                     | Actions run `33262548264`                      | Pass   |
 
 ## Executed checks
 
@@ -50,7 +51,7 @@ All checks targeted the exact local commit shown above with a clean worktree.
 
 | Check                         | Version or source            | Result                                          |
 | ----------------------------- | ---------------------------- | ----------------------------------------------- |
-| Governance/control/link audit | repository script            | Pass: 0 errors; license warning retained        |
+| Governance/control/link audit | repository script            | Pass: 0 errors and 0 warnings                   |
 | Workflow pin/permission audit | repository script            | Pass: 0 errors                                  |
 | Markdownlint                  | 0.23.2                       | Pass: 48 files, 0 issues                        |
 | Prettier                      | 3.9.6                        | Pass                                            |
@@ -126,15 +127,14 @@ Markdown hard-break whitespace, and blank lines at EOF. `.gitattributes`,
 Prettier, and a blocking format check were added. The clean audited baseline is
 the later commit identified above, not the initial root commit.
 
-### PC-007 — Public license intentionally absent
+### PC-007 — Public license initially absent
 
 Severity: Medium  
-Status: Accepted constraint, not a waiver
+Status: Resolved
 
-No distribution license has been chosen. The repository must remain private and
-no public release may occur until the owner makes a licensing decision and
-dependency-license compatibility is audited. This blocks public distribution but
-does not block private Phase 1 simulation.
+The owner approved licensing and public visibility. The exact Apache-2.0 text,
+NOTICE attribution, licensing policy, dependency rules, and contribution terms
+are committed. GitHub recognizes the repository license as Apache-2.0.
 
 ### PC-008 — GitHub authentication was unavailable
 
@@ -159,13 +159,13 @@ now strips one path component, and all remote security steps pass.
 ### PC-010 — Private `main` cannot be protected on the current plan
 
 Severity: Critical  
-Status: Open and gate-blocking
+Status: Resolved
 
-GitHub rejected branch protection with HTTP 403 and stated that GitHub Pro or a
-public repository is required. The repository must remain private because no
-distribution license or public-release authorization exists. Local and CI checks
-cannot prevent an administrator from directly pushing to unprotected `main`, so
-they are not an equally strong replacement for server-side enforcement.
+GitHub rejected protection while the repository was private. After explicit
+owner authorization, Apache-2.0 licensing, and public publication, the same rule
+was accepted. Pull requests, strict status checks, administrator enforcement,
+linear history, conversation resolution, and force-push/deletion prohibitions are
+live.
 
 ### PC-011 — Private vulnerability reporting applicability
 
@@ -174,13 +174,26 @@ Status: Resolved
 
 The initial desired state incorrectly required private vulnerability reporting on
 a private repository. GitHub returned HTTP 404 because the feature is intended to
-receive confidential reports for public repositories. The baseline now marks it
-not applicable while private and requires enabling it before a public release.
-Dependabot alerts and automated security fixes are enabled now.
+receive confidential reports for public repositories. After the approved public
+transition, private vulnerability reporting was enabled and verified. Dependabot
+alerts and automated security fixes remain enabled.
+
+### PC-012 — Single-maintainer review constraint
+
+Severity: Medium  
+Status: Accepted with enforced mitigation
+
+The only maintainer cannot provide an independent approval for their own pull
+request. The protected branch therefore requires a pull request and both CI
+checks but temporarily requires zero approvals and no CODEOWNERS review. The rule
+still applies to administrators and blocks direct push, stale branches, failed
+checks, unresolved conversations, force pushes, and deletion. Onboarding a second
+trusted maintainer requires raising the baseline to one independent approval and
+CODEOWNERS review.
 
 ## Gate conclusion
 
-**G1 remains closed.** The candidate baseline and both remote workflows pass, but
-PC-010 prevents the repository-control portion of the audit from passing. Product
-code may begin only after private branch protection becomes available or the owner
-separately approves a license and public-release path that permits protection.
+**G1 passes.** The licensed public baseline, local audit suite, remote workflows,
+security features, and protected branch satisfy the pre-code criteria. The G1
+authorization record in this protected change permits only bounded Phase 1 coding
+with synthetic data; G2 through G8 remain closed.

@@ -34,9 +34,10 @@ then complete [Module 1: The RMM Problem Map](docs/modules/01_RMM_PROBLEM_MAP.md
 - [Incident response](docs/operations/INCIDENT_RESPONSE.md)
 - [Backup and restore](docs/operations/BACKUP_RESTORE.md)
 
-The repository is currently in **Phase 0: Govern and design**. Product code is
-forbidden until the pre-code audit passes and the G1 authorization record is
-committed.
+The repository is in **Phase 1: Trustworthy vertical-slice simulation**. G1
+authorizes bounded product coding with synthetic data. Endpoint installation,
+remote jobs, privileged actions, agent updates, interactive remote access, and
+production deployment remain closed behind later gates.
 
 ## License
 

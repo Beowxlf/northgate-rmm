@@ -104,6 +104,11 @@ Preferred order:
 4. no credential material delivered to browser JavaScript or session recordings.
 
 Credential issuance and revocation are separate from endpoint enrollment keys.
+Every credential profile must enforce revocation at the endpoint through online
+authority validation or the signed, monotonically versioned KRL/status mechanism
+defined in the
+[infrastructure specification](INFRASTRUCTURE_AND_MICROSEGMENTATION.md#jit-credential-revocation-propagation).
+A profile that relies only on credential expiry is not eligible for G7.
 
 ## Linux desktop variability
 

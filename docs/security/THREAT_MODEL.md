@@ -89,6 +89,8 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-24 | Revoked Z2 server certificate remains trusted         | independent signed status, hard-fail clients, five-minute freshness, short-lived certificate   | propagation test, isolate Z2, revoke/roll over, investigate connections  |
 | TM-25 | Release transition bypasses protected audit           | authenticated append-only release emitters, digest/correlation binding, fail-closed transition | audit-gap alert, freeze release, reconcile repository and Z5 evidence    |
 | TM-26 | Revoked SSH certificate remains valid at endpoint     | online validation or signed monotonic KRL, 60-second freshness, atomic update, fail closed     | isolate tunnel, refresh KRL/status, prove endpoint rejection             |
+| TM-27 | Established TLS channel outlives server revocation    | five-minute absolute channel lifetime, full re-handshake/status check, no bypass by resumption | force close, deny reconnect, investigate traffic after revocation        |
+| TM-28 | Failed evidence append leaves orphaned JIT credential | retain opaque handle, verified compensating revoke, independent signed failure alert           | reconcile pending-revocation journal, revoke externally, isolate Z8      |
 
 ## Denial-of-service considerations
 

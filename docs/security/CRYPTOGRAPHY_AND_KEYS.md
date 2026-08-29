@@ -38,6 +38,8 @@ maximum five-minute freshness window. Approved Z1, Z4, and Z8 clients hard-fail
 missing, invalid, stale, unknown, or revoked status and can reach the independent
 server-PKI status service without trusting Z2. Emergency revocation and rollover
 use the independent Z1 recovery identity and are tested before endpoint reliance.
+Long-lived Z1, Z4, and Z8 TLS channels close and fully re-handshake with fresh
+status at least every five minutes; resumption and 0-RTT cannot bypass the check.
 
 ## Update trust
 

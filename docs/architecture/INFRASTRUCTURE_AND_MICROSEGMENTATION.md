@@ -186,6 +186,7 @@ flowchart LR
   Session -. G7 lifecycle events .-> Service
   Session -. G7 logs and metrics .-> Observe
   Session -. G7 append opaque JIT revocation handle .-> Observe
+  Session -. G7 credential-cleanup failure .-> Incident[Independent incident destination]
   Admin -. G7 exact-session revocation-handle lookup .-> Observe
   Admin -. G7 incident exact-JIT-credential revoke .-> OSIdentity[Approved OS identity authority]
   Session -. G7 signed Z2-certificate status only .-> ServerPKI
@@ -255,6 +256,7 @@ named gate and design evidence exist.
 | Z8 session gateway                       | Z8 credential broker                               | Authenticated IPC or mTLS   | G7 conditional     | One-session retrieval; credential never reaches browser or RMM database                               |
 | Z8 credential broker                     | Approved OS identity authority                     | Approved identity protocol  | G7 conditional     | JIT credential for one actor, endpoint, protocol, and expiry                                          |
 | Z8 credential broker                     | Z5 protected session evidence                      | Approved TLS port           | G7 conditional     | Workload mTLS; append-only issuer, opaque revocation handle, session/grant, expiry; no secret         |
+| Z8 credential broker                     | Approved independent incident destination          | Approved TLS port           | G7 failure only    | Signed issuer/opaque handle/session/cleanup state alert; notification only, no credential secret      |
 | Z1 session recovery operator             | Z5 protected revocation-handle lookup              | TCP 443                     | G7 incident        | Independent MFA; exact session/grant lookup, self-audited; returns opaque handle and issuer only      |
 | Z1 session recovery operator             | Approved OS identity authority                     | Approved identity protocol  | G7 incident        | Independent MFA; revoke exact issued JIT credential only, no issuance/renewal/policy change           |
 | Z4 exact endpoint authentication service | Approved OS identity validation/revocation service | Approved identity protocol  | G7 conditional     | Online validation or signed monotonic KRL/status, maximum 60-second freshness, no issuance authority  |
@@ -279,16 +281,21 @@ response has a maximum five-minute freshness/next-update window.
 Z1 managed clients, Z4 endpoint clients, and G7 Z8 gateway clients independently
 validate chain, name, key usage, expiry, and the signed status response. The
 listed status-service routes provide direct refresh/fallback without trusting Z2.
-Missing, invalid, stale, unknown, or revoked status fails a new connection closed;
-soft-fail clients are not approved. The hardened Z1 browser/client policy must
-enforce this behavior before it can access RMM. The status service and its signing
-authority remain operationally independent of Z2.
+Missing, invalid, stale, unknown, or revoked status fails a connection closed;
+soft-fail clients are not approved. Established agent, gateway, browser-stream,
+and other long-lived TLS channels have an absolute lifetime no greater than the
+five-minute status window. Before continuing privileged traffic they close and
+perform a full authenticated handshake with fresh status; session resumption and
+0-RTT cannot bypass certificate/status validation. The hardened Z1 browser/client
+policy must enforce this behavior before it can access RMM. The status service and
+its signing authority remain operationally independent of Z2.
 
-Acceptance testing revokes a disposable Z2 server certificate through Z1,
-attempts connections from every activated client class, and proves rejection
-within the five-minute propagation bound and before certificate expiry. It also
-proves status-only identities cannot reach issuance, renewal, private-key, or
-revocation-administration functions.
+Acceptance testing first establishes a long-lived connection from every activated
+client class, revokes a disposable Z2 server certificate through Z1, and proves
+the established channel is torn down or re-handshaken and rejected within the
+five-minute propagation bound and before certificate expiry. New and resumed
+connections are also rejected. Testing proves status-only identities cannot reach
+issuance, renewal, private-key, or revocation-administration functions.
 
 ### JIT credential revocation propagation
 
@@ -407,6 +414,9 @@ Provisioning is unacceptable unless testing proves that:
   different key, or different artifact digest cannot download an update;
 - the Z8 broker cannot release JIT credential material until Z5 confirms the
   immutable issuance record and opaque revocation handle;
+- after a failed Z5 append, the broker cannot discard the opaque handle until a
+  signed compensating-revocation receipt exists; unconfirmed cleanup must create
+  an independent signed alert and retained pending-revocation record;
 - a Z4 G7 authentication service cannot accept missing, stale, invalid, or
   rolled-back online revocation/KRL state or use its retrieval identity to issue
   a credential;
@@ -558,13 +568,17 @@ The deployment change packet must contain:
 - guest listener and host-firewall inventory;
 - TLS/mTLS identity, expiry, and revocation test results without private keys;
 - server-certificate status propagation results for each activated Z1, Z4, and
-  Z8 client class, including missing/stale/unknown/revoked hard-fail cases;
+  Z8 client class, including established-channel teardown/re-handshake and
+  missing/stale/unknown/revoked hard-fail cases;
 - database-role and unauthorized-access tests;
 - protected-audit access/export tests proving denied and successful attempts
   produce immutable correlated intent/result events without evidence payloads;
 - a G7 canary test that issues a JIT credential, isolates Z8 before backup,
   retrieves its opaque handle from Z5, revokes it through Z1, and proves rejection
   by online validation or signed KRL at the endpoint before its original expiry;
+- a G7 failure test that rejects the Z5 append, proves compensating revocation
+  before handle disposal, then simulates failed cleanup and verifies the direct
+  independent alert plus retained pending-revocation record;
 - G6 tests proving successful and denied signing, publication, freeze, and
   revocation transitions produce correlated immutable Z5 release-audit events;
 - agent no-listener and cross-endpoint isolation evidence;

@@ -29,6 +29,7 @@ sequenceDiagram
   participant B as Credential broker
   participant I as OS identity authority
   participant E as Protected session evidence (Z5)
+  participant X as Independent incident destination
   participant A as Endpoint agent/tunnel
   participant P as OS-native protocol
   O->>C: Request session to exact endpoint
@@ -42,8 +43,16 @@ sequenceDiagram
   B->>I: Issue exact actor/endpoint/protocol credential
   I-->>B: Credential plus opaque revocation handle
   B->>E: Append issuance metadata and revocation handle
-  E-->>B: Immutable append confirmed
-  B-->>G: Deliver JIT credential only after confirmation
+  alt Immutable append confirmed
+    E-->>B: Append receipt
+    B-->>G: Deliver JIT credential
+  else Append unavailable or rejected
+    E--xB: No valid append receipt
+    B->>I: Compensating revoke by opaque handle
+    I-->>B: Signed revocation result
+    B->>X: Signed handle/session/cleanup-state alert
+    B--xG: Credential withheld
+  end
   G->>P: Connect through tunnel with JIT credential
   G-->>C: Start, activity, termination events
   C-->>O: Authorized interactive session
@@ -124,7 +133,13 @@ start/end, termination reason, policy, gateway/tunnel IDs, capability flags,
 credential issuer, and an opaque non-secret credential/revocation identifier.
 The broker must append the issuance metadata and identifier to protected Z5
 evidence before releasing credential material to the gateway. Failure to confirm
-that append fails session establishment closed.
+that append fails session establishment closed. The broker retains the non-secret
+handle, performs compensating revocation, and verifies the authority's revocation
+receipt before discarding the handle. If cleanup cannot be confirmed, it sends a
+signed, bounded alert containing issuer, handle, session/grant, and cleanup state
+directly to the approved independent incident destination; the alert contains no
+credential secret. It also retains a host-protected pending-revocation record for
+retry and operator reconciliation.
 
 Screen recording and terminal transcription are not universally enabled. The
 project must decide retention, access, notification, redaction, and legal/privacy
@@ -138,6 +153,9 @@ recorded intentionally.
 - session gateway has no standing network route to arbitrary endpoints;
 - tunnel allowlist prevents loopback/service pivoting beyond the approved target;
 - reconnect requires a current authorization decision;
+- failed Z5 issuance evidence triggers verified compensating credential
+  revocation; unconfirmed cleanup produces an independent incident alert and a
+  retained pending-revocation record;
 - emergency stop terminates all sessions without relying on the compromised
   component under investigation;
 - recordings and session logs are protected as sensitive evidence.

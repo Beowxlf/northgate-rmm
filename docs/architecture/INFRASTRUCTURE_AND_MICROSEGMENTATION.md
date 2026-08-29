@@ -181,6 +181,8 @@ flowchart LR
   Admin -. G7 emergency terminate only .-> Session
   Session -. G7 lifecycle events .-> Service
   Session -. G7 logs and metrics .-> Observe
+  Session -. G7 append opaque JIT revocation handle .-> Observe
+  Admin -. G7 exact-session revocation-handle lookup .-> Observe
   Admin -. G7 incident exact-JIT-credential revoke .-> OSIdentity[Approved OS identity authority]
   Endpoints -. G7 outbound expiring tunnel .-> Session
   Hypervisor[Z0 Hypervisor management] -. No application flow .- Service
@@ -241,6 +243,8 @@ named gate and design evidence exist.
 | Z8 session gateway                     | Z2 event ingress                         | TCP 443                     | G7 conditional     | Workload mTLS; bounded lifecycle events, no job or policy authority                                 |
 | Z8 session gateway                     | Z8 credential broker                     | Authenticated IPC or mTLS   | G7 conditional     | One-session retrieval; credential never reaches browser or RMM database                             |
 | Z8 credential broker                   | Approved OS identity authority           | Approved identity protocol  | G7 conditional     | JIT credential for one actor, endpoint, protocol, and expiry                                        |
+| Z8 credential broker                   | Z5 protected session evidence            | Approved TLS port           | G7 conditional     | Workload mTLS; append-only issuer, opaque revocation handle, session/grant, expiry; no secret       |
+| Z1 session recovery operator           | Z5 protected revocation-handle lookup    | TCP 443                     | G7 incident        | Independent MFA; exact session/grant lookup, self-audited; returns opaque handle and issuer only    |
 | Z1 session recovery operator           | Approved OS identity authority           | Approved identity protocol  | G7 incident        | Independent MFA; revoke exact issued JIT credential only, no issuance/renewal/policy change         |
 | Z8 session gateway                     | Z5 telemetry sink                        | Approved TLS port           | G7 conditional     | Write-only security and availability telemetry                                                      |
 | Z4 exact endpoint                      | Z8 session gateway                       | Outbound expiring tunnel    | G7 conditional     | Stateful return only; one protocol, port, grant, and expiry                                         |
@@ -331,7 +335,8 @@ Provisioning is unacceptable unless testing proves that:
 - the Z1 PKI recovery identity cannot issue an endpoint, intermediate, or
   unrelated server certificate or change PKI policy;
 - the Z1 session-recovery identity cannot issue, extend, inspect, or change the
-  scope of a JIT credential or alter OS identity policy;
+  scope of JIT credential material or alter OS identity policy; it may retrieve
+  only the exact session's opaque revocation handle and issuer from Z5;
 - the incident auditor cannot alter/delete evidence or exercise RMM authority;
 - a protected-evidence read/export cannot proceed if Z5 cannot append immutable
   intent and result events containing actor, case, time/query scope, count,
@@ -342,6 +347,8 @@ Provisioning is unacceptable unless testing proves that:
   rollout without separately authorized, valid update metadata;
 - an endpoint with a revoked identity, stale assignment, expired/replayed token,
   different key, or different artifact digest cannot download an update;
+- the Z8 broker cannot release JIT credential material until Z5 confirms the
+  immutable issuance record and opaque revocation handle;
 - the Z7 builder/publisher cannot retrieve signing private keys, change signing
   policy, or cause the signer to fetch or publish an artifact;
 - the Z6 monitor cannot send backup content, keys, or restored data to Z5 or
@@ -489,6 +496,9 @@ The deployment change packet must contain:
 - database-role and unauthorized-access tests;
 - protected-audit access/export tests proving denied and successful attempts
   produce immutable correlated intent/result events without evidence payloads;
+- a G7 canary test that issues a JIT credential, isolates Z8 before backup,
+  retrieves its opaque handle from Z5, revokes it through Z1, and proves rejection
+  before its original expiry;
 - agent no-listener and cross-endpoint isolation evidence;
 - backup/restore and revocation-invariant results;
 - capacity baseline and alert tests;

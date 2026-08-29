@@ -26,6 +26,9 @@ sequenceDiagram
   participant O as Operator browser
   participant C as RMM control plane
   participant G as Session gateway
+  participant B as Credential broker
+  participant I as OS identity authority
+  participant E as Protected session evidence (Z5)
   participant A as Endpoint agent/tunnel
   participant P as OS-native protocol
   O->>C: Request session to exact endpoint
@@ -35,6 +38,12 @@ sequenceDiagram
   A->>A: Validate grant, target, protocol, policy
   A->>G: Establish outbound encrypted tunnel
   O->>G: Redeem single-use browser session
+  G->>B: Request exact-session JIT credential
+  B->>I: Issue exact actor/endpoint/protocol credential
+  I-->>B: Credential plus opaque revocation handle
+  B->>E: Append issuance metadata and revocation handle
+  E-->>B: Immutable append confirmed
+  B-->>G: Deliver JIT credential only after confirmation
   G->>P: Connect through tunnel with JIT credential
   G-->>C: Start, activity, termination events
   C-->>O: Authorized interactive session
@@ -106,7 +115,11 @@ manager integration, and user consent require explicit qualification.
 ## Session evidence and privacy
 
 Always record metadata: requester, approver, endpoint, protocol, source zone,
-start/end, termination reason, policy, gateway/tunnel IDs, and capability flags.
+start/end, termination reason, policy, gateway/tunnel IDs, capability flags,
+credential issuer, and an opaque non-secret credential/revocation identifier.
+The broker must append the issuance metadata and identifier to protected Z5
+evidence before releasing credential material to the gateway. Failure to confirm
+that append fails session establishment closed.
 
 Screen recording and terminal transcription are not universally enabled. The
 project must decide retention, access, notification, redaction, and legal/privacy

@@ -17,3 +17,5 @@ Changelog structure and will adopt semantic versioning before its first release.
 - Windows and Linux synthetic fixtures with replay, expiry, binding, and
   revocation tests; and
 - Ruff, mypy, pytest coverage, Bandit, and Python Semgrep checks in CI.
+- infrastructure capacity, trust-zone, flow-policy, microsegmentation,
+  provisioning, validation, and rollback specification.

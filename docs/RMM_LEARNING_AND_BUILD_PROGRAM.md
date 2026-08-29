@@ -691,7 +691,7 @@ These are rules the code and tests must enforce:
 12. Server and endpoint collection paths redact secrets and enforce size limits.
 13. Backups include identity and revocation state and are restore-tested.
 14. A feature is not complete until its failure, cancellation, rollback or
-   recovery, observability, and audit behavior are defined.
+    recovery, observability, and audit behavior are defined.
 
 ## 13. Decisions deliberately deferred
 

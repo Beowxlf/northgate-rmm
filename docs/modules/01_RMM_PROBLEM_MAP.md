@@ -206,18 +206,18 @@ not edge cases to postpone until after the UI is built.
 For each desired capability, fill in all five columns. The first three examples
 are completed.
 
-| Desired capability | Problem answered | Required observation | New authority | Proof of success |
-|---|---|---|---|---|
-| Endpoint status | Is the monitoring path alive and fresh? | Authenticated heartbeat receipt time | Store endpoint observations | Fresh heartbeat accepted for the correct endpoint identity |
-| Service health | Is a required service operating? | OS service state plus optional application health | Read named service state | Observation includes source, time, and supported state |
-| Restart service | Can one failed service be recovered remotely? | Failure evidence and maintenance context | Change service state on one endpoint | Service active and independent health check passes |
-| Software inventory |  |  |  |  |
-| Patch installation |  |  |  |  |
-| Remote terminal |  |  |  |  |
-| File transfer |  |  |  |  |
-| Agent update |  |  |  |  |
-| Endpoint isolation |  |  |  |  |
-| Scenario reset |  |  |  |  |
+| Desired capability | Problem answered                              | Required observation                              | New authority                        | Proof of success                                           |
+| ------------------ | --------------------------------------------- | ------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------- |
+| Endpoint status    | Is the monitoring path alive and fresh?       | Authenticated heartbeat receipt time              | Store endpoint observations          | Fresh heartbeat accepted for the correct endpoint identity |
+| Service health     | Is a required service operating?              | OS service state plus optional application health | Read named service state             | Observation includes source, time, and supported state     |
+| Restart service    | Can one failed service be recovered remotely? | Failure evidence and maintenance context          | Change service state on one endpoint | Service active and independent health check passes         |
+| Software inventory |                                               |                                                   |                                      |                                                            |
+| Patch installation |                                               |                                                   |                                      |                                                            |
+| Remote terminal    |                                               |                                                   |                                      |                                                            |
+| File transfer      |                                               |                                                   |                                      |                                                            |
+| Agent update       |                                               |                                                   |                                      |                                                            |
+| Endpoint isolation |                                               |                                                   |                                      |                                                            |
+| Scenario reset     |                                               |                                                   |                                      |                                                            |
 
 ## Exercise B — Classify what you dislike in TacticalRMM
 

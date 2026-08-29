@@ -2,17 +2,17 @@
 
 ## Key classes
 
-| Key | Purpose | Online? | Custody |
-| --- | --- | ---: | --- |
-| Operator IdP keys | Human authentication | Yes | Identity provider |
-| TLS server key | Gateway/API server identity | Yes | TLS service/secret store |
-| Endpoint CA | Issue endpoint identities | Restricted | Dedicated PKI role |
-| Endpoint private key | Authenticate one endpoint | Yes, endpoint only | OS-protected agent state |
-| Audit integrity key | Checkpoint/sign audit batches | Restricted | Audit service |
-| Update root key | Root release trust | No by default | Offline/separated custody |
-| Update targets key | Authorize release artifacts | Controlled | Release role |
-| CI provenance identity | Bind build to workflow/source | Ephemeral | CI OIDC |
-| Remote-session credential | One OS session | Ephemeral | Credential broker/gateway |
+| Key                       | Purpose                       |            Online? | Custody                   |
+| ------------------------- | ----------------------------- | -----------------: | ------------------------- |
+| Operator IdP keys         | Human authentication          |                Yes | Identity provider         |
+| TLS server key            | Gateway/API server identity   |                Yes | TLS service/secret store  |
+| Endpoint CA               | Issue endpoint identities     |         Restricted | Dedicated PKI role        |
+| Endpoint private key      | Authenticate one endpoint     | Yes, endpoint only | OS-protected agent state  |
+| Audit integrity key       | Checkpoint/sign audit batches |         Restricted | Audit service             |
+| Update root key           | Root release trust            |      No by default | Offline/separated custody |
+| Update targets key        | Authorize release artifacts   |         Controlled | Release role              |
+| CI provenance identity    | Bind build to workflow/source |          Ephemeral | CI OIDC                   |
+| Remote-session credential | One OS session                |          Ephemeral | Credential broker/gateway |
 
 ## Requirements
 

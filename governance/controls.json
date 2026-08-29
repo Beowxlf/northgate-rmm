@@ -5,49 +5,109 @@
       "id": "CTRL-01",
       "name": "Phase authorization",
       "requirements": ["SR-GOV-001", "SR-GOV-002"],
-      "evidence": ["governance/gates.json", "docs/governance/AUTHORIZATION_GATES.md"]
+      "evidence": [
+        "governance/gates.json",
+        "docs/governance/AUTHORIZATION_GATES.md"
+      ]
     },
     {
       "id": "CTRL-02",
       "name": "Secure repository and CI",
       "requirements": ["SR-GOV-003", "SR-GOV-004", "SR-GOV-005", "SR-UPD-005"],
-      "evidence": ["docs/governance/REQUIRED_CHECKS.md", ".github/workflows/governance.yml", ".github/workflows/security.yml"]
+      "evidence": [
+        "docs/governance/REQUIRED_CHECKS.md",
+        ".github/workflows/governance.yml",
+        ".github/workflows/security.yml"
+      ]
     },
     {
       "id": "CTRL-03",
       "name": "Endpoint identity and revocation",
-      "requirements": ["SR-ID-001", "SR-ID-002", "SR-ID-003", "SR-ID-004", "SR-ID-005", "SR-ID-006"],
-      "evidence": ["docs/architecture/PROTOCOL.md", "docs/security/CRYPTOGRAPHY_AND_KEYS.md"]
+      "requirements": [
+        "SR-ID-001",
+        "SR-ID-002",
+        "SR-ID-003",
+        "SR-ID-004",
+        "SR-ID-005",
+        "SR-ID-006"
+      ],
+      "evidence": [
+        "docs/architecture/PROTOCOL.md",
+        "docs/security/CRYPTOGRAPHY_AND_KEYS.md"
+      ]
     },
     {
       "id": "CTRL-04",
       "name": "Authorization and approval",
-      "requirements": ["SR-AUTH-001", "SR-AUTH-002", "SR-AUTH-003", "SR-AUTH-004", "SR-AUTH-005", "SR-AUTH-006"],
+      "requirements": [
+        "SR-AUTH-001",
+        "SR-AUTH-002",
+        "SR-AUTH-003",
+        "SR-AUTH-004",
+        "SR-AUTH-005",
+        "SR-AUTH-006"
+      ],
       "evidence": ["docs/security/AUTHORIZATION_MODEL.md"]
     },
     {
       "id": "CTRL-05",
       "name": "Bounded agent and protocol",
-      "requirements": ["SR-AGENT-001", "SR-AGENT-002", "SR-AGENT-003", "SR-AGENT-004", "SR-AGENT-005", "SR-AGENT-006"],
-      "evidence": ["docs/architecture/PROTOCOL.md", "docs/architecture/COMPONENTS.md"]
+      "requirements": [
+        "SR-AGENT-001",
+        "SR-AGENT-002",
+        "SR-AGENT-003",
+        "SR-AGENT-004",
+        "SR-AGENT-005",
+        "SR-AGENT-006"
+      ],
+      "evidence": [
+        "docs/architecture/PROTOCOL.md",
+        "docs/architecture/COMPONENTS.md"
+      ]
     },
     {
       "id": "CTRL-06",
       "name": "Honest job state",
-      "requirements": ["SR-JOB-001", "SR-JOB-002", "SR-JOB-003", "SR-JOB-004", "SR-JOB-005", "SR-JOB-006"],
-      "evidence": ["docs/architecture/DATA_MODEL.md", "docs/architecture/PROTOCOL.md"]
+      "requirements": [
+        "SR-JOB-001",
+        "SR-JOB-002",
+        "SR-JOB-003",
+        "SR-JOB-004",
+        "SR-JOB-005",
+        "SR-JOB-006"
+      ],
+      "evidence": [
+        "docs/architecture/DATA_MODEL.md",
+        "docs/architecture/PROTOCOL.md"
+      ]
     },
     {
       "id": "CTRL-07",
       "name": "Cryptography and secret custody",
-      "requirements": ["SR-CRYPTO-001", "SR-CRYPTO-002", "SR-CRYPTO-003", "SR-CRYPTO-004", "SR-CRYPTO-005"],
+      "requirements": [
+        "SR-CRYPTO-001",
+        "SR-CRYPTO-002",
+        "SR-CRYPTO-003",
+        "SR-CRYPTO-004",
+        "SR-CRYPTO-005"
+      ],
       "evidence": ["docs/security/CRYPTOGRAPHY_AND_KEYS.md"]
     },
     {
       "id": "CTRL-08",
       "name": "Data minimization and audit",
-      "requirements": ["SR-DATA-001", "SR-DATA-002", "SR-DATA-003", "SR-AUDIT-001", "SR-AUDIT-002", "SR-AUDIT-003"],
-      "evidence": ["docs/security/DATA_CLASSIFICATION_RETENTION.md", "docs/operations/OBSERVABILITY_SLOS.md"]
+      "requirements": [
+        "SR-DATA-001",
+        "SR-DATA-002",
+        "SR-DATA-003",
+        "SR-AUDIT-001",
+        "SR-AUDIT-002",
+        "SR-AUDIT-003"
+      ],
+      "evidence": [
+        "docs/security/DATA_CLASSIFICATION_RETENTION.md",
+        "docs/operations/OBSERVABILITY_SLOS.md"
+      ]
     },
     {
       "id": "CTRL-09",
@@ -58,14 +118,25 @@
     {
       "id": "CTRL-10",
       "name": "Brokered remote access",
-      "requirements": ["SR-REMOTE-001", "SR-REMOTE-002", "SR-REMOTE-003", "SR-REMOTE-004", "SR-REMOTE-005", "SR-REMOTE-006", "SR-REMOTE-007"],
+      "requirements": [
+        "SR-REMOTE-001",
+        "SR-REMOTE-002",
+        "SR-REMOTE-003",
+        "SR-REMOTE-004",
+        "SR-REMOTE-005",
+        "SR-REMOTE-006",
+        "SR-REMOTE-007"
+      ],
       "evidence": ["docs/architecture/REMOTE_ACCESS.md"]
     },
     {
       "id": "CTRL-11",
       "name": "Safe recovery",
       "requirements": ["SR-REC-001", "SR-REC-002", "SR-REC-003"],
-      "evidence": ["docs/operations/BACKUP_RESTORE.md", "docs/operations/INCIDENT_RESPONSE.md"]
+      "evidence": [
+        "docs/operations/BACKUP_RESTORE.md",
+        "docs/operations/INCIDENT_RESPONSE.md"
+      ]
     }
   ]
 }

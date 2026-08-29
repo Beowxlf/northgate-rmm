@@ -35,4 +35,3 @@ body:
         - Cross-platform remote access
     validations:
       required: true
-

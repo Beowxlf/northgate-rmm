@@ -12,10 +12,13 @@
     "audit:workflows": "node scripts/audit-workflows.mjs",
     "audit:secrets-lite": "node scripts/audit-secrets-lite.mjs",
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.tools\" \"#.venv\"",
-    "audit:pre-code": "npm run audit:governance && npm run audit:workflows && npm run audit:secrets-lite && npm run lint:markdown",
+    "format:check": "prettier --check . --ignore-path .prettierignore",
+    "format:write": "prettier --write . --ignore-path .prettierignore",
+    "audit:pre-code": "npm run audit:governance && npm run audit:workflows && npm run audit:secrets-lite && npm run lint:markdown && npm run format:check",
     "gate:g1": "node scripts/check-gate.mjs G1"
   },
   "devDependencies": {
-    "markdownlint-cli2": "0.23.2"
+    "markdownlint-cli2": "0.23.2",
+    "prettier": "3.9.6"
   }
 }

@@ -32,4 +32,3 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Run governance, workflow, secret-pattern, and Markdown checks
         run: npm run audit:pre-code
-

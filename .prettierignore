@@ -1,0 +1,7 @@
+.git/
+.tools/
+.venv/
+node_modules/
+artifacts/
+package-lock.json
+.gitleaks.toml

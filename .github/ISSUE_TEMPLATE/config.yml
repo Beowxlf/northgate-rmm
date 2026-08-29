@@ -3,4 +3,3 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/Beowxlf/northgate-rmm/security/advisories/new
     about: Report vulnerabilities privately; never include secrets in public issues.
-

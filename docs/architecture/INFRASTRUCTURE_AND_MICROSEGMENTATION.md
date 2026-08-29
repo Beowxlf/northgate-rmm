@@ -156,6 +156,7 @@ flowchart LR
   Service -->|HTTPS 443, named OIDC endpoints| IdP
   Endpoints[Z4 Managed endpoints] -->|Bootstrap TLS, then mTLS| Service
   Service -->|G2/G3 issuance and status API| Issuer[Restricted endpoint issuer]
+  Admin -. Incident revoke only .-> Issuer
   Service -->|Authenticated database session| Data[(Z3 RMM data)]
   Service -->|Logs, metrics, traces| Observe[Z5 Security observability]
   Data -->|Logs and metrics| Observe
@@ -188,6 +189,7 @@ named gate and design evidence exist.
 | Z1 browser                   | Approved human IdP                    | TCP 443                    | Required       | Authorization endpoint only; TLS and IdP policy                            |
 | Z2 control plane             | Approved human IdP                    | TCP 443                    | Required       | Named OIDC discovery, token, key, revocation/logout endpoints              |
 | Z2 control plane             | Approved endpoint issuer              | TCP 443                    | G2/G3          | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs |
+| Z1 recovery operator         | Endpoint issuer emergency revocation  | TCP 443                    | Incident only  | Dedicated MFA identity; revoke exact scope only, no issuance or renewal    |
 | Z2 TLS service               | Approved server PKI                   | TCP 443                    | Required       | Authenticated issuance, renewal, revocation/status endpoints only          |
 | Z4 unenrolled canary         | Z2 enrollment ingress                 | TCP 443                    | G2/G3          | Server-authenticated TLS; single-use exact-scope grant, key proof, limits  |
 | Z4 enrolled endpoint         | Z2 agent ingress                      | TCP 443                    | G2/G3          | Outbound mTLS, revocation, endpoint binding, rate and size limits          |
@@ -229,6 +231,7 @@ Provisioning is unacceptable unless testing proves that:
 - Z1 cannot connect directly to Z3 or use the agent ingress path;
 - Z2 cannot administer the hypervisor or publish/sign releases;
 - the Z1 recovery identity cannot create, extend, view, or join a Z8 session;
+- the Z1 recovery identity cannot issue or renew endpoint certificates;
 - Z5 cannot issue RMM jobs or alter RMM policy;
 - Z6 cannot become a general application or endpoint share;
 - one Z4 endpoint cannot reach another through RMM-created network paths;
@@ -365,7 +368,8 @@ The deployment change packet must contain:
 - current topology and data-flow diagrams;
 - zone, asset, network-profile, rule, and owner inventories;
 - exact before/after firewall and virtual-network configuration exports;
-- positive and negative connectivity results for every flow-table row;
+- positive connectivity results for every flow activated by the current change;
+- negative results for inactive conditional rows and every expected deny;
 - guest listener and host-firewall inventory;
 - TLS/mTLS identity, expiry, and revocation test results without private keys;
 - database-role and unauthorized-access tests;

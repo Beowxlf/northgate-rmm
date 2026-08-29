@@ -217,7 +217,7 @@ named gate and design evidence exist.
 | Z1 recovery operator                     | Endpoint issuer emergency revocation               | TCP 443                     | Incident only       | Dedicated MFA identity; revoke exact scope only, no issuance or renewal                                    |
 | Z2 TLS service                           | Approved server PKI                                | TCP 443                     | Required            | Authenticated issuance, renewal, revocation/status endpoints only                                          |
 | Z1 PKI recovery operator                 | Approved server PKI                                | TCP 443                     | Incident only       | Independent MFA; revoke/roll over exact Z2 certificate only, no other issuance                             |
-| Z1 security recovery operators           | Z5 protected recovery-audit intake                 | TCP 443                     | Incident only       | Signed append-only intent/result for exact certificate/session/tunnel/grant scope, correlation, outcome    |
+| Z1 security recovery operators           | Z5 protected recovery-audit intake                 | TCP 443                     | Incident only       | Signed append-only intent/result for exact certificate/session/tunnel/grant/release scope and outcome      |
 | Z1 security recovery operators           | Z6 immutable emergency-evidence intake             | Approved evidence protocol  | Z5-unavailable only | Signed append-only fallback bundle; no restore/delete authority; reconcile to Z5 after recovery            |
 | Z1 managed TLS client                    | Approved server-PKI status service                 | TCP 443                     | Required            | Signed OCSP/CRL status only; independent of Z2; missing/stale/unknown/revoked fails closed                 |
 | Z4 endpoint TLS client                   | Approved server-PKI status service                 | TCP 443                     | G2/G3               | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                       |
@@ -295,6 +295,13 @@ signed termination result directly to protected session evidence, independent of
 Z2, while Z1 appends the API result and independently observed tunnel/session
 state. A suspected gateway result is evidence, not trusted proof; the recovery
 record distinguishes claimed, observed, and verified outcome.
+
+Before G6 emergency freeze/revocation, the Z1 release-recovery client signs and
+appends intent containing the exact metadata role/key, artifact or rollout scope,
+reason, incident, actor, time, and correlation ID. It appends the emergency API
+receipt and independently observed metadata/PEP state after the action. Because
+the repository may be suspected, its claimed outcome is never recorded as
+verified without an independent read or network-policy observation.
 
 The Z1 client appends emergency intent and result to the protected Z5
 recovery-audit intake. If Z5 is unavailable, it writes the same signed bundle to
@@ -611,6 +618,9 @@ The deployment change packet must contain:
 - emergency endpoint/server PKI tests proving signed intent/result receipts reach
   Z5, then proving Z6 immutable fallback and later Z5 reconciliation when Z5 is
   unavailable;
+- a G6 emergency freeze/revocation test with the artifact service suspected,
+  proving Z1 signed intent, claimed result, and independently observed outcome
+  reach Z5 and use Z6 fallback when Z5 is unavailable;
 - a G7 emergency-termination test with Z2 unavailable/suspected, proving Z1 intent
   and result plus the Z8 direct result reach Z5, and proving the Z6 fallback when
   Z5 is unavailable;

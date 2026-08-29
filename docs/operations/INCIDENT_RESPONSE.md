@@ -33,7 +33,11 @@
 6. Identify endpoints, actions, sessions, versions, and data affected.
 7. Recover from known-good source, artifacts, trust roots, and backups.
 8. Verify invariants before reconnecting endpoints or resuming dispatch.
-9. Document timeline, decisions, uncertainty, impact, notification, and follow-up.
+
+Direct endpoint/server PKI recovery records signed intent and authority result in
+protected Z5 evidence or, when Z5 is unavailable, the append-only Z6 emergency
+evidence intake. Failure of both paths is incomplete containment and must not be
+reported as a fully evidenced recovery. 9. Document timeline, decisions, uncertainty, impact, notification, and follow-up.
 
 ## Mandatory emergency capabilities before operational gates
 

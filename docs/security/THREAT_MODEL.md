@@ -91,6 +91,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-26 | Revoked SSH certificate remains valid at endpoint     | online validation or signed monotonic KRL, 60-second freshness, atomic update, fail closed     | isolate tunnel, refresh KRL/status, prove endpoint rejection             |
 | TM-27 | Established TLS channel outlives server revocation    | five-minute absolute channel lifetime, full re-handshake/status check, no bypass by resumption | force close, deny reconnect, investigate traffic after revocation        |
 | TM-28 | Failed evidence append leaves orphaned JIT credential | retain opaque handle, verified compensating revoke, independent signed failure alert           | reconcile pending-revocation journal, revoke externally, isolate Z8      |
+| TM-29 | Emergency PKI containment bypasses protected audit    | signed intent/result receipts, Z5 append, immutable Z6 fallback, mandatory acknowledgement     | raise severity, retain/reconcile receipts, review exact PKI action       |
 
 ## Denial-of-service considerations
 

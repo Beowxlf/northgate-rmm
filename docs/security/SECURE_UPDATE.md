@@ -23,8 +23,9 @@ replace a privileged fleet component.
 4. Produce platform-specific signed packages.
 5. Authorize artifacts through separated update metadata/signing roles only after
    the signer validates an exact protected signing-intent acknowledgement.
-6. Verify signatures, provenance, version, platform, policy, and both protected
-   signing acknowledgements before publishing.
+6. Require both the publisher and repository to verify signatures, provenance,
+   version, platform, policy, and both protected signing acknowledgements before
+   publishing.
 7. Require an independent protected audit acknowledgement before every
    authority-increasing signing, publication, rollout-start/advance, or resumption
    transition. Never block an emergency freeze, revocation, or pause because both

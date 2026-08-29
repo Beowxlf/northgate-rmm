@@ -52,7 +52,7 @@ sequenceDiagram
   end
   alt Broker delivery event confirmed
     E-->>B: Immutable append receipt
-    B-->>G: Deliver JIT credential
+    B-->>G: Deliver JIT credential plus non-secret opaque handle
   else Broker delivery event unavailable or rejected
     E--xB: No valid delivery receipt
     B->>I: Compensating revoke by opaque handle

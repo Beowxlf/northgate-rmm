@@ -27,6 +27,9 @@ Review trigger: every Class 2/3 change and each phase gate
 8. backup and recovery artifacts;
 9. remote-session credentials, grants, tunnels, and gateway state;
 10. source, dependencies, CI credentials, and build artifacts.
+11. network policy, policy-enforcement configuration, and segmentation evidence;
+12. protected audit archive, integrity checkpoints, and independent export state;
+13. recovery identities and emergency revocation credentials.
 
 ## Actors
 
@@ -51,6 +54,10 @@ Review trigger: every Class 2/3 change and each phase gate
 - control plane to session gateway and credential broker;
 - session gateway through tunnel to OS-native protocol;
 - primary environment to backup/restore environment.
+- each Z0-Z9 logical zone to every other zone and external dependency;
+- audit writer to protected audit archive and archive to recovery storage;
+- recovery operator to PKI, firewall/policy enforcement, artifact, audit, and
+  session emergency interfaces.
 
 ## Primary abuse cases and controls
 
@@ -72,6 +79,9 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-14 | Recording captures credentials/private data          | explicit policy, user notice, restricted encryption/retention, secret redaction             | access audit, incident deletion/rotation process                         |
 | TM-15 | CI workflow executes untrusted code with write token | least permissions, SHA-pinned actions, no unsafe pull_request_target, environment approvals | workflow scan, token revoke, rebuild from trusted commit                 |
 | TM-16 | Backup restores revoked identities or old trust      | revocation-aware restore test, backup metadata, recovery reconciliation                     | post-restore invariant audit, keep service isolated until reconciled     |
+| TM-17 | Segmentation error grants unintended lateral reach   | default-deny matrix, exact flows, layered enforcement, separate network approval            | flow-deny tests, policy-hash drift alert, isolate and restore policy     |
+| TM-18 | Compromised runtime suppresses or rewrites audit     | dedicated append-only writer, integrity chain/checkpoints, protected Z5 archive             | gap/sequence alert, independent export and immutable backup              |
+| TM-19 | Compromised TLS service blocks its own containment   | independent PKI recovery identity, exact-certificate revoke/rollover-only route             | certificate alert, revoke/replace externally, preserve service evidence  |
 
 ## Denial-of-service considerations
 

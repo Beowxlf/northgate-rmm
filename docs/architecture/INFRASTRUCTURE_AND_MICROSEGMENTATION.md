@@ -10,6 +10,9 @@ This is a design and acceptance specification. It does **not** authorize a VM,
 VLAN, virtual switch, firewall rule, DNS record, certificate, endpoint agent, or
 public listener. Infrastructure deployment remains subject to the phase gates in
 [Authorization Gates](../governance/AUTHORIZATION_GATES.md).
+The security-significant architecture decision and threat-model delta are recorded
+in [ADR 0008](adr/0008-zoned-default-deny-rmm-infrastructure.md) and
+[the threat model](../security/THREAT_MODEL.md).
 
 Terminology: this specification covers the NorthGate remote monitoring and
 management (**RMM**) platform. It does not describe the NIST Risk Management
@@ -130,18 +133,18 @@ Zone names are stable logical roles. Exact VLAN IDs, subnets, switch names, and
 IP addresses are deliberately absent until live NorthGate discovery and a
 separately approved network-boundary plan establish them.
 
-| Zone                      | Purpose                                      | Permitted residents                                           | Explicitly excluded                          |
-| ------------------------- | -------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------- |
-| Z0 Hypervisor management  | Operate HC-HV01 and the VM Factory           | Hypervisor and approved management services                   | RMM workloads, agents, databases             |
-| Z1 Administrative access  | Trusted operator entry                       | Hardened admin workstation or jump path                       | Managed endpoints and general user devices   |
-| Z2 RMM service            | UI/API and agent gateway ingress             | Private proxy and control-plane runtime                       | Hypervisor management and release signing    |
-| Z3 RMM data               | Database and protected audit data            | PostgreSQL and audit storage when separated                   | Operators, endpoints, build workers          |
-| Z4 Managed endpoints      | Systems monitored by RMM                     | Approved Windows/Linux canaries, later scoped endpoint groups | Control-plane or management services         |
-| Z5 Security observability | Independent logs, metrics, alerts            | Wazuh or another approved central sink                        | RMM administrative authority                 |
-| Z6 Recovery               | Backups and isolated restore                 | Backup target and recovery operator path                      | Ordinary runtime write/delete identity       |
-| Z7 Build and update       | CI, artifact creation, signing handoff       | Ephemeral builders and artifact publication                   | Production secrets and endpoint reachability |
-| Z8 Remote assistance      | Future session gateway and credential broker | G7-authorized gateway services only                           | Standing routes to endpoint networks         |
-| Z9 Quarantine             | Contain suspect or failed assets             | Isolated endpoint or restored copy under investigation        | Normal control-plane and peer reachability   |
+| Zone                      | Purpose                                      | Permitted residents                                           | Explicitly excluded                             |
+| ------------------------- | -------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------- |
+| Z0 Hypervisor management  | Operate HC-HV01 and the VM Factory           | Hypervisor and approved management services                   | RMM workloads, agents, databases                |
+| Z1 Administrative access  | Trusted operator entry                       | Hardened admin workstation or jump path                       | Managed endpoints and general user devices      |
+| Z2 RMM service            | UI/API and agent gateway ingress             | Private proxy and control-plane runtime                       | Hypervisor management and release signing       |
+| Z3 RMM data               | Application database and relational state    | PostgreSQL and dedicated application-data storage             | Operators, endpoints, protected audit archive   |
+| Z4 Managed endpoints      | Systems monitored by RMM                     | Approved Windows/Linux canaries, later scoped endpoint groups | Control-plane or management services            |
+| Z5 Security observability | Independent telemetry and protected audit    | Approved central sink and append-only protected audit archive | RMM administrative or evidence-delete authority |
+| Z6 Recovery               | Backups and isolated restore                 | Backup target and recovery operator path                      | Ordinary runtime write/delete identity          |
+| Z7 Build and update       | CI, artifact creation, signing handoff       | Ephemeral builders and artifact publication                   | Production secrets and endpoint reachability    |
+| Z8 Remote assistance      | Future session gateway and credential broker | G7-authorized gateway services only                           | Standing routes to endpoint networks            |
+| Z9 Quarantine             | Contain suspect or failed assets             | Isolated endpoint or restored copy under investigation        | Normal control-plane and peer reachability      |
 
 Logical zones may initially share physical infrastructure, but enforcement points
 must remain distinct. For example, Phase 1 can keep PostgreSQL on the control VM
@@ -154,6 +157,8 @@ flowchart LR
   Admin -->|Key-only SSH, exact source| Service
   Admin -->|HTTPS 443, authorization| IdP[Approved human IdP]
   Service -->|HTTPS 443, named OIDC endpoints| IdP
+  Service -->|HTTPS 443, server certificate lifecycle| ServerPKI[Approved server PKI]
+  Admin -. Incident exact-certificate revoke/rollover .-> ServerPKI
   Endpoints[Z4 Managed endpoints] -->|Bootstrap TLS, then mTLS| Service
   Service -->|G2/G3 issuance and status API| Issuer[Restricted endpoint issuer]
   Admin -. Incident revoke only .-> Issuer
@@ -194,6 +199,7 @@ named gate and design evidence exist.
 | Z2 control plane                       | Approved endpoint issuer              | TCP 443                     | G2/G3              | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs                         |
 | Z1 recovery operator                   | Endpoint issuer emergency revocation  | TCP 443                     | Incident only      | Dedicated MFA identity; revoke exact scope only, no issuance or renewal                            |
 | Z2 TLS service                         | Approved server PKI                   | TCP 443                     | Required           | Authenticated issuance, renewal, revocation/status endpoints only                                  |
+| Z1 PKI recovery operator               | Approved server PKI                   | TCP 443                     | Incident only      | Independent MFA; revoke/roll over exact Z2 certificate only, no other issuance                     |
 | Z4 unenrolled canary                   | Z2 enrollment ingress                 | TCP 443                     | G2/G3              | Server-authenticated TLS; single-use exact-scope grant, key proof, limits                          |
 | Z4 enrolled endpoint                   | Z2 agent ingress                      | TCP 443                     | G2/G3              | Outbound mTLS, revocation, endpoint binding, rate and size limits                                  |
 | Z2 application                         | Z3 PostgreSQL                         | TCP 5432 or local socket    | Required           | Named workload role, TLS if networked, least SQL privilege                                         |
@@ -271,6 +277,8 @@ Provisioning is unacceptable unless testing proves that:
 - Z2 cannot administer the hypervisor or publish/sign releases;
 - the Z1 recovery identity cannot create, extend, view, or join a Z8 session;
 - the Z1 recovery identity cannot issue or renew endpoint certificates;
+- the Z1 PKI recovery identity cannot issue an endpoint, intermediate, or
+  unrelated server certificate or change PKI policy;
 - the incident auditor cannot alter/delete evidence or exercise RMM authority;
 - the Z2 audit writer cannot read, alter, or delete the Z5 protected archive or
   submit a record without its assigned identity, sequence, and integrity proof;

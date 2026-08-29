@@ -12,6 +12,7 @@ their status.
 | 0005 | PostgreSQL-backed queue before a dedicated broker          | Accepted |
 | 0006 | Python control plane and simulator; Go endpoint agent      | Accepted |
 | 0007 | Brokered native protocols for cross-platform remote access | Accepted |
+| 0008 | Zoned default-deny RMM infrastructure                      | Accepted |
 
 ## Governance decisions
 

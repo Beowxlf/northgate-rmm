@@ -153,6 +153,12 @@ cleanup state directly to the approved independent incident destination; the
 alert contains no credential secret. It also retains a host-protected
 pending-revocation record for retry and operator reconciliation.
 
+Independent emergency termination does not rely on the Z8-to-Z2 lifecycle path.
+The Z1 recovery client appends signed intent and observed/result evidence to Z5
+before and after the action (or Z6 when Z5 is unavailable), and the gateway sends
+its signed termination event directly to protected Z5 session evidence. Evidence
+distinguishes gateway-claimed outcome from independently observed teardown.
+
 Screen recording and terminal transcription are not universally enabled. The
 project must decide retention, access, notification, redaction, and legal/privacy
 requirements before activation. Sensitive fields and credentials must never be

@@ -19,6 +19,8 @@ version. Those features sharply increase the security and operational risk.
 
 Start with [the learning and build program](docs/RMM_LEARNING_AND_BUILD_PROGRAM.md),
 then complete [Module 1: The RMM Problem Map](docs/modules/01_RMM_PROBLEM_MAP.md).
+The first executable lesson is
+[Module 2: The Synthetic Trust Slice](docs/modules/02_PHASE1_SYNTHETIC_SLICE.md).
 
 ## Project controls
 
@@ -38,6 +40,17 @@ The repository is in **Phase 1: Trustworthy vertical-slice simulation**. G1
 authorizes bounded product coding with synthetic data. Endpoint installation,
 remote jobs, privileged actions, agent updates, interactive remote access, and
 production deployment remain closed behind later gates.
+
+## Phase 1 developer checks
+
+```powershell
+python -m pip install --requirement requirements-dev.txt
+ruff format --check src tests
+ruff check src tests
+mypy src tests
+pytest --cov=northgate_rmm --cov-branch --cov-fail-under=90
+bandit --recursive src --severity-level medium
+```
 
 ## License
 

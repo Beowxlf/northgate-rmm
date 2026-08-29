@@ -44,10 +44,27 @@ jobs:
         run: |
           python -m pip install --upgrade pip==26.2.1
           python -m pip install zizmor==1.29.0 semgrep==1.175.0 pip-audit==2.10.1
+          python -m pip install --requirement requirements-dev.txt
       - name: Audit Python tool dependencies
         run: pip-audit --progress-spinner off
+      - name: Check Phase 1 Python quality and types
+        run: |
+          ruff format --check src tests
+          ruff check src tests
+          mypy src tests
+      - name: Test Phase 1 Python domain slice
+        run: >-
+          pytest
+          --cov=northgate_rmm
+          --cov-branch
+          --cov-report=term-missing
+          --cov-fail-under=90
+      - name: Scan Phase 1 Python with Bandit
+        run: bandit --recursive src --severity-level medium
       - name: Run Semgrep Community Edition
-        run: semgrep scan --config p/javascript --error scripts
+        run: |
+          semgrep scan --config p/javascript --error scripts
+          semgrep scan --config p/python --error src tests
       - name: Audit workflows with Zizmor
         run: zizmor .github/workflows --pedantic
       - name: Install checksum-verified native audit tools

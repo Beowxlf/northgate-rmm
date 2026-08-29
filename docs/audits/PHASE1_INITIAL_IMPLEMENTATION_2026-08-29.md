@@ -26,6 +26,8 @@ oversized payload coverage remain future Phase 1 work.
 | Server receipt time drives health                    | online/stale/offline test         | Pass   |
 | Message IDs and boot sequences resist replay         | replay and restart tests          | Pass   |
 | Expired messages fail closed                         | expiry-boundary test              | Pass   |
+| Future-dated messages cannot extend acceptance       | clock-skew regression test        | Pass   |
+| Inventory keys have unambiguous digests              | duplicate-key regression test     | Pass   |
 | Revocation is immediate and idempotent               | revocation tests and audit events | Pass   |
 | Accepted observations and audits are append-oriented | immutable snapshot test           | Pass   |
 | No command or remote-session primitive exists        | source and path review            | Pass   |
@@ -36,7 +38,7 @@ oversized payload coverage remain future Phase 1 work.
 | ---------------------------------- | ----------------------------------- |
 | Ruff format and lint               | Pass                                |
 | mypy strict mode                   | Pass: seven source/test files       |
-| pytest                             | Pass: 17 tests                      |
+| pytest                             | Pass: 18 tests                      |
 | branch coverage                    | Pass: 99%, threshold 90%            |
 | Bandit                             | Pass: no medium or high findings    |
 | Semgrep Community Edition          | Pass: 151 Python rules, no findings |

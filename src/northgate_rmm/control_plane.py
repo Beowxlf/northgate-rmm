@@ -12,6 +12,7 @@ from typing import Never
 from uuid import UUID, uuid4
 
 from northgate_rmm.domain import (
+    MAX_CLOCK_SKEW,
     AuditEvent,
     Endpoint,
     EndpointHealth,
@@ -136,6 +137,7 @@ class ControlPlane:
             message_id=message.envelope.message_id,
             boot_id=message.envelope.boot_id,
             sequence=message.envelope.sequence,
+            created_at=message.envelope.created_at,
             expires_at=message.envelope.expires_at,
             correlation_id=message.envelope.correlation_id,
             received_at=received_at,
@@ -184,6 +186,7 @@ class ControlPlane:
             message_id=message.envelope.message_id,
             boot_id=message.envelope.boot_id,
             sequence=message.envelope.sequence,
+            created_at=message.envelope.created_at,
             expires_at=message.envelope.expires_at,
             correlation_id=message.envelope.correlation_id,
             received_at=received_at,
@@ -310,6 +313,7 @@ class ControlPlane:
         message_id: UUID,
         boot_id: UUID,
         sequence: int,
+        created_at: datetime,
         expires_at: datetime,
         correlation_id: UUID,
         received_at: datetime,
@@ -346,6 +350,16 @@ class ControlPlane:
                 correlation_id=correlation_id,
                 received_at=received_at,
                 error_type=AuthorizationError,
+            )
+        if created_at > received_at + MAX_CLOCK_SKEW:
+            self._reject(
+                identity_id=authenticated_identity_id,
+                endpoint_id=identity.endpoint_id,
+                action=action,
+                reason="message creation time exceeds allowed clock skew",
+                correlation_id=correlation_id,
+                received_at=received_at,
+                error_type=ValidationError,
             )
         if received_at >= expires_at:
             self._reject(

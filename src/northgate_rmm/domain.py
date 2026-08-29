@@ -15,6 +15,7 @@ from northgate_rmm.errors import ValidationError
 
 PROTOCOL_VERSION = 1
 MAX_MESSAGE_TTL = timedelta(minutes=5)
+MAX_CLOCK_SKEW = timedelta(minutes=5)
 MAX_DISPLAY_NAME_LENGTH = 128
 MAX_AGENT_VERSION_LENGTH = 64
 MAX_CAPABILITIES = 32
@@ -201,6 +202,8 @@ class InventoryPayload:
             raise ValidationError("architecture is empty or too long")
         if len(self.fields) > MAX_INVENTORY_FIELDS:
             raise ValidationError("too many inventory fields")
+        if len({key for key, _value in self.fields}) != len(self.fields):
+            raise ValidationError("inventory field names must be unique")
         if any(
             not key
             or len(key) > MAX_INVENTORY_KEY_LENGTH

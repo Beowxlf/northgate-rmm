@@ -42,8 +42,9 @@ Defines bounded, immutable values:
 - lifecycle and communication-health status; and
 - audit events.
 
-Timestamp values must be timezone-aware. Message lifetimes, field counts, string
-sizes, protocol versions, and sequences are bounded before ingestion.
+Timestamp values must be timezone-aware. Message lifetimes, future clock skew,
+field counts, duplicate inventory keys, string sizes, protocol versions, and
+sequences are bounded before ingestion.
 
 ### `simulator.py`
 

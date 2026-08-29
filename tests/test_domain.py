@@ -148,6 +148,12 @@ def test_payloads_enforce_bounds_and_stable_digests() -> None:
             architecture="x86_64",
             fields=(("", "value"),),
         )
+    with pytest.raises(ValidationError, match="unique"):
+        InventoryPayload(
+            platform=Platform.LINUX,
+            architecture="x86_64",
+            fields=(("os", "first"), ("os", "second")),
+        )
 
 
 def test_duplicate_fingerprint_and_revocation_reason_bounds() -> None:

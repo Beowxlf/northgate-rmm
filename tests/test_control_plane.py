@@ -247,6 +247,18 @@ def test_expired_message_and_inventory_mismatch_are_rejected() -> None:
         )
 
 
+def test_future_dated_message_beyond_clock_skew_is_rejected() -> None:
+    plane, agent = enrolled_linux()
+    future = agent.heartbeat(now=NOW + timedelta(minutes=6))
+    with pytest.raises(ValidationError, match="clock skew"):
+        plane.ingest_heartbeat(
+            authenticated_identity_id=agent.identity_id,
+            message=future,
+            received_at=NOW,
+        )
+    assert plane.audit_events[-1].decision == "rejected"
+
+
 def test_observation_and_audit_views_are_immutable_snapshots() -> None:
     plane, agent = enrolled_linux()
     message = agent.heartbeat(now=NOW)

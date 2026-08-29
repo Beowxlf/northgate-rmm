@@ -184,53 +184,79 @@ Stateful return traffic is part of the initiating row and does not create a
 second standing path. “Conditional” means the flow remains prohibited until its
 named gate and design evidence exist.
 
-| Source                       | Destination                           | Service                    | Status          | Required control                                                           |
-| ---------------------------- | ------------------------------------- | -------------------------- | --------------- | -------------------------------------------------------------------------- |
-| Z1 admin path                | Z2 operator ingress                   | TCP 443                    | Required        | OIDC MFA, device/source policy, RBAC, audit                                |
-| Z1 admin path                | Z2 control-plane host                 | TCP 22                     | Required        | Exact source; dedicated key-only identity, no password/root login, audit   |
-| Z1 browser                   | Approved human IdP                    | TCP 443                    | Required        | Authorization endpoint only; TLS and IdP policy                            |
-| Z2 control plane             | Approved human IdP                    | TCP 443                    | Required        | Named OIDC discovery, token, key, revocation/logout endpoints              |
-| Z2 control plane             | Approved endpoint issuer              | TCP 443                    | G2/G3           | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs |
-| Z1 recovery operator         | Endpoint issuer emergency revocation  | TCP 443                    | Incident only   | Dedicated MFA identity; revoke exact scope only, no issuance or renewal    |
-| Z2 TLS service               | Approved server PKI                   | TCP 443                    | Required        | Authenticated issuance, renewal, revocation/status endpoints only          |
-| Z4 unenrolled canary         | Z2 enrollment ingress                 | TCP 443                    | G2/G3           | Server-authenticated TLS; single-use exact-scope grant, key proof, limits  |
-| Z4 enrolled endpoint         | Z2 agent ingress                      | TCP 443                    | G2/G3           | Outbound mTLS, revocation, endpoint binding, rate and size limits          |
-| Z2 application               | Z3 PostgreSQL                         | TCP 5432 or local socket   | Required        | Named workload role, TLS if networked, least SQL privilege                 |
-| Z2 services                  | Z5 telemetry sink                     | Approved TLS port          | Required        | Write-only service identity and bounded queue                              |
-| Z3 data services             | Z5 telemetry sink                     | Approved TLS port          | When separated  | Write-only service identity; no RMM control authority                      |
-| Z5 telemetry service         | Approved alert destination            | Approved TLS port          | Required        | Named destination, notification-only credential, bounded redacted payload  |
-| Z1 incident auditor          | Z5 protected audit export             | TCP 443                    | Incident/audit  | Independent MFA; read/export exact case and time range, no alter/delete    |
-| Z3 database backup identity  | Z6 backup target                      | Approved backup protocol   | Required        | Separate credential, encryption, integrity, immutability/retention         |
-| Z2 backup exporter           | Z6 backup target                      | Approved backup protocol   | Required        | Config/certificate-state scope; write-only identity, no delete authority   |
-| Z6 recovery service          | Isolated restore target               | Approved restore protocol  | Recovery only   | Exact authorization, no endpoint/operator ingress, reconcile before use    |
-| Z2 runtime                   | Artifact repository                   | TCP 443                    | G6              | Read-only, signed metadata, digest and expiry verification                 |
-| Z4 enrolled endpoint         | Artifact repository                   | TCP 443                    | G6              | Read-only signed update for the endpoint's assigned rollout ring           |
-| Z7 publisher                 | Artifact repository                   | TCP 443                    | G6              | Separate publication identity; provenance and audit                        |
-| Z1 release recovery operator | Artifact emergency metadata API       | TCP 443                    | G6 incident     | Independent MFA; freeze/revoke only, offline-root authorization, no upload |
-| Z2/Z3/Z5/Z6/Z8 host updaters | Approved OS repositories              | TCP 443                    | Maintenance     | Separate exact-source rules; named repositories, signatures, change window |
-| Z7 builder                   | Approved source/dependency registries | TCP 443                    | G6              | Read-only locked inputs, digest/provenance checks, no runtime secrets      |
-| Z7 builder                   | Approved CI workload IdP              | TCP 443                    | G6              | Ephemeral workload identity with exact audience and short expiry           |
-| Z1 recovery path             | Z6 recovery service                   | Approved admin protocol    | Required        | Recovery role, MFA, reason, alert, evidence                                |
-| Z1 network recovery operator | Approved firewall/PEP management      | Approved admin protocol    | Incident/change | Independent MFA; exact device and rules, audit, expiry, tested rollback    |
-| Z2 control plane             | Internal DNS and time                 | UDP/TCP 53; approved NTP   | Required        | Named servers only; monitor failure and drift                              |
-| Z3/Z5/Z6/Z7/Z8 service hosts | Internal DNS and time                 | UDP/TCP 53; approved NTP   | When present    | Separate exact-source rules to named servers; monitor failure and drift    |
-| Z4 endpoint                  | Internal DNS and time                 | Existing approved services | G2/G3           | No new broad route created by RMM                                          |
-| Z1 admin path                | Z0 hypervisor management              | Existing approved path     | Existing        | Separate identity; never transits RMM service                              |
-| Z1 browser                   | Z8 session gateway                    | TCP 443                    | G7 conditional  | Single-use grant, timeout, recording/privacy policy                        |
-| Z1 recovery operator         | Z8 emergency termination API          | TCP 443                    | G7 conditional  | Dedicated MFA identity; terminate/revoke only, no session creation         |
-| Z2 control plane             | Z8 gateway control API                | TCP 443                    | G7 conditional  | Workload mTLS; signed one-session grant, revoke, and force termination     |
-| Z8 session gateway           | Z2 event ingress                      | TCP 443                    | G7 conditional  | Workload mTLS; bounded lifecycle events, no job or policy authority        |
-| Z8 session gateway           | Z8 credential broker                  | Authenticated IPC or mTLS  | G7 conditional  | One-session retrieval; credential never reaches browser or RMM database    |
-| Z8 credential broker         | Approved OS identity authority        | Approved identity protocol | G7 conditional  | JIT credential for one actor, endpoint, protocol, and expiry               |
-| Z8 session gateway           | Z5 telemetry sink                     | Approved TLS port          | G7 conditional  | Write-only security and availability telemetry                             |
-| Z4 exact endpoint            | Z8 session gateway                    | Outbound expiring tunnel   | G7 conditional  | Stateful return only; one protocol, port, grant, and expiry                |
-| Z9 quarantined asset         | Z5 evidence intake                    | Approved evidence protocol | Incident only   | Exact source, write-only bounded export, expiry, malware-safe handling     |
+| Source                                 | Destination                           | Service                     | Status          | Required control                                                           |
+| -------------------------------------- | ------------------------------------- | --------------------------- | --------------- | -------------------------------------------------------------------------- |
+| Z1 admin path                          | Z2 operator ingress                   | TCP 443                     | Required        | OIDC MFA, device/source policy, RBAC, audit                                |
+| Z1 admin path                          | Z2 control-plane host                 | TCP 22                      | Required        | Exact source; dedicated key-only identity, no password/root login, audit   |
+| Z1 browser                             | Approved human IdP                    | TCP 443                     | Required        | Authorization endpoint only; TLS and IdP policy                            |
+| Z2 control plane                       | Approved human IdP                    | TCP 443                     | Required        | Named OIDC discovery, token, key, revocation/logout endpoints              |
+| Z2 control plane                       | Approved endpoint issuer              | TCP 443                     | G2/G3           | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs |
+| Z1 recovery operator                   | Endpoint issuer emergency revocation  | TCP 443                     | Incident only   | Dedicated MFA identity; revoke exact scope only, no issuance or renewal    |
+| Z2 TLS service                         | Approved server PKI                   | TCP 443                     | Required        | Authenticated issuance, renewal, revocation/status endpoints only          |
+| Z4 unenrolled canary                   | Z2 enrollment ingress                 | TCP 443                     | G2/G3           | Server-authenticated TLS; single-use exact-scope grant, key proof, limits  |
+| Z4 enrolled endpoint                   | Z2 agent ingress                      | TCP 443                     | G2/G3           | Outbound mTLS, revocation, endpoint binding, rate and size limits          |
+| Z2 application                         | Z3 PostgreSQL                         | TCP 5432 or local socket    | Required        | Named workload role, TLS if networked, least SQL privilege                 |
+| Z2 services                            | Z5 telemetry sink                     | Approved TLS port           | Required        | Write-only service identity and bounded queue                              |
+| Z3 data services                       | Z5 telemetry sink                     | Approved TLS port           | When separated  | Write-only service identity; no RMM control authority                      |
+| Z5 telemetry service                   | Approved alert destination            | Approved TLS port           | Required        | Named destination, notification-only credential, bounded redacted payload  |
+| Z1 incident auditor                    | Z5 protected audit export             | TCP 443                     | Incident/audit  | Independent MFA; read/export exact case and time range, no alter/delete    |
+| Z3 database backup identity            | Z6 backup target                      | Approved backup protocol    | Required        | Separate credential, encryption, integrity, immutability/retention         |
+| Z2 backup exporter                     | Z6 backup target                      | Approved backup protocol    | Required        | Config/certificate-state scope; write-only identity, no delete authority   |
+| Z5 audit archive exporter              | Z6 backup target                      | Approved backup protocol    | Required        | Audit/checkpoint scope; write-only identity, immutable destination         |
+| Z6 source-record collector             | Approved source/deployment repository | TCP 443                     | Required        | Read-only exact commit, signed tag, and deployment-manifest scope          |
+| Artifact repository backup identity    | Z6 backup target                      | Approved backup protocol    | G6              | Metadata, SBOM, provenance, and public-key scope; no artifact publication  |
+| Z8 metadata exporter                   | Z6 backup target                      | Approved backup protocol    | G7 conditional  | Encrypted session/gateway metadata only; write-only identity, no delete    |
+| Approved secret-store recovery service | Dedicated secret recovery target      | Provider-approved mechanism | When present    | Separate authority, encryption, audit, retention, and restore test         |
+| Z6 recovery service                    | Isolated restore target               | Approved restore protocol   | Recovery only   | Exact authorization, no endpoint/operator ingress, reconcile before use    |
+| Z2 runtime                             | Artifact repository                   | TCP 443                     | G6              | Read-only, signed metadata, digest and expiry verification                 |
+| Z4 enrolled endpoint                   | Artifact repository                   | TCP 443                     | G6              | Read-only signed update for the endpoint's assigned rollout ring           |
+| Z7 publisher                           | Artifact repository                   | TCP 443                     | G6              | Separate publication identity; provenance and audit                        |
+| Z1 release recovery operator           | Artifact emergency metadata API       | TCP 443                     | G6 incident     | Independent MFA; freeze/revoke only, offline-root authorization, no upload |
+| Z2/Z3/Z5/Z6/Z8 host updaters           | Approved OS repositories              | TCP 443                     | Maintenance     | Separate exact-source rules; named repositories, signatures, change window |
+| Z7 builder                             | Approved source/dependency registries | TCP 443                     | G6              | Read-only locked inputs, digest/provenance checks, no runtime secrets      |
+| Z7 builder                             | Approved CI workload IdP              | TCP 443                     | G6              | Ephemeral workload identity with exact audience and short expiry           |
+| Z1 recovery path                       | Z6 recovery service                   | Approved admin protocol     | Required        | Recovery role, MFA, reason, alert, evidence                                |
+| Z1 network recovery operator           | Approved firewall/PEP management      | Approved admin protocol     | Incident/change | Independent MFA; exact device and rules, audit, expiry, tested rollback    |
+| Z2 control plane                       | Internal DNS and time                 | UDP/TCP 53; approved NTP    | Required        | Named servers only; monitor failure and drift                              |
+| Z3/Z5/Z6/Z7/Z8 service hosts           | Internal DNS and time                 | UDP/TCP 53; approved NTP    | When present    | Separate exact-source rules to named servers; monitor failure and drift    |
+| Z4 endpoint                            | Internal DNS and time                 | Existing approved services  | G2/G3           | No new broad route created by RMM                                          |
+| Z1 admin path                          | Z0 hypervisor management              | Existing approved path      | Existing        | Separate identity; never transits RMM service                              |
+| Z1 browser                             | Z8 session gateway                    | TCP 443                     | G7 conditional  | Single-use grant, timeout, recording/privacy policy                        |
+| Z1 recovery operator                   | Z8 emergency termination API          | TCP 443                     | G7 conditional  | Dedicated MFA identity; terminate/revoke only, no session creation         |
+| Z2 control plane                       | Z8 gateway control API                | TCP 443                     | G7 conditional  | Workload mTLS; signed one-session grant, revoke, and force termination     |
+| Z8 session gateway                     | Z2 event ingress                      | TCP 443                     | G7 conditional  | Workload mTLS; bounded lifecycle events, no job or policy authority        |
+| Z8 session gateway                     | Z8 credential broker                  | Authenticated IPC or mTLS   | G7 conditional  | One-session retrieval; credential never reaches browser or RMM database    |
+| Z8 credential broker                   | Approved OS identity authority        | Approved identity protocol  | G7 conditional  | JIT credential for one actor, endpoint, protocol, and expiry               |
+| Z8 session gateway                     | Z5 telemetry sink                     | Approved TLS port           | G7 conditional  | Write-only security and availability telemetry                             |
+| Z4 exact endpoint                      | Z8 session gateway                    | Outbound expiring tunnel    | G7 conditional  | Stateful return only; one protocol, port, grant, and expiry                |
+| Z9 quarantined asset                   | Z5 evidence intake                    | Approved evidence protocol  | Incident only   | Exact source, write-only bounded export, expiry, malware-safe handling     |
 
 Every Z1 incident/recovery route uses an identity and credential stored outside
 the ordinary RMM control plane and, when the primary IdP is in scope for the
 incident, an independently authenticated recovery method. These identities are
 disabled or access-restricted when not in use, cannot perform ordinary RMM work,
 and require reason, alerting, short expiry, and retrospective review.
+
+### Backup coverage
+
+The backup specification is satisfied through bounded, artifact-specific
+mechanisms rather than one broadly privileged application backup account.
+
+| Required recovery material                                                                              | Authoritative source and bounded mechanism                                                                                                                                      | Protected destination            | Activation                        |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------------------- |
+| PostgreSQL data, schema, endpoint identity/revocation state, authorization policy, and phase-gate state | Z3 database backup identity performs a database-consistent export                                                                                                               | Z6 backup target                 | Required                          |
+| Audit events and integrity checkpoints                                                                  | Z5 protected audit archive exports append-only records and checkpoints                                                                                                          | Z6 immutable backup set          | Required before G2                |
+| Configuration and certificate state, excluding plaintext secrets                                        | Z2 backup exporter writes an encrypted, schema-versioned bundle                                                                                                                 | Z6 backup target                 | Required                          |
+| Source commit and deployment manifests                                                                  | Z6 collector reads only the exact commit/tag and deployment records named by the recovery set                                                                                   | Z6 signed recovery catalog       | Required                          |
+| Update metadata, SBOMs, provenance, and public verification keys                                        | Artifact-repository backup identity exports only release metadata and trust material; it cannot publish or revoke                                                               | Z6 immutable backup set          | G6                                |
+| Gateway and session metadata                                                                            | Z8 exporter encrypts the bounded metadata set before write-only transfer                                                                                                        | Z6 backup target                 | G7                                |
+| Secret-store state                                                                                      | The approved secret provider's recovery service uses its own separate backup authority and destination; no RMM runtime, Z2 exporter, or Z6 collector receives plaintext secrets | Dedicated secret recovery target | When a secret store is introduced |
+
+Each recovery set records source identity, content manifest, schema/version,
+encryption key reference, digest or signature, retention class, and restore-test
+result. A gate cannot open until every recovery mechanism activated by that gate
+has a successful negative authorization test and an isolated restore test. The
+online RMM runtime cannot alter retention or delete all copies.
 
 ### Explicit deny tests
 

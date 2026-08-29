@@ -18,6 +18,10 @@ reconnection.
 - source commit and deployment manifests;
 - secret-store backup through its own approved mechanism.
 
+The authoritative source, bounded identity, destination, activation gate, and
+network path for each item are defined in
+[`INFRASTRUCTURE_AND_MICROSEGMENTATION.md`](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#backup-coverage).
+
 ## Separation
 
 Backups use a separate identity and destination, encryption, integrity

@@ -35,11 +35,12 @@
 8. Verify invariants before reconnecting endpoints or resuming dispatch.
 9. Document timeline, decisions, uncertainty, impact, notification, and follow-up.
 
-Direct endpoint/server PKI recovery, G6 release freeze/revocation, and independent
-Z8 emergency termination record signed intent, component response, and
-independently observed result in protected Z5 evidence or, when Z5 is unavailable,
-the append-only Z6 emergency evidence intake. Failure of both paths is incomplete
-containment and must not be reported as a fully evidenced recovery.
+Direct operator-session/endpoint/server PKI recovery, G6 release
+freeze/revocation, and independent Z8 emergency termination record signed intent,
+component response, and independently observed result in protected Z5 evidence
+or, when Z5 is unavailable, the append-only Z6 emergency evidence intake. Failure
+of both paths is incomplete containment and must not be reported as a fully
+evidenced recovery.
 
 ## Mandatory emergency capabilities before operational gates
 

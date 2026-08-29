@@ -156,6 +156,7 @@ flowchart LR
   Admin[Z1 Administrative access] -->|HTTPS 443, OIDC| Service[Z2 RMM service]
   Admin -->|Key-only SSH, exact source| Service
   Admin -->|HTTPS 443, authorization| IdP[Approved human IdP]
+  Admin -. Incident exact operator-session revoke .-> IdP
   Service -->|HTTPS 443, named OIDC endpoints| IdP
   Service -->|HTTPS 443, server certificate lifecycle| ServerPKI[Approved server PKI]
   Admin -. Incident exact-certificate revoke/rollover .-> ServerPKI
@@ -213,11 +214,12 @@ named gate and design evidence exist.
 | Z1 admin path                            | Z2 control-plane host                              | TCP 22                      | Required            | Exact source; dedicated key-only identity, no password/root login, audit                                   |
 | Z1 browser                               | Approved human IdP                                 | TCP 443                     | Required            | Authorization endpoint only; TLS and IdP policy                                                            |
 | Z2 control plane                         | Approved human IdP                                 | TCP 443                     | Required            | Named OIDC discovery, token, key, revocation/logout endpoints                                              |
+| Z1 identity recovery operator            | Approved human IdP emergency revocation            | TCP 443                     | Incident only       | Independent MFA; revoke exact user/session/client scope only, no token/user/role/policy authority          |
 | Z2 control plane                         | Approved endpoint issuer                           | TCP 443                     | G2/G3               | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs                                 |
 | Z1 recovery operator                     | Endpoint issuer emergency revocation               | TCP 443                     | Incident only       | Dedicated MFA identity; revoke exact scope only, no issuance or renewal                                    |
 | Z2 TLS service                           | Approved server PKI                                | TCP 443                     | Required            | Authenticated issuance, renewal, revocation/status endpoints only                                          |
 | Z1 PKI recovery operator                 | Approved server PKI                                | TCP 443                     | Incident only       | Independent MFA; revoke/roll over exact Z2 certificate only, no other issuance                             |
-| Z1 security recovery operators           | Z5 protected recovery-audit intake                 | TCP 443                     | Incident only       | Signed append-only intent/result for exact certificate/session/tunnel/grant/release scope and outcome      |
+| Z1 security recovery operators           | Z5 protected recovery-audit intake                 | TCP 443                     | Incident only       | Signed intent/result for exact human/certificate/session/tunnel/grant/release scope and outcome            |
 | Z1 security recovery operators           | Z6 immutable emergency-evidence intake             | Approved evidence protocol  | Z5-unavailable only | Signed append-only fallback bundle; no restore/delete authority; reconcile to Z5 after recovery            |
 | Z1 managed TLS client                    | Approved server-PKI status service                 | TCP 443                     | Required            | Signed OCSP/CRL status only; independent of Z2; missing/stale/unknown/revoked fails closed                 |
 | Z4 endpoint TLS client                   | Approved server-PKI status service                 | TCP 443                     | G2/G3               | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                       |
@@ -287,6 +289,12 @@ correlation ID. The PKI returns a signed result receipt containing the request
 digest, authority/key identifier, revocation-status version or replacement public
 certificate identifier, outcome, and time. Neither record contains private keys,
 authentication tokens, or recovery factors.
+
+Before emergency human-session revocation, the Z1 identity-recovery client signs
+and appends intent containing incident, actor, IdP/tenant, exact user/session/client
+scope, reason, time, and correlation ID. The IdP returns a signed result receipt
+bound to the request digest and current revocation/session-state version. No access,
+refresh, identity, or recovery token is included in evidence.
 
 Before independent Z8 emergency termination, the Z1 recovery client signs and
 appends an intent containing the incident, actor, exact session/tunnel/grant or
@@ -437,6 +445,8 @@ Provisioning is unacceptable unless testing proves that:
 - the Z1 recovery identity cannot issue or renew endpoint certificates;
 - the Z1 PKI recovery identity cannot issue an endpoint, intermediate, or
   unrelated server certificate or change PKI policy;
+- the Z1 identity-recovery operator cannot issue a token, create/alter a user,
+  role, client, or IdP policy, or revoke outside the exact incident scope;
 - the security-recovery evidence identity cannot read/alter protected records, access
   general backup/restore functions, or omit both Z5 and Z6 acknowledgement while
   claiming the containment action complete;
@@ -618,6 +628,9 @@ The deployment change packet must contain:
 - emergency endpoint/server PKI tests proving signed intent/result receipts reach
   Z5, then proving Z6 immutable fallback and later Z5 reconciliation when Z5 is
   unavailable;
+- an operator-session incident test with Z2 unavailable/suspected, proving exact
+  revocation at the IdP, a signed IdP result, rejected session state, and Z5/Z6
+  emergency evidence;
 - a G6 emergency freeze/revocation test with the artifact service suspected,
   proving Z1 signed intent, claimed result, and independently observed outcome
   reach Z5 and use Z6 fallback when Z5 is unavailable;

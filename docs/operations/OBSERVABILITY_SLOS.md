@@ -34,6 +34,9 @@ attributes.
 
 Security-relevant records defined in the threat and authorization models. Audit
 has independent access, retention, and integrity controls.
+Before privileged operator use, protected evidence records the signed IdP
+issuer/tenant/subject/session/client binding, RMM session correlation, and a
+non-secret opaque IdP revocation handle for case-scoped recovery lookup.
 Every protected-audit query or export appends immutable correlated intent and
 result events; inability to record them fails the access/export closed.
 

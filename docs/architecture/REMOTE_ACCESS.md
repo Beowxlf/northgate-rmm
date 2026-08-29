@@ -34,13 +34,13 @@ sequenceDiagram
   participant P as OS-native protocol
   O->>C: Request session to exact endpoint
   C->>C: Authenticate, authorize, approve, audit
-  C->>G: Create expiring one-target session grant
+  C->>G: Grant binds exact IdP tuple, actor, target, protocol, expiry
   C->>A: Request expiring reverse tunnel
   A->>A: Validate grant, target, protocol, policy
   A->>G: Establish outbound encrypted tunnel
   O->>G: Redeem single-use browser session
   G->>B: Request exact-session JIT credential
-  B->>I: Signed grant for exact actor/endpoint/protocol
+  B->>I: Signed grant for exact IdP tuple/actor/endpoint/protocol
   I->>E: Append signed issuance receipt and opaque handle
   alt Authority receipt confirmed
     E-->>I: Immutable append receipt
@@ -85,6 +85,7 @@ sequenceDiagram
 Every session grant binds:
 
 - operator and approver identities;
+- operator IdP issuer/tenant and exact subject, session, and client identifiers;
 - endpoint cryptographic ID;
 - protocol and local destination;
 - allowed capabilities;
@@ -97,10 +98,12 @@ Every session grant binds:
 
 Authorization is rechecked at request, approval, tunnel establishment, browser
 redemption, and reconnect. An open UI page is not authorization to reconnect.
-Z8 also revalidates the exact operator subject, IdP session, and client directly
-with the IdP at least every 60 seconds during an active session. Revoked, unknown,
-unavailable, or stale status closes the browser stream and endpoint tunnel and
-starts exact JIT-credential revocation without waiting for Z2.
+Z2 cannot issue the grant until protected Z5 evidence acknowledges the signed IdP
+tuple, RMM session correlation, and non-secret opaque revocation handle. Z8
+revalidates the exact tuple carried by the grant directly with the IdP at least
+every 60 seconds during an active session. Revoked, unknown, unavailable, or
+stale status closes the browser stream and endpoint tunnel and starts exact
+JIT-credential revocation without waiting for Z2.
 
 ## Default-denied capabilities
 
@@ -148,7 +151,8 @@ manager integration, and user consent require explicit qualification.
 
 Always record metadata: requester, approver, endpoint, protocol, source zone,
 start/end, termination reason, policy, gateway/tunnel IDs, capability flags,
-credential issuer, and an opaque non-secret credential/revocation identifier.
+credential issuer, the signed IdP issuer/tenant/subject/session/client binding,
+and opaque non-secret IdP and JIT credential revocation identifiers.
 The OS identity authority validates the signed session grant and appends its own
 signed issuance receipt and identifier directly to protected Z5 evidence before
 returning credential material or the handle to Z8. The broker then appends a

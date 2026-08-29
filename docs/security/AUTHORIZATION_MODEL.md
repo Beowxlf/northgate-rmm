@@ -61,7 +61,8 @@ redemption, reconnect, update selection, and audit export.
 
 Z2 revalidates the current IdP subject, session, and client on every privileged
 request with no more than a 60-second positive cache. During G7, Z8 performs the
-same check directly with the IdP at least every 60 seconds. Revoked, unknown,
+same check directly with the IdP at least every 60 seconds using the exact signed
+issuer/tenant/subject/session/client tuple carried by the grant. Revoked, unknown,
 unavailable, or stale status terminates browser/API authority, the remote stream
 and tunnel, and the associated JIT credential without waiting for Z2.
 

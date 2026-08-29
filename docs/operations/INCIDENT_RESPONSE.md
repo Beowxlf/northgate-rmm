@@ -30,7 +30,9 @@
    release keys, or service credentials.
    When Z2 is suspected, pair direct IdP revocation with independent
    policy-enforcement-point isolation and direct Z8 session-status enforcement;
-   do not wait for Z2 to acknowledge or propagate containment.
+   retrieve the case-scoped opaque IdP revocation handle from protected Z5 when
+   exact IdP identifiers are not already known, and do not wait for Z2 to
+   acknowledge or propagate containment.
 5. Stop dispatch/update/session capability at the narrowest safe boundary; use the
    global emergency stop when scope is unknown.
 6. Identify endpoints, actions, sessions, versions, and data affected.

@@ -127,8 +127,10 @@ tests, audits, risks, and exceptions.
   lifetime, concurrency, and reconnect behavior.
 - **SR-REMOTE-004:** Clipboard, file transfer, drive/device redirection, session
   sharing, and recording MUST be separately governed and disabled by default.
-- **SR-REMOTE-005:** Active sessions MUST terminate on session, operator, endpoint,
-  or policy revocation and at idle/absolute timeout.
+- **SR-REMOTE-005:** Active session grants MUST bind the exact signed IdP
+  issuer/tenant/subject/session/client tuple, protected evidence MUST preserve an
+  opaque independent revocation handle, and sessions MUST terminate on session,
+  operator, endpoint, or policy revocation and at idle/absolute timeout.
 - **SR-REMOTE-006:** Windows RDP, Linux SSH, and each Linux desktop backend MUST be
   independently qualified and patched.
 - **SR-REMOTE-007:** Session metadata MUST be audited; content recording MUST have

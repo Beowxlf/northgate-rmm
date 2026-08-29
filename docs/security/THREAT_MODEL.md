@@ -98,6 +98,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-33 | Revoked operator session remains accepted by Z2/Z8    | direct IdP status, 60-second bound, stream/tunnel/JIT teardown, independent PEP isolation         | deny work, terminate access, isolate suspected Z2, preserve evidence     |
 | TM-34 | Gateway revokes another session's JIT credential      | exact session/grant/opaque-handle binding at gateway, broker, and authority                       | deny request, alert on binding mismatch, terminate suspect gateway       |
 | TM-35 | Staged update installs after release freeze/revoke    | fresh signed release status, monotonic sequence, 60-second expiry, fail-closed install            | reject replacement, preserve package/status evidence, freeze rollout     |
+| TM-36 | Same operator's valid login masks revoked RMM session | exact IdP tuple in grant, protected opaque handle, direct Z8 status, case-scoped recovery lookup  | revoke exact handle, isolate Z2, terminate Z8 session, preserve evidence |
 
 ## Denial-of-service considerations
 

@@ -22,7 +22,7 @@
     "shaPinningRequired": true
   },
   "security": {
-    "privateVulnerabilityReporting": true,
+    "privateVulnerabilityReporting": "not-applicable-while-private",
     "dependabotAlerts": true,
     "dependabotSecurityUpdates": true,
     "secretScanning": "required-if-plan-available",

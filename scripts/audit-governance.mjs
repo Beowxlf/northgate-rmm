@@ -54,8 +54,14 @@ if (githubBaseline.actions.defaultWorkflowPermissions !== "read")
   error("GitHub Actions default permissions must be read-only.");
 if (githubBaseline.actions.canApprovePullRequestReviews !== false)
   error("GitHub Actions must not approve pull requests.");
-if (!githubBaseline.security.privateVulnerabilityReporting)
-  error("Private vulnerability reporting must be required.");
+if (
+  githubBaseline.security.privateVulnerabilityReporting !==
+  "not-applicable-while-private"
+) {
+  error(
+    "Private vulnerability reporting must be marked not applicable while the repository is private.",
+  );
+}
 if (
   !githubBaseline.security.dependabotAlerts ||
   !githubBaseline.security.dependabotSecurityUpdates

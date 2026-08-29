@@ -47,7 +47,8 @@ The bootstrap exception ends when protection is verified.
 
 ## Security features
 
-- private vulnerability reporting enabled;
+- private vulnerability reporting is not applicable while the repository is
+  private; it must be enabled before any later public release;
 - Dependabot alerts and security updates enabled;
 - dependency graph enabled if required by Dependabot;
 - secret scanning and push protection enabled if available on the account plan;
@@ -65,7 +66,8 @@ After authentication and push, capture sanitized API results for:
 
 1. repository visibility and merge settings;
 2. Actions policy and default workflow permission;
-3. vulnerability reporting and Dependabot configuration;
+3. repository visibility, vulnerability-reporting applicability, and Dependabot
+   configuration;
 4. branch protection or ruleset state;
 5. workflow run conclusions for the exact baseline commit;
 6. remote commit SHA matching the audited local commit.

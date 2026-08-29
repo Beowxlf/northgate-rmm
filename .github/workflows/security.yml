@@ -71,12 +71,12 @@ jobs:
           mkdir "$RUNNER_TEMP/lychee"
           tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee"
       - name: Scan for secrets with Gitleaks
-        run: "$RUNNER_TEMP/gitleaks/gitleaks dir . --redact --no-banner --verbose --config .gitleaks.toml"
+        run: '"$RUNNER_TEMP/gitleaks/gitleaks" dir . --redact --no-banner --verbose --config .gitleaks.toml'
       - name: Validate workflows with actionlint
-        run: "$RUNNER_TEMP/actionlint/actionlint -color"
+        run: '"$RUNNER_TEMP/actionlint/actionlint" -color'
       - name: Validate documentation links with Lychee
         run: >-
-          $RUNNER_TEMP/lychee/lychee
+          "$RUNNER_TEMP/lychee/lychee"
           --no-progress
           --exclude-path node_modules
           --exclude 'github.com/Beowxlf/northgate-rmm/security/advisories/new'

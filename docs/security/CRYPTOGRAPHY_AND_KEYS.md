@@ -44,6 +44,8 @@ certificate. When Z2 is suspected, recovery first disables or rotates that clien
 identity and proves it cannot obtain a replacement certificate, then revokes or
 rolls the served certificate. New issuance authority is provisioned only to a
 rebuilt and verified Z2 through the approved secret path.
+Protected evidence records the client-change intent, old/new public identifiers,
+signed PKI result, and verified denial-test outcome without client secrets.
 Long-lived Z1, Z4, and Z8 TLS channels close and fully re-handshake with fresh
 status at least every five minutes; resumption and 0-RTT cannot bypass the check.
 

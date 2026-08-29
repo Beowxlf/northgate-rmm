@@ -322,6 +322,16 @@ Replacement issuance authority is delivered to a rebuilt/verified Z2 through the
 approved secret-provisioning path under a separate recovery decision. The served
 TLS certificate and the PKI client credential are different identities.
 
+Before changing the PKI client, Z1 appends signed intent identifying the incident,
+actor, authority, exact old client identifier/fingerprint, disable-or-rotate
+action, reason, time, and correlation ID. The PKI returns a signed result bound to
+the request digest containing the old client's disabled/revoked state and version,
+the new public identifier when rotation occurs, and the outcome/digest of a
+verified denied issuance attempt by the old client. Z1 appends that result through
+the same protected Z5 or immutable Z6 recovery-evidence path before recording the
+containment step complete. The bundle contains no client secret or recovery
+factor.
+
 Before privileged use, Z2 registers the IdP issuer/tenant and exact signed
 subject/session/client tuple in Z5, together with the RMM session correlation and
 a non-secret opaque revocation handle accepted by the IdP. Z5 must acknowledge
@@ -590,7 +600,9 @@ Provisioning is unacceptable unless testing proves that:
   unrelated server certificate, alter another workload's PKI client identity, or
   change PKI policy;
 - after the Z1 recovery operator disables the exact Z2 PKI issuance-client
-  identity, that old identity cannot issue or renew any server certificate;
+  identity, that old identity cannot issue or renew any server certificate, and
+  containment cannot be recorded complete without protected signed intent,
+  old/new public identifiers, PKI result, and verified denial evidence;
 - the Z1 identity-recovery operator cannot issue a token, create/alter a user,
   role, client, or IdP policy, enumerate IdP sessions, or revoke outside the exact
   incident handle/session scope;
@@ -798,6 +810,8 @@ The deployment change packet must contain:
   unavailable; the server test first disables the old Z2 issuance-client identity,
   proves it cannot obtain a replacement certificate, and only then revokes/rolls
   the served certificate and provisions a new client identity to verified Z2;
+  the Z5/Z6 bundle must contain the client-change intent, old/new public
+  identifiers, signed PKI result, and denial-test digest/outcome without secrets;
 - an operator-session incident test proving exact revocation at the IdP and
   rejection by Z2 and Z8 within 60 seconds, followed by a Z2-suspected test that
   begins with only the case and RMM session, retrieves the bounded opaque IdP

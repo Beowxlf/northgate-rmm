@@ -50,7 +50,10 @@ evidenced recovery.
 When the Z2 TLS service is suspected, first disable or rotate its exact PKI
 issuance-client identity and verify the old client cannot obtain a replacement.
 Only then revoke/roll the served certificate; restore issuance authority solely
-to a rebuilt and verified Z2 through the approved secret-provisioning path.
+to a rebuilt and verified Z2 through the approved secret-provisioning path. The
+protected recovery bundle records signed intent, old/new public client
+identifiers, the PKI result, and the verified denial-test digest/outcome without
+client secrets.
 
 ## Mandatory emergency capabilities before operational gates
 

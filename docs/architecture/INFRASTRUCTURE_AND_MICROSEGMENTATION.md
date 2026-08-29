@@ -166,6 +166,7 @@ flowchart LR
   Service -->|Digest-pinned read| Artifacts
   Endpoints -. G6 signed update read .-> Artifacts
   Service -. G7 grants and termination .-> Session[Z8 Remote assistance]
+  Admin -. G7 emergency terminate only .-> Session
   Session -. G7 lifecycle events .-> Service
   Session -. G7 logs and metrics .-> Observe
   Endpoints -. G7 outbound expiring tunnel .-> Session
@@ -209,12 +210,14 @@ named gate and design evidence exist.
 | Z4 endpoint                  | Internal DNS and time                 | Existing approved services | G2/G3          | No new broad route created by RMM                                          |
 | Z1 admin path                | Z0 hypervisor management              | Existing approved path     | Existing       | Separate identity; never transits RMM service                              |
 | Z1 browser                   | Z8 session gateway                    | TCP 443                    | G7 conditional | Single-use grant, timeout, recording/privacy policy                        |
+| Z1 recovery operator         | Z8 emergency termination API          | TCP 443                    | G7 conditional | Dedicated MFA identity; terminate/revoke only, no session creation         |
 | Z2 control plane             | Z8 gateway control API                | TCP 443                    | G7 conditional | Workload mTLS; signed one-session grant, revoke, and force termination     |
 | Z8 session gateway           | Z2 event ingress                      | TCP 443                    | G7 conditional | Workload mTLS; bounded lifecycle events, no job or policy authority        |
 | Z8 session gateway           | Z8 credential broker                  | Authenticated IPC or mTLS  | G7 conditional | One-session retrieval; credential never reaches browser or RMM database    |
 | Z8 credential broker         | Approved OS identity authority        | Approved identity protocol | G7 conditional | JIT credential for one actor, endpoint, protocol, and expiry               |
 | Z8 session gateway           | Z5 telemetry sink                     | Approved TLS port          | G7 conditional | Write-only security and availability telemetry                             |
 | Z4 exact endpoint            | Z8 session gateway                    | Outbound expiring tunnel   | G7 conditional | Stateful return only; one protocol, port, grant, and expiry                |
+| Z9 quarantined asset         | Z5 evidence intake                    | Approved evidence protocol | Incident only  | Exact source, write-only bounded export, expiry, malware-safe handling     |
 
 ### Explicit deny tests
 
@@ -225,6 +228,7 @@ Provisioning is unacceptable unless testing proves that:
   grant and proof of possession for its newly generated key;
 - Z1 cannot connect directly to Z3 or use the agent ingress path;
 - Z2 cannot administer the hypervisor or publish/sign releases;
+- the Z1 recovery identity cannot create, extend, view, or join a Z8 session;
 - Z5 cannot issue RMM jobs or alter RMM policy;
 - Z6 cannot become a general application or endpoint share;
 - one Z4 endpoint cannot reach another through RMM-created network paths;

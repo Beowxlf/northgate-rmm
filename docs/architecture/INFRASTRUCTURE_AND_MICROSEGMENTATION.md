@@ -184,6 +184,7 @@ flowchart LR
   Artifacts -->|G6 append-only publication/revocation events| Observe
   Build -. Z5-unavailable G6 immutable audit fallback .-> Recovery
   Artifacts -. Z5-unavailable G6 immutable audit fallback .-> Recovery
+  Recovery -. G6 signed audit reconciliation after Z5 recovery .-> Observe
   Service -->|Digest-pinned read| Artifacts
   Endpoints -. G6 endpoint/key/artifact-bound authorized read .-> Artifacts
   Admin -. G6 incident freeze and revoke .-> Artifacts
@@ -252,6 +253,7 @@ named gate and design evidence exist.
 | Artifact repository audit emitter        | Z5 protected release-audit intake                  | Approved TLS port           | G6                  | Append-only publish/freeze/revoke events; signed sequence/correlation, no read/delete authority                                      |
 | Z7 release services                      | Z6 immutable release-audit fallback                | Approved evidence protocol  | G6, Z5 unavailable  | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                             |
 | Artifact repository audit emitter        | Z6 immutable release-audit fallback                | Approved evidence protocol  | G6, Z5 unavailable  | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                             |
+| Z6 immutable release-audit reconciler    | Z5 protected release-audit intake                  | Approved TLS port           | Recovery            | Write-only exact accepted event plus original Z6 acknowledgement; no release, read, alter, or delete authority                       |
 | Z1 release recovery operator             | Artifact emergency metadata API                    | TCP 443                     | G6 incident         | Independent MFA; freeze/revoke only, offline-root authorization, no upload                                                           |
 | Z2/Z3/Z5/Z6/Z8 host updaters             | Approved OS repositories                           | TCP 443                     | Maintenance         | Separate exact-source rules; named repositories, signatures, change window                                                           |
 | Z7 builder                               | Approved source/dependency registries              | TCP 443                     | G6                  | Read-only locked inputs, digest/provenance checks, no runtime secrets                                                                |

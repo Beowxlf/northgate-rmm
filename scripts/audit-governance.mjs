@@ -36,9 +36,46 @@ function warning(message) {
 
 const gates = JSON.parse(read("governance/gates.json"));
 const controls = JSON.parse(read("governance/controls.json"));
+const githubBaseline = JSON.parse(read("governance/github-baseline.json"));
 
 if (gates.schemaVersion !== 1) error("Unsupported gates schema version.");
 if (controls.schemaVersion !== 1) error("Unsupported controls schema version.");
+if (githubBaseline.schemaVersion !== 1)
+  error("Unsupported GitHub baseline schema version.");
+if (
+  githubBaseline.owner !== "Beowxlf" ||
+  githubBaseline.repository !== "northgate-rmm"
+) {
+  error("GitHub baseline targets an unexpected repository.");
+}
+if (githubBaseline.visibility !== "private")
+  error("Pre-license GitHub repository must be private.");
+if (githubBaseline.actions.defaultWorkflowPermissions !== "read")
+  error("GitHub Actions default permissions must be read-only.");
+if (githubBaseline.actions.canApprovePullRequestReviews !== false)
+  error("GitHub Actions must not approve pull requests.");
+if (!githubBaseline.security.privateVulnerabilityReporting)
+  error("Private vulnerability reporting must be required.");
+if (
+  !githubBaseline.security.dependabotAlerts ||
+  !githubBaseline.security.dependabotSecurityUpdates
+) {
+  error("Dependabot alerts and security updates must be required.");
+}
+const expectedChecks = new Set([
+  "Pre-code governance audit",
+  "Free-software security checks",
+]);
+for (const check of expectedChecks) {
+  if (!githubBaseline.mainProtection.requiredStatusChecks.includes(check))
+    error(`GitHub baseline lacks required status check: ${check}`);
+}
+if (
+  githubBaseline.mainProtection.allowForcePushes ||
+  githubBaseline.mainProtection.allowDeletions
+) {
+  error("GitHub baseline permits force pushes or deletions on main.");
+}
 
 const gateIds = gates.gates.map((gate) => gate.id);
 if (new Set(gateIds).size !== gateIds.length) error("Duplicate gate ID.");

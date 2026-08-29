@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "owner": "Beowxlf",
+  "repository": "northgate-rmm",
+  "visibility": "private",
+  "repositorySettings": {
+    "hasIssues": true,
+    "hasProjects": false,
+    "hasWiki": false,
+    "allowMergeCommit": false,
+    "allowSquashMerge": true,
+    "allowRebaseMerge": false,
+    "deleteBranchOnMerge": true,
+    "allowAutoMerge": false,
+    "webCommitSignoffRequired": true
+  },
+  "actions": {
+    "enabled": true,
+    "allowedActions": "selected",
+    "defaultWorkflowPermissions": "read",
+    "canApprovePullRequestReviews": false,
+    "shaPinningRequired": true
+  },
+  "security": {
+    "privateVulnerabilityReporting": true,
+    "dependabotAlerts": true,
+    "dependabotSecurityUpdates": true,
+    "secretScanning": "required-if-plan-available",
+    "pushProtection": "required-if-plan-available",
+    "codeql": "replaced-by-free-checks-while-private"
+  },
+  "mainProtection": {
+    "required": true,
+    "requirePullRequest": true,
+    "requiredApprovingReviewCount": 1,
+    "requireCodeOwnerReview": true,
+    "dismissStaleReviews": true,
+    "requireConversationResolution": true,
+    "requireLinearHistory": true,
+    "enforceAdmins": true,
+    "allowForcePushes": false,
+    "allowDeletions": false,
+    "requiredStatusChecks": [
+      "Pre-code governance audit",
+      "Free-software security checks"
+    ]
+  }
+}

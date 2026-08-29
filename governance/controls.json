@@ -16,6 +16,8 @@
       "requirements": ["SR-GOV-003", "SR-GOV-004", "SR-GOV-005", "SR-UPD-005"],
       "evidence": [
         "docs/governance/REQUIRED_CHECKS.md",
+        "docs/governance/GITHUB_REPOSITORY_BASELINE.md",
+        "governance/github-baseline.json",
         ".github/workflows/governance.yml",
         ".github/workflows/security.yml"
       ]

@@ -34,6 +34,8 @@ attributes.
 
 Security-relevant records defined in the threat and authorization models. Audit
 has independent access, retention, and integrity controls.
+Every protected-audit query or export appends immutable correlated intent and
+result events; inability to record them fails the access/export closed.
 
 ## Initial service-level indicators
 

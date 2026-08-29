@@ -211,7 +211,7 @@ named gate and design evidence exist.
 | Z2 audit writer                        | Z5 protected audit archive               | Approved TLS port           | Required before G2 | Workload mTLS; append-only integrity-chained records/checkpoints, no read/delete/control authority  |
 | Z3 data services                       | Z5 telemetry sink                        | Approved TLS port           | When separated     | Write-only service identity; no RMM control authority                                               |
 | Z5 telemetry service                   | Approved alert destination               | Approved TLS port           | Required           | Named destination, notification-only credential, bounded redacted payload                           |
-| Z1 incident auditor                    | Z5 protected audit export                | TCP 443                     | Incident/audit     | Independent MFA; read/export exact case and time range, no alter/delete                             |
+| Z1 incident auditor                    | Z5 protected audit export                | TCP 443                     | Incident/audit     | Independent MFA; exact case/time scope; immutable access/export event; no alter/delete              |
 | Z3 database backup identity            | Z6 backup target                         | Approved backup protocol    | Required           | Separate credential, encryption, integrity, immutability/retention                                  |
 | Z2 backup exporter                     | Z6 backup target                         | Approved backup protocol    | Required           | Config/certificate-state scope; write-only identity, no delete authority                            |
 | Z5 audit archive exporter              | Z6 backup target                         | Approved backup protocol    | Required           | Audit/checkpoint scope; write-only identity, immutable destination                                  |
@@ -333,6 +333,9 @@ Provisioning is unacceptable unless testing proves that:
 - the Z1 session-recovery identity cannot issue, extend, inspect, or change the
   scope of a JIT credential or alter OS identity policy;
 - the incident auditor cannot alter/delete evidence or exercise RMM authority;
+- a protected-evidence read/export cannot proceed if Z5 cannot append immutable
+  intent and result events containing actor, case, time/query scope, count,
+  result digest, destination class, correlation ID, and outcome without payload;
 - the Z2 audit writer cannot read, alter, or delete the Z5 protected archive or
   submit a record without its assigned identity, sequence, and integrity proof;
 - the release-recovery identity cannot upload an artifact or resume a frozen
@@ -484,6 +487,8 @@ The deployment change packet must contain:
 - guest listener and host-firewall inventory;
 - TLS/mTLS identity, expiry, and revocation test results without private keys;
 - database-role and unauthorized-access tests;
+- protected-audit access/export tests proving denied and successful attempts
+  produce immutable correlated intent/result events without evidence payloads;
 - agent no-listener and cross-endpoint isolation evidence;
 - backup/restore and revocation-invariant results;
 - capacity baseline and alert tests;

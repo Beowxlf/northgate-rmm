@@ -23,8 +23,11 @@ replace a privileged fleet component.
 4. Produce platform-specific signed packages.
 5. Authorize artifacts through separated update metadata/signing roles.
 6. Verify signatures, provenance, version, platform, and policy before publishing.
-7. Require an independent protected audit acknowledgement before every signing,
-   publication, freeze, revocation, or rollout-state transition.
+7. Require an independent protected audit acknowledgement before every
+   authority-increasing signing, publication, rollout-start/advance, or resumption
+   transition. Never block an emergency freeze, revocation, or pause because both
+   audit sinks are unavailable; retain signed recovery-client evidence, raise
+   incident severity, and reconcile it after recovery.
 8. Roll out to development, test, canary, then approved broader rings.
 9. Pause automatically on defined health or security failures.
 10. Preserve a separately signature/digest-verified signed package, its metadata,

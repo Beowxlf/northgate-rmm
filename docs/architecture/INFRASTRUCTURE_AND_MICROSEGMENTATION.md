@@ -453,19 +453,28 @@ plane.
 
 ### Release-transition audit acknowledgement
 
-Every G6 signing, publication, freeze, revocation, and rollout-state transition
-must receive an append acknowledgement from the independently controlled Z5
-protected release-audit intake before it completes. If Z5 is unavailable, the
-release service or repository sends the same signed, sequence- and
-correlation-bound event through its write-only identity to the immutable Z6
-release-audit fallback and requires that independent acknowledgement instead.
+Every G6 authority-increasing transition—signing, publication, rollout start or
+advance, and resumption—must receive an append acknowledgement from the
+independently controlled Z5 protected release-audit intake before it completes.
+If Z5 is unavailable, the release service or repository sends the same signed,
+sequence- and correlation-bound event through its write-only identity to the
+immutable Z6 release-audit fallback and requires that independent acknowledgement
+instead.
 
 The Z6 fallback grants no release, artifact, read, restore, or delete authority.
 Its accepted events are reconciled into Z5 after recovery while preserving the
 original signature, sequence, acknowledgement, and time. A buffer controlled by
 the publisher, repository, or local release host is not independent evidence and
-cannot authorize a transition. If neither Z5 nor Z6 acknowledges the event, the
-transition fails closed.
+cannot authorize an authority-increasing transition. If neither Z5 nor Z6
+acknowledges the event, that transition fails closed.
+
+Restrictive incident transitions—freeze, revocation, and rollout pause—do not
+increase authority and must not be blocked by loss of both audit intakes. They
+proceed through the independent Z1 release-recovery path. The hardened recovery
+client retains signed intent and result receipts, raises incident severity, and
+reconciles them after protected evidence service is restored, as required by the
+emergency-recovery evidence rules above. The publisher or repository's own buffer
+does not satisfy this exception.
 
 ### Revocation-aware update download
 
@@ -533,7 +542,8 @@ Provisioning is unacceptable unless testing proves that:
   a credential;
 - the Z7 builder/publisher cannot retrieve signing private keys, change signing
   policy, or cause the signer to fetch or publish an artifact;
-- a G6 publisher or repository cannot complete a release transition without an
+- a G6 publisher or repository cannot complete an authority-increasing signing,
+  publication, rollout-start/advance, or resumption transition without an
   acknowledgement from the independent Z5 protected intake or, only while Z5 is
   unavailable, the immutable Z6 fallback; its own local buffer never qualifies;
 - the Z6 monitor cannot send backup content, keys, or restored data to Z5 or
@@ -710,7 +720,9 @@ The deployment change packet must contain:
 - G6 tests proving successful and denied signing, publication, freeze, and
   revocation transitions produce correlated immutable Z5 release-audit events,
   then proving Z5 loss requires an independent Z6 acknowledgement and later Z5
-  reconciliation while loss of both intakes blocks the transition;
+  reconciliation; loss of both intakes must block authority-increasing work but
+  still allow a Z1-authorized freeze/revocation/pause with retained signed
+  receipts, raised incident severity, and later reconciliation;
 - agent no-listener and cross-endpoint isolation evidence;
 - backup/restore and revocation-invariant results;
 - capacity baseline and alert tests;

@@ -73,7 +73,8 @@ sequenceDiagram
 - session gateway handles interactive protocol translation;
 - tunnel broker limits connectivity to one endpoint, protocol, port, and expiry;
 - credential broker issues or retrieves a just-in-time credential without exposing
-  it to the browser;
+  it to the browser and may revoke only that session-issued credential by its
+  returned opaque handle;
 - endpoint agent authorizes only the tunnel capability, not arbitrary local
   socket forwarding;
 - audit service records lifecycle metadata independently of the gateway.
@@ -124,6 +125,9 @@ Preferred order:
 4. no credential material delivered to browser JavaScript or session recordings.
 
 Credential issuance and revocation are separate from endpoint enrollment keys.
+The broker's workload identity cannot enumerate or inspect credentials, revoke a
+credential from another session/grant, or change OS identity policy. The OS
+identity authority enforces the exact session/grant/opaque-handle binding.
 Every credential profile must enforce revocation at the endpoint through online
 authority validation or the signed, monotonically versioned KRL/status mechanism
 defined in the

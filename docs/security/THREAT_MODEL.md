@@ -82,6 +82,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-17 | Segmentation error grants unintended lateral reach   | default-deny matrix, exact flows, layered enforcement, separate network approval            | flow-deny tests, policy-hash drift alert, isolate and restore policy     |
 | TM-18 | Compromised runtime suppresses or rewrites audit     | dedicated append-only writer, integrity chain/checkpoints, protected Z5 archive             | gap/sequence alert, independent export and immutable backup              |
 | TM-19 | Compromised TLS service blocks its own containment   | independent PKI recovery identity, exact-certificate revoke/rollover-only route             | certificate alert, revoke/replace externally, preserve service evidence  |
+| TM-20 | Signing handoff is substituted or over-authorized    | canonical digest-bound request, separate quorum, non-exportable/offline key, signed receipt | hash/signature verification, chain-of-custody audit, reject publication  |
 
 ## Denial-of-service considerations
 

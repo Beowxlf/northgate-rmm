@@ -27,6 +27,10 @@ replace a privileged fleet component.
 8. Pause automatically on defined health or security failures.
 9. Preserve a separately verified recovery artifact and procedure.
 
+The permitted hardware-backed service flow and the alternative offline exchange,
+including request contents and evidence, are defined in the
+[infrastructure signing handoff](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#separated-signing-handoff).
+
 ## Agent behavior
 
 The agent verifies trusted root/metadata chain, signatures, digest, length,

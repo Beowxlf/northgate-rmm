@@ -151,17 +151,23 @@ the future Z2-to-Z3 boundary.
 ```mermaid
 flowchart LR
   Admin[Z1 Administrative access] -->|HTTPS 443, OIDC| Service[Z2 RMM service]
+  Admin -->|Key-only SSH, exact source| Service
   Admin -->|HTTPS 443, authorization| IdP[Approved human IdP]
   Service -->|HTTPS 443, named OIDC endpoints| IdP
-  Endpoints[Z4 Managed endpoints] -->|Outbound HTTPS 443, mTLS| Service
+  Endpoints[Z4 Managed endpoints] -->|Bootstrap TLS, then mTLS| Service
   Service -->|G2/G3 issuance and status API| Issuer[Restricted endpoint issuer]
   Service -->|Authenticated database session| Data[(Z3 RMM data)]
   Service -->|Logs, metrics, traces| Observe[Z5 Security observability]
+  Data -->|Logs and metrics| Observe
   Data -->|Backup-only identity| Recovery[Z6 Recovery]
+  Service -->|Config and certificate-state backup| Recovery
+  Recovery -->|Recovery-authorized restore| Restore[Isolated restore target]
   Build[Z7 Build and update] -->|Signed artifacts only| Artifacts[Artifact repository]
   Service -->|Digest-pinned read| Artifacts
+  Endpoints -. G6 signed update read .-> Artifacts
   Service -. G7 grants and termination .-> Session[Z8 Remote assistance]
   Session -. G7 lifecycle events .-> Service
+  Session -. G7 logs and metrics .-> Observe
   Endpoints -. G7 outbound expiring tunnel .-> Session
   Hypervisor[Z0 Hypervisor management] -. No application flow .- Service
   Quarantine[Z9 Quarantine] -. Evidence export only .-> Observe
@@ -169,35 +175,54 @@ flowchart LR
 
 ## Minimum flow policy
 
-All flows not listed are denied. “Conditional” means the flow remains prohibited
-until its named gate and design evidence exist.
+All RMM-created inter-zone and external dependency flows not listed are denied.
+Stateful return traffic is part of the initiating row and does not create a
+second standing path. “Conditional” means the flow remains prohibited until its
+named gate and design evidence exist.
 
-| Source             | Destination              | Service                    | Status         | Required control                                                           |
-| ------------------ | ------------------------ | -------------------------- | -------------- | -------------------------------------------------------------------------- |
-| Z1 admin path      | Z2 operator ingress      | TCP 443                    | Required       | OIDC MFA, device/source policy, RBAC, audit                                |
-| Z1 browser         | Approved human IdP       | TCP 443                    | Required       | Authorization endpoint only; TLS and IdP policy                            |
-| Z2 control plane   | Approved human IdP       | TCP 443                    | Required       | Named OIDC discovery, token, key, revocation/logout endpoints              |
-| Z2 control plane   | Approved endpoint issuer | TCP 443                    | G2/G3          | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs |
-| Z4 endpoint        | Z2 agent ingress         | TCP 443                    | G2/G3          | Outbound only, mTLS, revocation, rate and size limits                      |
-| Z2 application     | Z3 PostgreSQL            | TCP 5432 or local socket   | Required       | Named workload role, TLS if networked, least SQL privilege                 |
-| Z2 services        | Z5 telemetry sink        | Approved TLS port          | Required       | Write-only service identity and bounded queue                              |
-| Z3 database        | Z6 backup target         | Approved backup protocol   | Required       | Backup-only credential, encryption, immutability/retention                 |
-| Z2 runtime         | Artifact repository      | TCP 443                    | G6             | Read-only, signed metadata, digest and expiry verification                 |
-| Z7 publisher       | Artifact repository      | TCP 443                    | G6             | Separate publication identity; provenance and audit                        |
-| Z1 recovery path   | Z6 recovery service      | Approved admin protocol    | Required       | Recovery role, MFA, reason, alert, evidence                                |
-| Z2 control plane   | Internal DNS and time    | UDP/TCP 53; approved NTP   | Required       | Named servers only; monitor failure and drift                              |
-| Z4 endpoint        | Internal DNS and time    | Existing approved services | G2/G3          | No new broad route created by RMM                                          |
-| Z1 admin path      | Z0 hypervisor management | Existing approved path     | Existing       | Separate identity; never transits RMM service                              |
-| Z1 browser         | Z8 session gateway       | TCP 443                    | G7 conditional | Single-use grant, timeout, recording/privacy policy                        |
-| Z2 control plane   | Z8 gateway control API   | TCP 443                    | G7 conditional | Workload mTLS; signed one-session grant, revoke, and force termination     |
-| Z8 session gateway | Z2 event ingress         | TCP 443                    | G7 conditional | Workload mTLS; bounded lifecycle events, no job or policy authority        |
-| Z4 exact endpoint  | Z8 session gateway       | Outbound expiring tunnel   | G7 conditional | Stateful return only; one protocol, port, grant, and expiry                |
+| Source                       | Destination                           | Service                    | Status         | Required control                                                           |
+| ---------------------------- | ------------------------------------- | -------------------------- | -------------- | -------------------------------------------------------------------------- |
+| Z1 admin path                | Z2 operator ingress                   | TCP 443                    | Required       | OIDC MFA, device/source policy, RBAC, audit                                |
+| Z1 admin path                | Z2 control-plane host                 | TCP 22                     | Required       | Exact source; dedicated key-only identity, no password/root login, audit   |
+| Z1 browser                   | Approved human IdP                    | TCP 443                    | Required       | Authorization endpoint only; TLS and IdP policy                            |
+| Z2 control plane             | Approved human IdP                    | TCP 443                    | Required       | Named OIDC discovery, token, key, revocation/logout endpoints              |
+| Z2 control plane             | Approved endpoint issuer              | TCP 443                    | G2/G3          | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs |
+| Z2 TLS service               | Approved server PKI                   | TCP 443                    | Required       | Authenticated issuance, renewal, revocation/status endpoints only          |
+| Z4 unenrolled canary         | Z2 enrollment ingress                 | TCP 443                    | G2/G3          | Server-authenticated TLS; single-use exact-scope grant, key proof, limits  |
+| Z4 enrolled endpoint         | Z2 agent ingress                      | TCP 443                    | G2/G3          | Outbound mTLS, revocation, endpoint binding, rate and size limits          |
+| Z2 application               | Z3 PostgreSQL                         | TCP 5432 or local socket   | Required       | Named workload role, TLS if networked, least SQL privilege                 |
+| Z2 services                  | Z5 telemetry sink                     | Approved TLS port          | Required       | Write-only service identity and bounded queue                              |
+| Z3 data services             | Z5 telemetry sink                     | Approved TLS port          | When separated | Write-only service identity; no RMM control authority                      |
+| Z5 telemetry service         | Approved alert destination            | Approved TLS port          | Required       | Named destination, notification-only credential, bounded redacted payload  |
+| Z3 database backup identity  | Z6 backup target                      | Approved backup protocol   | Required       | Separate credential, encryption, integrity, immutability/retention         |
+| Z2 backup exporter           | Z6 backup target                      | Approved backup protocol   | Required       | Config/certificate-state scope; write-only identity, no delete authority   |
+| Z6 recovery service          | Isolated restore target               | Approved restore protocol  | Recovery only  | Exact authorization, no endpoint/operator ingress, reconcile before use    |
+| Z2 runtime                   | Artifact repository                   | TCP 443                    | G6             | Read-only, signed metadata, digest and expiry verification                 |
+| Z4 enrolled endpoint         | Artifact repository                   | TCP 443                    | G6             | Read-only signed update for the endpoint's assigned rollout ring           |
+| Z7 publisher                 | Artifact repository                   | TCP 443                    | G6             | Separate publication identity; provenance and audit                        |
+| Z2/Z3/Z5/Z6/Z8 host updaters | Approved OS repositories              | TCP 443                    | Maintenance    | Separate exact-source rules; named repositories, signatures, change window |
+| Z7 builder                   | Approved source/dependency registries | TCP 443                    | G6             | Read-only locked inputs, digest/provenance checks, no runtime secrets      |
+| Z7 builder                   | Approved CI workload IdP              | TCP 443                    | G6             | Ephemeral workload identity with exact audience and short expiry           |
+| Z1 recovery path             | Z6 recovery service                   | Approved admin protocol    | Required       | Recovery role, MFA, reason, alert, evidence                                |
+| Z2 control plane             | Internal DNS and time                 | UDP/TCP 53; approved NTP   | Required       | Named servers only; monitor failure and drift                              |
+| Z3/Z5/Z6/Z7/Z8 service hosts | Internal DNS and time                 | UDP/TCP 53; approved NTP   | When present   | Separate exact-source rules to named servers; monitor failure and drift    |
+| Z4 endpoint                  | Internal DNS and time                 | Existing approved services | G2/G3          | No new broad route created by RMM                                          |
+| Z1 admin path                | Z0 hypervisor management              | Existing approved path     | Existing       | Separate identity; never transits RMM service                              |
+| Z1 browser                   | Z8 session gateway                    | TCP 443                    | G7 conditional | Single-use grant, timeout, recording/privacy policy                        |
+| Z2 control plane             | Z8 gateway control API                | TCP 443                    | G7 conditional | Workload mTLS; signed one-session grant, revoke, and force termination     |
+| Z8 session gateway           | Z2 event ingress                      | TCP 443                    | G7 conditional | Workload mTLS; bounded lifecycle events, no job or policy authority        |
+| Z8 session gateway           | Z8 credential broker                  | Authenticated IPC or mTLS  | G7 conditional | One-session retrieval; credential never reaches browser or RMM database    |
+| Z8 credential broker         | Approved OS identity authority        | Approved identity protocol | G7 conditional | JIT credential for one actor, endpoint, protocol, and expiry               |
+| Z8 session gateway           | Z5 telemetry sink                     | Approved TLS port          | G7 conditional | Write-only security and availability telemetry                             |
+| Z4 exact endpoint            | Z8 session gateway                    | Outbound expiring tunnel   | G7 conditional | Stateful return only; one protocol, port, grant, and expiry                |
 
 ### Explicit deny tests
 
 Provisioning is unacceptable unless testing proves that:
 
 - Z4 cannot initiate connections to Z0, Z1, Z3, Z6, or Z7;
+- an unenrolled Z4 canary cannot use enrollment TLS without a valid single-use
+  grant and proof of possession for its newly generated key;
 - Z1 cannot connect directly to Z3 or use the agent ingress path;
 - Z2 cannot administer the hypervisor or publish/sign releases;
 - Z5 cannot issue RMM jobs or alter RMM policy;

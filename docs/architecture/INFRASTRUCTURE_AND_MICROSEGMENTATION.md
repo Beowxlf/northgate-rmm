@@ -182,6 +182,8 @@ flowchart LR
   Build -->|Signed artifacts only| Artifacts[Artifact repository]
   Build -->|G6 append-only release decisions/events| Observe
   Artifacts -->|G6 append-only publication/revocation events| Observe
+  Build -. Z5-unavailable G6 immutable audit fallback .-> Recovery
+  Artifacts -. Z5-unavailable G6 immutable audit fallback .-> Recovery
   Service -->|Digest-pinned read| Artifacts
   Endpoints -. G6 endpoint/key/artifact-bound authorized read .-> Artifacts
   Admin -. G6 incident freeze and revoke .-> Artifacts
@@ -248,6 +250,8 @@ named gate and design evidence exist.
 | Z7 publisher                             | Artifact repository                                | TCP 443                     | G6                  | Separate publication identity; provenance and audit                                                                                  |
 | Z7 release services                      | Z5 protected release-audit intake                  | Approved TLS port           | G6                  | Workload mTLS; append-only decisions/attempts/results, digest-bound, no read/delete/control authority                                |
 | Artifact repository audit emitter        | Z5 protected release-audit intake                  | Approved TLS port           | G6                  | Append-only publish/freeze/revoke events; signed sequence/correlation, no read/delete authority                                      |
+| Z7 release services                      | Z6 immutable release-audit fallback                | Approved evidence protocol  | G6, Z5 unavailable  | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                             |
+| Artifact repository audit emitter        | Z6 immutable release-audit fallback                | Approved evidence protocol  | G6, Z5 unavailable  | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                             |
 | Z1 release recovery operator             | Artifact emergency metadata API                    | TCP 443                     | G6 incident         | Independent MFA; freeze/revoke only, offline-root authorization, no upload                                                           |
 | Z2/Z3/Z5/Z6/Z8 host updaters             | Approved OS repositories                           | TCP 443                     | Maintenance         | Separate exact-source rules; named repositories, signatures, change window                                                           |
 | Z7 builder                               | Approved source/dependency registries              | TCP 443                     | G6                  | Read-only locked inputs, digest/provenance checks, no runtime secrets                                                                |
@@ -445,6 +449,22 @@ publication digest as G6 evidence. A mismatch, expired request, unexpected role,
 or unavailable evidence fails closed and cannot be overridden by the RMM control
 plane.
 
+### Release-transition audit acknowledgement
+
+Every G6 signing, publication, freeze, revocation, and rollout-state transition
+must receive an append acknowledgement from the independently controlled Z5
+protected release-audit intake before it completes. If Z5 is unavailable, the
+release service or repository sends the same signed, sequence- and
+correlation-bound event through its write-only identity to the immutable Z6
+release-audit fallback and requires that independent acknowledgement instead.
+
+The Z6 fallback grants no release, artifact, read, restore, or delete authority.
+Its accepted events are reconciled into Z5 after recovery while preserving the
+original signature, sequence, acknowledgement, and time. A buffer controlled by
+the publisher, repository, or local release host is not independent evidence and
+cannot authorize a transition. If neither Z5 nor Z6 acknowledges the event, the
+transition fails closed.
+
 ### Revocation-aware update download
 
 An assigned rollout ring is not download authority. Immediately before issuing a
@@ -511,9 +531,9 @@ Provisioning is unacceptable unless testing proves that:
   a credential;
 - the Z7 builder/publisher cannot retrieve signing private keys, change signing
   policy, or cause the signer to fetch or publish an artifact;
-- a G6 publisher or repository cannot complete a release transition if its
-  protected append-only decision/result event cannot be accepted or durably
-  buffered with a signed sequence for Z5 delivery;
+- a G6 publisher or repository cannot complete a release transition without an
+  acknowledgement from the independent Z5 protected intake or, only while Z5 is
+  unavailable, the immutable Z6 fallback; its own local buffer never qualifies;
 - the Z6 monitor cannot send backup content, keys, or restored data to Z5 or
   receive RMM/recovery authority from the telemetry path;
 - Z5 cannot issue RMM jobs or alter RMM policy;
@@ -686,7 +706,9 @@ The deployment change packet must contain:
   independent alert plus retained pending-revocation record; the authority also
   rejects the broker's attempt to revoke a different session's opaque handle;
 - G6 tests proving successful and denied signing, publication, freeze, and
-  revocation transitions produce correlated immutable Z5 release-audit events;
+  revocation transitions produce correlated immutable Z5 release-audit events,
+  then proving Z5 loss requires an independent Z6 acknowledgement and later Z5
+  reconciliation while loss of both intakes blocks the transition;
 - agent no-listener and cross-endpoint isolation evidence;
 - backup/restore and revocation-invariant results;
 - capacity baseline and alert tests;

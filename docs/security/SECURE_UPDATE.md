@@ -23,14 +23,19 @@ replace a privileged fleet component.
 4. Produce platform-specific signed packages.
 5. Authorize artifacts through separated update metadata/signing roles.
 6. Verify signatures, provenance, version, platform, and policy before publishing.
-7. Roll out to development, test, canary, then approved broader rings.
-8. Pause automatically on defined health or security failures.
-9. Preserve a separately signature/digest-verified signed package, its metadata,
-   trust material, and recovery procedure in the immutable Z6 recovery set.
+7. Require an independent protected audit acknowledgement before every signing,
+   publication, freeze, revocation, or rollout-state transition.
+8. Roll out to development, test, canary, then approved broader rings.
+9. Pause automatically on defined health or security failures.
+10. Preserve a separately signature/digest-verified signed package, its metadata,
+    trust material, and recovery procedure in the immutable Z6 recovery set.
 
 The permitted hardware-backed service flow and the alternative offline exchange,
 including request contents and evidence, are defined in the
 [infrastructure signing handoff](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#separated-signing-handoff).
+The normal Z5 acknowledgement, independently controlled Z6 fallback, fail-closed
+behavior, and reconciliation requirement are defined in
+[release-transition audit acknowledgement](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#release-transition-audit-acknowledgement).
 
 ## Agent behavior
 

@@ -2,7 +2,9 @@ package spool
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,7 +69,7 @@ func TestListIDsRecoversValidatedRecordsAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListIDs() error = %v", err)
 	}
-	want := []string{ids[1], ids[0]}
+	want := ids
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("ListIDs() = %#v, want %#v", got, want)
 	}
@@ -125,6 +127,53 @@ func TestQueueDetectsCorruption(t *testing.T) {
 	}
 	if _, err := queue.Read(context.Background(), testID); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("Read() error = %v, want ErrCorrupt", err)
+	}
+}
+
+func TestQueueDetectsOrderCorruption(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if err := queue.Enqueue(context.Background(), testID, []byte("original")); err != nil {
+		t.Fatalf("Enqueue() error = %v", err)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	name := filepath.Join(directory, testID+".json")
+	raw, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	var item record
+	if err := json.Unmarshal(raw, &item); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	item.Order++
+	raw, err = json.Marshal(item)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	if err := os.WriteFile(name, raw, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if _, err := Open(directory, 1<<20); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Open() error = %v, want ErrCorrupt", err)
+	}
+}
+
+func TestOpenBoundsDirectoryEnumeration(t *testing.T) {
+	directory := t.TempDir()
+	for index := 0; index <= MaxEntries; index++ {
+		name := filepath.Join(directory, fmt.Sprintf("unexpected-%04d", index))
+		if err := os.WriteFile(name, []byte("x"), 0o600); err != nil {
+			t.Fatalf("WriteFile(%d) error = %v", index, err)
+		}
+	}
+	if _, err := Open(directory, 1<<20); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("Open() error = %v, want ErrQuotaExceeded", err)
 	}
 }
 

@@ -158,8 +158,16 @@ IP literal.
 
 The fifteenth exact-head review found that a restarted process could validate
 persisted records but could not discover their IDs for delivery. The follow-up
-change adds a bounded, sorted `ListIDs` recovery API that revalidates every
+change adds a bounded, ordered `ListIDs` recovery API that revalidates every
 record and exposes no payload during enumeration.
+
+The sixteenth exact-head review found that UUID sorting could reverse protocol
+sequence after restart and that reading the whole directory exceeded the queue's
+memory bound before its entry-count check. The follow-up change adds a required
+durable enqueue ordinal to spool schema 2, returns records in that order, rejects
+duplicate ordinals, and streams at most `MaxEntries+1` directory entries through
+the stable root. The schema 2 corruption checksum binds the record ID, durable
+order, and payload so order changes cannot pass integrity validation.
 
 ## Remaining before G2
 

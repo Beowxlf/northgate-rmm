@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	SchemaVersion   = 1
+	SchemaVersion   = 2
 	MaxPayloadBytes = 65_536
 	MaxEntries      = 1024
 	maxRecordBytes  = 100_000
@@ -42,9 +42,15 @@ var (
 type record struct {
 	SchemaVersion int       `json:"schema_version"`
 	ID            string    `json:"id"`
+	Order         uint64    `json:"order"`
 	CreatedAt     time.Time `json:"created_at"`
 	Payload       []byte    `json:"payload"`
 	SHA256        string    `json:"sha256"`
+}
+
+type recordMetadata struct {
+	ID    string
+	Order uint64
 }
 
 // CommitUncertainError exposes the exact item ID when durable rollback cannot
@@ -189,24 +195,32 @@ func (queue *Queue) Enqueue(ctx context.Context, id string, payload []byte) (ret
 		return fmt.Errorf("inspect spool item: %w", err)
 	}
 
-	digest := sha256.Sum256(payload)
-	item := record{
-		SchemaVersion: SchemaVersion,
-		ID:            id,
-		CreatedAt:     time.Now().UTC(),
-		Payload:       payload,
-		SHA256:        hex.EncodeToString(digest[:]),
-	}
-	raw, err := json.Marshal(item)
-	if err != nil {
-		return fmt.Errorf("encode spool item: %w", err)
-	}
-	usage, count, err := queue.usageLocked()
+	usage, records, err := queue.inventoryLocked()
 	if err != nil {
 		return err
 	}
-	if count >= MaxEntries {
+	if len(records) >= MaxEntries {
 		return ErrQuotaExceeded
+	}
+	order := uint64(1)
+	if len(records) > 0 {
+		lastOrder := records[len(records)-1].Order
+		if lastOrder == ^uint64(0) {
+			return errors.New("spool order is exhausted")
+		}
+		order = lastOrder + 1
+	}
+	item := record{
+		SchemaVersion: SchemaVersion,
+		ID:            id,
+		Order:         order,
+		CreatedAt:     time.Now().UTC(),
+		Payload:       payload,
+	}
+	item.SHA256 = recordDigest(item.ID, item.Order, item.Payload)
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return fmt.Errorf("encode spool item: %w", err)
 	}
 	if int64(len(raw)) > queue.maxBytes-usage {
 		return ErrQuotaExceeded
@@ -304,35 +318,60 @@ func (queue *Queue) ListIDs(ctx context.Context) ([]string, error) {
 	if err := queue.ready(ctx); err != nil {
 		return nil, err
 	}
-	_, ids, err := queue.inventoryLocked()
+	_, records, err := queue.inventoryLocked()
 	if err != nil {
 		return nil, err
+	}
+	ids := make([]string, len(records))
+	for index, item := range records {
+		ids[index] = item.ID
 	}
 	return ids, nil
 }
 
 func (queue *Queue) readRecordLocked(id string) ([]byte, error) {
+	item, err := queue.readRecordItemLocked(id)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), item.Payload...), nil
+}
+
+func (queue *Queue) readRecordItemLocked(id string) (record, error) {
 	file, err := queue.root.Open(id + ".json")
 	if err != nil {
-		return nil, fmt.Errorf("open spool item: %w", err)
+		return record{}, fmt.Errorf("open spool item: %w", err)
 	}
 	defer file.Close()
 	raw, err := io.ReadAll(io.LimitReader(file, maxRecordBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("read spool item: %w", err)
+		return record{}, fmt.Errorf("read spool item: %w", err)
 	}
 	if len(raw) > maxRecordBytes {
-		return nil, ErrCorrupt
+		return record{}, ErrCorrupt
 	}
 	item, err := decodeRecord(raw)
 	if err != nil || item.ID != id || len(item.Payload) == 0 || len(item.Payload) > MaxPayloadBytes {
-		return nil, ErrCorrupt
+		return record{}, ErrCorrupt
 	}
-	digest := sha256.Sum256(item.Payload)
-	if item.SHA256 != hex.EncodeToString(digest[:]) {
-		return nil, ErrCorrupt
+	if item.SHA256 != recordDigest(item.ID, item.Order, item.Payload) {
+		return record{}, ErrCorrupt
 	}
-	return append([]byte(nil), item.Payload...), nil
+	return item, nil
+}
+
+func recordDigest(id string, order uint64, payload []byte) string {
+	hash := sha256.New()
+	hash.Write([]byte("northgate-rmm-spool-v2\x00"))
+	hash.Write([]byte(id))
+	var orderBytes [8]byte
+	for index := len(orderBytes) - 1; index >= 0; index-- {
+		orderBytes[index] = byte(order)
+		order >>= 8
+	}
+	hash.Write(orderBytes[:])
+	hash.Write(payload)
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // Acknowledge removes exactly one previously accepted item.
@@ -365,14 +404,32 @@ func (queue *Queue) ready(ctx context.Context) error {
 }
 
 func (queue *Queue) usageLocked() (int64, int, error) {
-	total, ids, err := queue.inventoryLocked()
-	return total, len(ids), err
+	total, records, err := queue.inventoryLocked()
+	return total, len(records), err
 }
 
-func (queue *Queue) inventoryLocked() (int64, []string, error) {
-	entries, err := fs.ReadDir(queue.root.FS(), ".")
+func (queue *Queue) inventoryLocked() (int64, []recordMetadata, error) {
+	directory, err := queue.root.Open(".")
 	if err != nil {
 		return 0, nil, fmt.Errorf("list spool: %w", err)
+	}
+	defer directory.Close()
+	entries := make([]fs.DirEntry, 0, MaxEntries+2)
+	for len(entries) <= MaxEntries+1 {
+		batch, readErr := directory.ReadDir(MaxEntries + 2 - len(entries))
+		entries = append(entries, batch...)
+		if len(entries) > MaxEntries+1 {
+			return 0, nil, ErrQuotaExceeded
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return 0, nil, fmt.Errorf("list spool: %w", readErr)
+		}
+		if len(batch) == 0 {
+			return 0, nil, errors.New("list spool made no progress")
+		}
 	}
 	dataEntries := make([]string, 0, len(entries))
 	for _, entry := range entries {
@@ -390,7 +447,7 @@ func (queue *Queue) inventoryLocked() (int64, []string, error) {
 		return 0, nil, ErrQuotaExceeded
 	}
 	var total int64
-	ids := make([]string, 0, len(dataEntries))
+	records := make([]recordMetadata, 0, len(dataEntries))
 	for _, name := range dataEntries {
 		if !strings.HasSuffix(name, ".json") || !uuidPattern.MatchString(strings.TrimSuffix(name, ".json")) {
 			return 0, nil, ErrCorrupt
@@ -404,14 +461,22 @@ func (queue *Queue) inventoryLocked() (int64, []string, error) {
 			return 0, nil, ErrQuotaExceeded
 		}
 		id := strings.TrimSuffix(name, ".json")
-		if _, err := queue.readRecordLocked(id); err != nil {
+		item, err := queue.readRecordItemLocked(id)
+		if err != nil {
 			return 0, nil, ErrCorrupt
 		}
 		total += info.Size()
-		ids = append(ids, id)
+		records = append(records, recordMetadata{ID: id, Order: item.Order})
 	}
-	sort.Strings(ids)
-	return total, ids, nil
+	sort.Slice(records, func(left, right int) bool {
+		return records[left].Order < records[right].Order
+	})
+	for index := 1; index < len(records); index++ {
+		if records[index-1].Order == records[index].Order {
+			return 0, nil, ErrCorrupt
+		}
+	}
+	return total, records, nil
 }
 
 func decodeRecord(raw []byte) (record, error) {
@@ -428,7 +493,7 @@ func decodeRecord(raw []byte) (record, error) {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return record{}, errors.New("spool record contains trailing data")
 	}
-	if item.SchemaVersion != SchemaVersion || item.CreatedAt.IsZero() {
+	if item.SchemaVersion != SchemaVersion || item.Order == 0 || item.CreatedAt.IsZero() {
 		return record{}, ErrCorrupt
 	}
 	return item, nil

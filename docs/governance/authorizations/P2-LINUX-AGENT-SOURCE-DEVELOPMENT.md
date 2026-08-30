@@ -43,9 +43,9 @@ This record does not open G2 and does not authorize:
   credentials, or private infrastructure data;
 - remote jobs, command text, shell execution, privileged helpers, remediation,
   file transfer, updates, or interactive access; or
-- approval or promotion of any VM Factory profile, capability, catalog,
-  firmware, manifest, host policy, release, change packet, or infrastructure
-  decision.
+- approval or promotion of any VM Factory or infrastructure artifact or
+  decision, including a profile, capability, catalog, firmware record,
+  manifest, host policy, release, or change packet.
 
 ## Exit evidence required before G2 installation authorization
 

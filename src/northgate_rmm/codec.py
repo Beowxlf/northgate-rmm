@@ -8,6 +8,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from northgate_rmm.domain import (
+    MAX_SEQUENCE,
     HeartbeatMessage,
     HeartbeatPayload,
     InventoryMessage,
@@ -29,7 +30,11 @@ def decode_message(raw: bytes) -> HeartbeatMessage | InventoryMessage:
         raise ValidationError("message body exceeds the encoded size limit")
     try:
         text = raw.decode("utf-8", errors="strict")
-        value = json.loads(text, object_pairs_hook=_unique_object)
+        value = json.loads(
+            text,
+            object_pairs_hook=_unique_object,
+            parse_int=_bounded_json_integer,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise ValidationError("message body is not valid bounded JSON") from exc
 
@@ -123,6 +128,16 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValidationError(f"duplicate JSON field: {key}")
         result[key] = value
     return result
+
+
+def _bounded_json_integer(raw: str) -> int:
+    digits = raw[1:] if raw.startswith("-") else raw
+    if len(digits) > 19:
+        raise ValidationError("JSON integer exceeds the supported range")
+    value = int(raw)
+    if value < -(2**63) or value > MAX_SEQUENCE:
+        raise ValidationError("JSON integer exceeds the supported range")
+    return value
 
 
 def _object(value: object, field_name: str) -> dict[str, Any]:

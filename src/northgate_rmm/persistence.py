@@ -67,18 +67,24 @@ def apply_migrations(dsn: str, directory: Path | None = None) -> tuple[str, ...]
         cursor.execute("SELECT pg_advisory_xact_lock(%s)", (MIGRATION_LOCK_ID,))
         cursor.execute(
             """
-                CREATE TABLE IF NOT EXISTS schema_migrations (
-                    version varchar(255) PRIMARY KEY,
-                    sha256 char(64) NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
-                    applied_at timestamptz NOT NULL DEFAULT clock_timestamp()
-                )
-                """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version varchar(255) PRIMARY KEY,
+                sha256 char(64) NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+                applied_at timestamptz NOT NULL DEFAULT clock_timestamp()
+            )
+            """
         )
         cursor.execute("SELECT version, sha256 FROM schema_migrations")
         applied = {
             cast(str, row["version"]): cast(str, row["sha256"])
             for row in cursor.fetchall()
         }
+        discovered = {migration.name for migration in migrations}
+        missing = sorted(set(applied) - discovered)
+        if missing:
+            raise ValidationError(
+                f"applied migrations are missing from source: {missing}"
+            )
         for migration in migrations:
             script = migration.read_text(encoding="utf-8")
             checksum = hashlib.sha256(script.encode("utf-8")).hexdigest()
@@ -551,18 +557,32 @@ class PostgresControlPlane:
                         cursor.execute(
                             """
                             UPDATE endpoints
-                            SET last_receipt_at = %s, last_heartbeat_at = %s
+                            SET last_receipt_at = GREATEST(
+                                    COALESCE(last_receipt_at, %s), %s
+                                ),
+                                last_heartbeat_at = GREATEST(
+                                    COALESCE(last_heartbeat_at, %s), %s
+                                )
                             WHERE endpoint_id = %s
                             """,
-                            (received_at, received_at, identity.endpoint_id),
+                            (
+                                received_at,
+                                received_at,
+                                received_at,
+                                received_at,
+                                identity.endpoint_id,
+                            ),
                         )
                     else:
                         cursor.execute(
                             """
-                            UPDATE endpoints SET last_receipt_at = %s
+                            UPDATE endpoints
+                            SET last_receipt_at = GREATEST(
+                                COALESCE(last_receipt_at, %s), %s
+                            )
                             WHERE endpoint_id = %s
                             """,
-                            (received_at, identity.endpoint_id),
+                            (received_at, received_at, identity.endpoint_id),
                         )
                     self._insert_audit(
                         cursor,

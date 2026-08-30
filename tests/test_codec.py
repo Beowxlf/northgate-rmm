@@ -77,6 +77,15 @@ def test_encoded_size_limit_is_checked_before_json_parsing() -> None:
         decode_message(raw)
 
 
+@pytest.mark.parametrize("integer", [str(2**63), "9" * 4_301])
+def test_json_integers_are_bounded_before_domain_or_database_use(integer: str) -> None:
+    raw = encoded(message_document()).replace(
+        b'"sequence":1', f'"sequence":{integer}'.encode()
+    )
+    with pytest.raises(ValidationError, match="integer exceeds"):
+        decode_message(raw)
+
+
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [

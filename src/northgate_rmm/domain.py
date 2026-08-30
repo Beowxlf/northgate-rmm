@@ -16,6 +16,7 @@ from northgate_rmm.errors import ValidationError
 PROTOCOL_VERSION = 1
 MAX_MESSAGE_TTL = timedelta(minutes=5)
 MAX_CLOCK_SKEW = timedelta(minutes=5)
+MAX_SEQUENCE = (2**63) - 1
 MAX_DISPLAY_NAME_LENGTH = 128
 MAX_AGENT_VERSION_LENGTH = 64
 MAX_CAPABILITIES = 32
@@ -154,8 +155,8 @@ class MessageEnvelope:
         require_aware(self.expires_at, "expires_at")
         if self.protocol_version != PROTOCOL_VERSION:
             raise ValidationError("unsupported protocol version")
-        if self.sequence < 1:
-            raise ValidationError("sequence must be positive")
+        if not 1 <= self.sequence <= MAX_SEQUENCE:
+            raise ValidationError("sequence is outside the supported range")
         ttl = self.expires_at - self.created_at
         if ttl <= timedelta(0) or ttl > MAX_MESSAGE_TTL:
             raise ValidationError("message lifetime is invalid")

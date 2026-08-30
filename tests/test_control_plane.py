@@ -128,6 +128,27 @@ def test_inventory_is_independent_from_heartbeat_freshness() -> None:
     )
 
 
+def test_delayed_messages_from_another_boot_do_not_regress_receipt_time() -> None:
+    plane, agent = enrolled_linux()
+    delayed = agent.heartbeat(now=NOW)
+    agent.restart()
+    newer = agent.heartbeat(now=NOW + timedelta(seconds=1))
+    plane.ingest_heartbeat(
+        authenticated_identity_id=agent.identity_id,
+        message=newer,
+        received_at=NOW + timedelta(seconds=10),
+    )
+    plane.ingest_heartbeat(
+        authenticated_identity_id=agent.identity_id,
+        message=delayed,
+        received_at=NOW + timedelta(seconds=5),
+    )
+
+    endpoint = plane.get_endpoint(agent.endpoint_id)
+    assert endpoint.last_receipt_at == NOW + timedelta(seconds=10)
+    assert endpoint.last_heartbeat_at == NOW + timedelta(seconds=10)
+
+
 def test_transport_identity_controls_endpoint_binding() -> None:
     plane, agent = enrolled_linux()
     other = SyntheticAgent.enroll(

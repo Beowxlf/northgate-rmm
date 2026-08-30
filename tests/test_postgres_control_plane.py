@@ -137,6 +137,15 @@ def test_migrations_are_idempotent_and_checksum_protected(
     with pytest.raises(ValidationError, match="checksum changed"):
         apply_migrations(postgres_dsn, changed_directory)
 
+    missing_directory = tmp_path / "missing-migration"
+    missing_directory.mkdir()
+    (missing_directory / "0002_placeholder.sql").write_text(
+        "SELECT 1;\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="missing from source"):
+        apply_migrations(postgres_dsn, missing_directory)
+
 
 def test_message_authorization_and_time_failures_are_audited(
     postgres_dsn: str,
@@ -236,6 +245,29 @@ def test_inventory_binding_and_both_replay_classes_fail_closed(
         received_at=NOW + timedelta(seconds=8),
     )
     assert len(plane.observations) == 2
+
+
+def test_delayed_cross_boot_receipts_cannot_regress_freshness(
+    postgres_dsn: str,
+) -> None:
+    plane, agent = enrolled_plane(postgres_dsn)
+    delayed = agent.heartbeat(now=NOW)
+    agent.restart()
+    newer = agent.heartbeat(now=NOW + timedelta(seconds=1))
+    plane.ingest_heartbeat(
+        authenticated_identity_id=agent.identity_id,
+        message=newer,
+        received_at=NOW + timedelta(seconds=10),
+    )
+    plane.ingest_heartbeat(
+        authenticated_identity_id=agent.identity_id,
+        message=delayed,
+        received_at=NOW + timedelta(seconds=5),
+    )
+
+    endpoint = plane.get_endpoint(agent.endpoint_id)
+    assert endpoint.last_receipt_at == NOW + timedelta(seconds=10)
+    assert endpoint.last_heartbeat_at == NOW + timedelta(seconds=10)
 
 
 def test_concurrent_duplicate_enrollment_has_one_winner(postgres_dsn: str) -> None:

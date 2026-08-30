@@ -82,7 +82,10 @@ disabled until a separate recovery process reconciles the allocator and both
 available anchors, establishes their maximum as the floor, and proves the next
 sequence is greater. Missing or inconsistent state fails closed. Replacing the
 allocator requires dual control, a monotonically later authority epoch, and
-protected linkage to the prior anchor.
+protected linkage to the prior anchor. That recovery identity has narrowly scoped
+read-only access to the allocator's current counter/epoch and the exact Z5/Z6
+sequence anchors; it cannot allocate, reset, sign, release, restore, delete,
+alter, or read unrelated audit evidence.
 Each download also requires the short-lived, single-use, endpoint-key and
 artifact-bound authorization defined in the
 [infrastructure flow](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#revocation-aware-update-download-and-installation).

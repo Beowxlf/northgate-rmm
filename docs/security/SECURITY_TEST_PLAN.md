@@ -57,6 +57,8 @@
 - compromised key rotation;
 - database restore with revocations and expired work;
 - update freeze/rollback/signing compromise;
+- signing-envelope tests that recompute the acknowledgement-free payload digest
+  and reject acknowledgement/envelope self-reference or digest substitution;
 - update-status authority restore with external sequence and Z5/Z6 anchor
   reconciliation;
 - audit integrity gap;

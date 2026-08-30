@@ -184,6 +184,9 @@ flowchart LR
   Signer -->|Detached signatures and signed metadata only| Build
   Build -->|Signed artifacts only| Artifacts[Artifact repository]
   Build -->|G6 acknowledgement-bound status request| UpdateStatus[Separated update metadata/status authority]
+  SeqRecovery[Z1 status-sequence recovery] -. Read current counter and exact authority epoch .-> SeqAllocator[External monotonic allocator]
+  SeqRecovery -. Read exact max sequence and continuity .-> Observe
+  SeqRecovery -. Z5-unavailable read exact fallback anchor .-> Recovery
   UpdateStatus -->|G6 signed release status only| Artifacts
   UpdateStatus -->|G6 protected status result acknowledgement| Observe
   UpdateStatus -->|G6 exact signed rollout-health attestation| Observe
@@ -275,6 +278,9 @@ named gate and design evidence exist.
 | Z6 immutable release-audit reconciler    | Z5 protected release-audit intake                  | Approved TLS port             | Recovery              | Write-only exact accepted event plus original Z6 acknowledgement; no release, read, alter, or delete authority                              |
 | Z1 release recovery operator             | Artifact emergency metadata API                    | TCP 443                       | G6 incident           | Independent MFA; freeze/revoke only, offline-root authorization, no upload                                                                  |
 | Z1 release recovery operator             | Update metadata/status emergency API               | TCP 443                       | G6 incident           | Independent MFA; publish higher-sequence freeze/revoke status only; no release approval or artifact upload                                  |
+| Z1 status-sequence recovery operator     | External monotonic sequence allocator              | Approved recovery protocol    | G6 recovery           | Independent MFA and dual control; read current counter/epoch only; no allocate, decrement, reset, sign, or policy authority                 |
+| Z1 status-sequence recovery operator     | Z5 protected release-status sequence ledger        | TCP 443                       | G6 recovery           | Read exact authority/epoch maximum and signed continuity proofs only; case-scoped, self-audited, no general audit read or alteration        |
+| Z1 status-sequence recovery operator     | Z6 immutable release-status sequence fallback      | Approved evidence protocol    | G6 recovery           | Read exact authority/epoch maximum, signed fallback anchor, and linkage only; no restore, delete, release, or unrelated evidence authority  |
 | Z2/Z3/Z5/Z6/Z8 host updaters             | Approved OS repositories                           | TCP 443                       | Maintenance           | Separate exact-source rules; named repositories, signatures, change window                                                                  |
 | Z7 builder                               | Approved source/dependency registries              | TCP 443                       | G6                    | Read-only locked inputs, digest/provenance checks, no runtime secrets                                                                       |
 | Z7 builder                               | Approved CI workload IdP                           | TCP 443                       | G6                    | Ephemeral workload identity with exact audience and short expiry                                                                            |
@@ -501,22 +507,29 @@ The G6 authorization selects and tests exactly one signing pattern; no signing
 private key may be present on a Z2 runtime, Z7 builder/publisher, artifact
 repository, or managed endpoint.
 
-Before requesting a signature, Z7 appends a signing-intent event to Z5 or its
-approved Z6 fallback and receives a signed intake acknowledgement bound to the
-canonical request digest, action, update role, correlation ID, and short expiry.
-That acknowledgement is part of the canonical signing request. The signer pins
-the approved Z5/Z6 acknowledgement keys and rejects a missing, invalid, expired,
-wrong-action, wrong-role, or wrong-digest acknowledgement.
+Before requesting a signature, Z7 creates an acknowledgement-free canonical
+payload containing the exact artifact digests, immutable source commit, SBOM and
+provenance digests, platform/version, update role, metadata expiry, action, and
+correlation ID. It computes the payload digest, appends a signing-intent event to
+Z5 or its approved Z6 fallback, and receives a signed intake acknowledgement
+bound to that payload digest, action, update role, correlation ID, and short
+expiry. Z7 then creates a separate canonical transport envelope containing the
+unchanged payload, declared payload digest, and acknowledgement. The envelope is
+not an input to its own payload digest. The signer pins the approved Z5/Z6
+acknowledgement keys, recomputes the digest solely from the embedded payload, and
+rejects any declared-digest mismatch or missing, invalid, expired, wrong-action,
+wrong-role, wrong-correlation, or wrong-payload-digest acknowledgement.
 
-1. **Hardware-backed service:** the Z7 signing coordinator submits only a
-   canonical request containing artifact digests, immutable source commit, SBOM
-   and provenance digests, platform/version, update-role, metadata expiry, and
-   the protected-intake acknowledgement. The service verifies the acknowledgement;
+1. **Hardware-backed service:** the Z7 signing coordinator submits only the
+   canonical envelope containing the acknowledgement-free payload, its digest,
+   and the protected-intake acknowledgement. The service recomputes the payload
+   digest and verifies the acknowledgement;
    an approved signing policy and required quorum authorize a non-exportable key.
    Stateful return traffic contains only detached signatures, signed metadata,
    key identifiers, and a signed receipt. The signer cannot fetch arbitrary
    artifacts or publish to the repository.
-2. **Offline authority:** the same canonical request is hash-verified onto
+2. **Offline authority:** the same canonical envelope and separately displayed
+   acknowledgement-free payload digest are hash-verified onto
    single-purpose sanitized transfer media under dual control. The offline signer
    remains disconnected, verifies and displays the protected-intake
    acknowledgement, digest, and release scope for approval, and returns only
@@ -718,7 +731,8 @@ Provisioning is unacceptable unless testing proves that:
 - the Z7 builder/publisher cannot retrieve signing private keys, change signing
   policy, or cause the signer to fetch or publish an artifact;
 - the signer cannot sign without a current protected-intake acknowledgement bound
-  to the exact canonical request, and the publisher cannot accept the result
+  to the exact acknowledgement-free canonical payload digest, and the publisher
+  cannot accept the result
   without both exact signing-intent and signing-result acknowledgements;
 - the artifact repository cannot accept or publish a signed artifact without
   independently validating those same exact acknowledgements;
@@ -928,8 +942,10 @@ The deployment change packet must contain:
   still allow a Z1-authorized freeze/revocation/pause with retained signed
   receipts, raised incident severity, and later reconciliation;
 - G6 tests proving the signer rejects missing, invalid, stale, wrong-role, and
-  wrong-digest intake acknowledgements and the publisher rejects a signature
-  without matching signing-intent and signing-result acknowledgements;
+  wrong-payload-digest intake acknowledgements; the signer must recompute the
+  acknowledgement-free payload digest from the canonical envelope, and the
+  publisher rejects a signature without matching signing-intent and
+  signing-result acknowledgements;
 - G6 status tests proving the metadata/status authority rejects missing, invalid,
   stale, wrong-action/ring/sequence/digest intent acknowledgements and the
   repository rejects missing result acknowledgements; with both sinks down, only
@@ -949,7 +965,10 @@ The deployment change packet must contain:
   and application to a point before a recorded freeze/revocation, then proves the
   external allocator and independently anchored Z5/Z6 ledger force the next
   sequence above the pre-restore maximum; missing, lower, inconsistent, or
-  unavailable allocator/anchor state must keep status signing disabled;
+  unavailable allocator/anchor state must keep status signing disabled; the
+  recovery identity must read only the exact counter/epoch and matching anchor
+  continuity and must be denied allocation, reset, general audit, release,
+  restore, alteration, and delete operations;
 - agent no-listener and cross-endpoint isolation evidence;
 - backup/restore and revocation-invariant results;
 - capacity baseline and alert tests;

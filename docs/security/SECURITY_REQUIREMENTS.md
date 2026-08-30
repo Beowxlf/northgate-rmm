@@ -126,7 +126,10 @@ tests, audits, risks, and exceptions.
   rollback-resistant state outside its restorable VM and data, independently
   anchor every allocation, and remain unable to sign after restore or uncertain
   state until it reconciles the highest valid allocator and Z5/Z6 anchor and
-  proves the next sequence is greater.
+  proves the next sequence is greater. The recovery identity MUST have only
+  read-only, exact-authority/epoch access to those three sequence sources and no
+  allocation, reset, signing, release, restore, delete, alteration, or unrelated
+  audit authority.
 
 ## Remote access
 

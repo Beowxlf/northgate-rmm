@@ -1,6 +1,6 @@
 # Threat Model
 
-Status: Phase 0 baseline  
+Status: Phase 2 source-development review  
 Method: asset, actor, trust-boundary, abuse-case, and control analysis  
 Review trigger: every Class 2/3 change and each phase gate
 
@@ -104,6 +104,8 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-39 | Agent rollback erases the release-status sequence     | nonce-bound agreement across authority, allocator, anchored ledger, and repository activation head | reject lower status, block install, investigate state rollback               |
 | TM-40 | Status authority fabricates or restores sequence      | independently verified payload-bound allocator receipt; max-floor/restrictive recovery             | reject status/checkpoint, keep general signing disabled, preserve chain      |
 | TM-41 | Endpoint revocation leaves an active G7 tunnel        | issuer revoke plus identity-bound Z8 termination; independent PEP isolation fallback               | verify tunnel/JIT teardown, preserve Z5/Z6 evidence, investigate session     |
+| TM-42 | Malformed local input spoofs or exhausts collection   | exact config schema, fixed-path allowlist, byte/field/time bounds, no shell, fuzz tests            | bounded issue code, reject or mark partial, preserve local test evidence     |
+| TM-43 | Local spool is altered, replayed, or rolled back      | private path, quota, no-overwrite IDs, corruption checksum; no operational use before G2           | fail closed on malformed/digest mismatch; add keyed integrity and sequence   |
 
 ## Denial-of-service considerations
 
@@ -111,14 +113,18 @@ Every externally reachable operation has authentication where possible, request
 and decompression limits, rate limits, bounded parsing, timeouts, backpressure, and
 observable rejection. Endpoint spool and result output have hard quotas.
 
-## Residual Phase 0 risks
+## Residual risks
 
-- implementation does not yet exist, so controls are design requirements rather
-  than verified behavior;
+- Phase 1 and initial Phase 2 source now exist, but no operational agent has been
+  authorized, installed, or qualified;
+- the current spool checksum detects accidental corruption but does not provide
+  keyed integrity, encryption, or rollback resistance;
+- enrollment, mTLS, protected sequence persistence, retry/backoff, and secure
+  package/service lifecycle remain unimplemented;
 - selected identity provider, PKI, secrets service, and session gateway versions
   are not yet qualified;
 - Linux desktop backend remains support-matrix dependent;
 - independent penetration testing is deferred to the relevant operational gate.
 
-These residual risks prevent operational deployment but do not prevent a simulated
-Phase 1 after G1 authorization.
+These residual risks keep G2 and all operational deployment closed while bounded
+source development proceeds under its separate authorization.

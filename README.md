@@ -30,6 +30,7 @@ The first executable lesson is
 - [Licensing policy](docs/governance/LICENSING.md)
 - [Third-party notice inventory](THIRD_PARTY_NOTICES.md)
 - [Required free-software checks](docs/governance/REQUIRED_CHECKS.md)
+- [Phase 2 data inventory](docs/security/PHASE2_DATA_INVENTORY.md)
 - [Architecture overview](docs/architecture/OVERVIEW.md)
 - [Infrastructure and microsegmentation](docs/architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md)
 - [NorthGate VM and network change packet](docs/change-plans/NORTHGATE_RMM_VM_AND_NETWORK_PACKET_2026-08-30.md)
@@ -39,16 +40,23 @@ The first executable lesson is
 - [Incident response](docs/operations/INCIDENT_RESPONSE.md)
 - [Backup and restore](docs/operations/BACKUP_RESTORE.md)
 
-The repository is in **Phase 1: Trustworthy vertical-slice simulation**. G1
-authorizes bounded product coding with synthetic data. Endpoint installation,
-remote jobs, privileged actions, agent updates, interactive remote access, and
-production deployment remain closed behind later gates.
+The Phase 1 trustworthy vertical-slice simulation is complete. A separate,
+bounded authorization now permits **Phase 2 Linux-agent source development**.
+G2 remains closed: endpoint or VM installation, live identity, live collection,
+networking, and infrastructure changes remain prohibited.
 
 The Phase 1 implementation includes a strict message decoder, transactional
 PostgreSQL adapter and migrations, restart/concurrency/recovery tests, escaped
 server-rendered read models, and an in-memory test-only certificate authority.
 It remains a synthetic control-plane proof: no HTTP listener, real endpoint
 collector, job scheduler, or command-execution primitive is present.
+
+The in-progress Go agent source adds strict non-secret configuration, bounded
+allowlisted Linux collectors, the Phase 1-compatible inventory envelope, an
+checksum-validated quota spool, and an outbound-only transport interface. It
+has no network implementation, listener, command runner, privileged helper,
+package, or service installation. Encryption and keyed spool integrity remain
+G2 blockers.
 
 ## Phase 1 developer checks
 
@@ -59,6 +67,19 @@ ruff check src tests
 mypy src tests
 pytest --cov=northgate_rmm --cov-branch --cov-fail-under=90
 bandit --recursive src --severity-level medium
+```
+
+## Phase 2 agent developer checks
+
+Run these commands from `agent/` with the pinned Go version in `go.mod`:
+
+```powershell
+go fmt ./...
+go vet ./...
+go test ./...
+go test -race ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 ```
 
 ## License

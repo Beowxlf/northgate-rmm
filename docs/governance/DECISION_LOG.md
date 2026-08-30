@@ -16,7 +16,8 @@ their status.
 
 ## Governance decisions
 
-| ID      | Decision                                          | Status   | Record                            |
-| ------- | ------------------------------------------------- | -------- | --------------------------------- |
-| LIC-001 | Publish the project under Apache License 2.0      | Accepted | `docs/governance/LICENSING.md`    |
-| PUB-001 | Use a public repository to enforce protected main | Accepted | `governance/github-baseline.json` |
+| ID      | Decision                                          | Status   | Record                                                                |
+| ------- | ------------------------------------------------- | -------- | --------------------------------------------------------------------- |
+| LIC-001 | Publish the project under Apache License 2.0      | Accepted | `docs/governance/LICENSING.md`                                        |
+| PUB-001 | Use a public repository to enforce protected main | Accepted | `governance/github-baseline.json`                                     |
+| P2D-001 | Authorize bounded Linux-agent source development  | Accepted | `docs/governance/authorizations/P2-LINUX-AGENT-SOURCE-DEVELOPMENT.md` |

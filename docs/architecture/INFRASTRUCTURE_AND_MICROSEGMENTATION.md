@@ -560,14 +560,21 @@ sequence- and correlation-bound event through its write-only identity to the
 immutable Z6 release-audit fallback and requires that independent acknowledgement
 instead.
 
-The same invariant applies to signed release-status transitions. Z7 obtains the
-intent acknowledgement and binds it to the exact status request. The separated
-metadata/status authority pins the Z5/Z6 acknowledgement keys and rejects a
-missing, invalid, expired, wrong-action, wrong-ring, wrong-sequence, or
-wrong-digest acknowledgement. After signing the status object, the authority
-itself appends the result to Z5 or Z6 and obtains a second acknowledgement. The
-artifact repository verifies the status signature plus both acknowledgements
-before making an authority-increasing status active.
+The same invariant applies to signed release-status transitions. Z7 first
+canonicalizes an acknowledgement-free status payload containing the exact action,
+artifact and metadata digests, version, current/destination rings, next sequence,
+policy, correlation ID, expiry, approval digest, and health-attestation digest.
+It computes that payload digest and obtains an intent acknowledgement bound to it.
+A separate status envelope carries the unchanged payload, declared payload digest,
+and acknowledgement; the envelope is not hashed into its own payload digest. The
+separated metadata/status authority pins the Z5/Z6 acknowledgement keys,
+recomputes the payload digest, and rejects a missing, invalid, expired,
+wrong-action, wrong-ring, wrong-sequence, wrong-correlation, or
+wrong-payload-digest acknowledgement. After signing the status object, the
+authority itself appends the result to Z5 or Z6 and obtains a second
+acknowledgement. The artifact repository verifies the status signature, payload
+digest, and both acknowledgements before making an authority-increasing status
+active.
 
 An audit acknowledgement is evidence, not rollout authorization. For every
 rollout start, advance, or resumption, the request also carries a separately
@@ -586,7 +593,9 @@ wrong-ring, or digest-mismatched evidence fails the authority-increasing status
 closed. The signed status object includes the decision and health-attestation
 digests so the repository can verify the same binding before activation.
 
-The Z6 fallback grants no release, artifact, read, restore, or delete authority.
+The Z6 fallback grants no release, artifact, general read, restore, or delete
+authority. The sole read exception is the exact authority/epoch sequence-anchor
+recovery row above.
 Its accepted events are reconciled into Z5 after recovery while preserving the
 original signature, sequence, acknowledgement, and time. A buffer controlled by
 the publisher, repository, or local release host is not independent evidence and
@@ -946,10 +955,12 @@ The deployment change packet must contain:
   acknowledgement-free payload digest from the canonical envelope, and the
   publisher rejects a signature without matching signing-intent and
   signing-result acknowledgements;
-- G6 status tests proving the metadata/status authority rejects missing, invalid,
-  stale, wrong-action/ring/sequence/digest intent acknowledgements and the
-  repository rejects missing result acknowledgements; with both sinks down, only
-  Z1-authorized higher-sequence freeze/revoke/pause status may proceed;
+- G6 status tests proving the metadata/status authority recomputes the
+  acknowledgement-free status-payload digest and rejects missing, invalid, stale,
+  wrong-action/ring/sequence/correlation/payload-digest intent acknowledgements;
+  the repository rejects missing result acknowledgements or envelope
+  self-reference; with both sinks down, only Z1-authorized higher-sequence
+  freeze/revoke/pause status may proceed;
 - G6 tests treating Z7 as compromised and proving a correctly audited status
   request is still rejected for requester self-approval; missing/stale/failed or
   mismatched signed health evidence; and wrong artifact, source/destination ring,

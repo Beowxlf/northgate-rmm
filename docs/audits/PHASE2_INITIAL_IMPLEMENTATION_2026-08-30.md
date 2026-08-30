@@ -103,6 +103,13 @@ control-plane URL and found that URL parsing alone accepted out-of-range numeric
 ports. The follow-up change rejects invalid UTF-8 before URL parsing and limits
 explicit ports to the TCP range of 1 through 65535.
 
+The seventh exact-head review found that a percent-encoded host could decode to
+invalid UTF-8, an explicit empty port could be silently normalized, and an
+acknowledgement could become crash-durability ambiguous after removal if the
+directory sync failed. The follow-up change validates the decoded hostname,
+rejects empty ports, and returns a typed uncertainty with the exact queue record
+ID so restart recovery can reconcile the acknowledgement.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

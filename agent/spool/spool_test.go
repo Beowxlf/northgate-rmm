@@ -39,6 +39,31 @@ func TestQueueRoundTripAndAcknowledge(t *testing.T) {
 	}
 }
 
+func TestAcknowledgeExposesUncertainDeletionOutcome(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer queue.Close()
+	if err := queue.Enqueue(context.Background(), testID, []byte(`{"type":"inventory"}`)); err != nil {
+		t.Fatalf("Enqueue() error = %v", err)
+	}
+	syncFailure := errors.New("injected directory sync failure")
+	queue.sync = func(*os.Root) error { return syncFailure }
+	err = queue.Acknowledge(context.Background(), testID)
+	var uncertain *AcknowledgeUncertainError
+	if !errors.As(err, &uncertain) {
+		t.Fatalf("Acknowledge() error = %v, want AcknowledgeUncertainError", err)
+	}
+	if uncertain.ID != testID || !errors.Is(err, syncFailure) {
+		t.Fatalf("Acknowledge() uncertainty = %#v, want ID %s and injected cause", uncertain, testID)
+	}
+	if _, statErr := os.Stat(filepath.Join(directory, testID+".json")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("acknowledged item remains visible: %v", statErr)
+	}
+}
+
 func TestQueueDetectsCorruption(t *testing.T) {
 	directory := t.TempDir()
 	queue, err := Open(directory, 1<<20)

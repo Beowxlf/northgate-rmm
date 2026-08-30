@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -122,6 +123,13 @@ func (cfg Config) Validate() error {
 	parsed, err := url.Parse(cfg.ControlPlaneURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return errors.New("control_plane_url must be an absolute HTTPS URL")
+	}
+	hostname := parsed.Hostname()
+	if hostname == "" || !utf8.ValidString(hostname) || containsControl(hostname) {
+		return errors.New("control_plane_url contains an invalid hostname")
+	}
+	if strings.HasSuffix(parsed.Host, ":") {
+		return errors.New("control_plane_url contains an empty port")
 	}
 	if port := parsed.Port(); port != "" {
 		portNumber, err := strconv.Atoi(port)

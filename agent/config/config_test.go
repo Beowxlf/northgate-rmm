@@ -99,8 +99,10 @@ func TestValidateRejectsInvalidControlPlaneURL(t *testing.T) {
 	}
 	tests := []string{
 		"https://exa" + string([]byte{0xff}) + "mple.invalid/",
+		"https://%FF/",
 		"https://rmm.invalid:99999/",
 		"https://rmm.invalid:0/",
+		"https://rmm.invalid:/",
 	}
 	for _, controlPlaneURL := range tests {
 		cfg.ControlPlaneURL = controlPlaneURL

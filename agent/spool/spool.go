@@ -59,10 +59,25 @@ func (err *CommitUncertainError) Error() string {
 
 func (err *CommitUncertainError) Unwrap() error { return err.Cause }
 
+// AcknowledgeUncertainError exposes the exact item ID when a removal completed
+// but its directory sync failed, so recovery must reconcile whether the record
+// is present after restart before transmitting it again.
+type AcknowledgeUncertainError struct {
+	ID    string
+	Cause error
+}
+
+func (err *AcknowledgeUncertainError) Error() string {
+	return fmt.Sprintf("spool acknowledgement outcome is uncertain for %s: %v", err.ID, err.Cause)
+}
+
+func (err *AcknowledgeUncertainError) Unwrap() error { return err.Cause }
+
 type Queue struct {
 	mu       sync.Mutex
 	root     *os.Root
 	lock     directoryLock
+	sync     func(*os.Root) error
 	maxBytes int64
 	closed   bool
 }
@@ -109,7 +124,7 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 		root.Close()
 		return nil, err
 	}
-	queue := &Queue{root: root, lock: lock, maxBytes: maxBytes}
+	queue := &Queue{root: root, lock: lock, sync: syncDirectory, maxBytes: maxBytes}
 	if err := syncDirectory(root); err != nil {
 		lock.Close()
 		root.Close()
@@ -297,8 +312,11 @@ func (queue *Queue) Acknowledge(ctx context.Context, id string) error {
 	if err := queue.root.Remove(id + ".json"); err != nil {
 		return fmt.Errorf("remove spool item: %w", err)
 	}
-	if err := syncDirectory(queue.root); err != nil {
-		return fmt.Errorf("sync spool directory: %w", err)
+	if err := queue.sync(queue.root); err != nil {
+		return &AcknowledgeUncertainError{
+			ID:    id,
+			Cause: fmt.Errorf("sync spool directory after acknowledgement: %w", err),
+		}
 	}
 	return nil
 }

@@ -101,6 +101,29 @@ func TestOSReleaseRejectsDuplicateAllowlistedField(t *testing.T) {
 	}
 }
 
+func TestOSReleaseUsesShellCompatibleQuoting(t *testing.T) {
+	raw := []byte("ID='debian'\nVERSION_ID='12'\nPRETTY_NAME=\"Cost \\$5 at C:\\\\Linux\"\n")
+	values, err := parseOSRelease(raw)
+	if err != nil {
+		t.Fatalf("parseOSRelease() error = %v", err)
+	}
+	if values["ID"] != "debian" || values["VERSION_ID"] != "12" ||
+		values["PRETTY_NAME"] != `Cost $5 at C:\Linux` {
+		t.Fatalf("parseOSRelease() = %#v", values)
+	}
+}
+
+func TestOSReleaseRejectsUnterminatedOrEmbeddedQuote(t *testing.T) {
+	for _, raw := range [][]byte{
+		[]byte("ID='debian\nVERSION_ID=12\n"),
+		[]byte("ID='deb'ian'\nVERSION_ID=12\n"),
+	} {
+		if _, err := parseOSRelease(raw); !errors.Is(err, ErrMalformed) {
+			t.Fatalf("parseOSRelease(%q) error = %v, want ErrMalformed", raw, err)
+		}
+	}
+}
+
 func TestRunnerHonorsCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

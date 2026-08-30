@@ -235,20 +235,49 @@ func validText(value string) bool {
 }
 
 func decodeOSReleaseValue(value string) (string, error) {
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", ErrMalformed
 	}
-	if strings.HasPrefix(value, `"`) {
-		decoded, err := strconv.Unquote(value)
-		if err != nil {
+	quote := byte(0)
+	body := value
+	if value[0] == '\'' || value[0] == '"' {
+		quote = value[0]
+		if len(value) < 2 || value[len(value)-1] != quote {
 			return "", ErrMalformed
 		}
-		return decoded, nil
-	}
-	if !unquotedPattern.MatchString(value) {
+		body = value[1 : len(value)-1]
+	} else if !unquotedPattern.MatchString(value) {
 		return "", ErrMalformed
 	}
-	return value, nil
+
+	var decoded strings.Builder
+	decoded.Grow(len(body))
+	for index := 0; index < len(body); index++ {
+		character := body[index]
+		if quote != 0 && character == quote {
+			return "", ErrMalformed
+		}
+		if character != '\\' {
+			decoded.WriteByte(character)
+			continue
+		}
+		if index+1 >= len(body) {
+			return "", ErrMalformed
+		}
+		index++
+		escaped := body[index]
+		switch escaped {
+		case '$', '\'', '"', '\\', '`':
+			decoded.WriteByte(escaped)
+		default:
+			// Shell-style double quoting preserves a backslash before a
+			// non-special character instead of interpreting Go/C escapes.
+			decoded.WriteByte('\\')
+			decoded.WriteByte(escaped)
+		}
+	}
+	return decoded.String(), nil
 }
 
 type BootCollector struct{}

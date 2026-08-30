@@ -120,6 +120,9 @@ func (cfg Config) Validate() error {
 	if !utf8.ValidString(cfg.ControlPlaneURL) {
 		return errors.New("control_plane_url contains invalid UTF-8")
 	}
+	if strings.Contains(cfg.ControlPlaneURL, "#") {
+		return errors.New("control_plane_url must not contain a fragment delimiter")
+	}
 	parsed, err := url.Parse(cfg.ControlPlaneURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return errors.New("control_plane_url must be an absolute HTTPS URL")

@@ -110,6 +110,13 @@ directory sync failed. The follow-up change validates the decoded hostname,
 rejects empty ports, and returns a typed uncertainty with the exact queue record
 ID so restart recovery can reconcile the acknowledgement.
 
+The eighth exact-head review found that an empty fragment delimiter could be
+silently normalized and that the OS-release collector used Go string-literal
+rules instead of the Linux file's shell-compatible quoting rules. The follow-up
+change rejects the raw fragment delimiter and uses a bounded format-specific
+decoder supporting single or double quotes and literal shell-style escapes
+without interpolation or execution.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

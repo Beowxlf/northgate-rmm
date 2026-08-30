@@ -1,6 +1,6 @@
 # Phase 1 Exit Audit — 2026-08-30
 
-Status: Candidate pending revalidation of migration-order hardening  
+Status: Pass at reviewed implementation commit `5106ddfebf07f19d8fa6ae04b3667ff04fb8ed4d`  
 Gate: G1 — Product coding  
 Scope: Phase 1 simulated control-plane exit
 
@@ -47,18 +47,18 @@ repository-root third-party notice inventory.
 ## Protected-pull-request evidence
 
 - protected pull request: [#7](https://github.com/Beowxlf/northgate-rmm/pull/7);
-- reviewed implementation commit: `0e6c4d020583220357a6cc91966a379c5b77046f`;
-- [governance/documentation run 33321194200](https://github.com/Beowxlf/northgate-rmm/actions/runs/33321194200):
+- reviewed implementation commit: `5106ddfebf07f19d8fa6ae04b3667ff04fb8ed4d`;
+- [governance/documentation run 33321498342](https://github.com/Beowxlf/northgate-rmm/actions/runs/33321498342):
   pass;
-- [repository-security run 33321194150](https://github.com/Beowxlf/northgate-rmm/actions/runs/33321194150):
+- [repository-security run 33321498344](https://github.com/Beowxlf/northgate-rmm/actions/runs/33321498344):
   pass;
-- Python 3.12 result: 53 tests passed, including 11 PostgreSQL tests, with
-  95.68% total branch coverage;
+- Python 3.12 result: 54 tests passed, including 12 PostgreSQL tests, with
+  95.73% total branch coverage;
 - Ruff, strict mypy, Bandit, pip-audit, Gitleaks, Semgrep, actionlint, Zizmor,
   Markdownlint, Prettier, and Lychee completed successfully;
 - PostgreSQL migration, competing-writer concurrency, dump, isolated restore,
   and revoked-ingest checks passed;
-- automated review completed for `0e6c4d0`; unresolved review threads: 0.
+- automated review completed for `5106ddf`; unresolved review threads: 0.
 
 The audit-record-only commit that contains this pass does not alter the reviewed
 runtime implementation. It must also complete the protected checks and automated

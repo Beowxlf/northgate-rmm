@@ -12,6 +12,13 @@ The machine-readable source is `governance/gates.json`. A gate is open only when
 
 A passing CI run is evidence, not authorization by itself.
 
+Phase-specific source development may be authorized by a separate committed
+development record that states an exact non-deployment boundary. Such a record
+does not open the corresponding installation or capability gate. In particular,
+reviewable Phase 2 agent source may be developed while G2 remains closed, but it
+may not be installed, connected to live infrastructure, or supplied with live
+identity material until G2 has its own complete authorization record.
+
 ## G0 — Repository establishment
 
 Allows governance and audit tooling only. Requires charter, governance, security

@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 25
     env:
       DATABASE_URL: postgresql://postgres@127.0.0.1:5432/northgate_rmm_test
+      GOTOOLCHAIN: local
     services:
       postgres:
         image: postgres:16.10-alpine@sha256:ab8380566c3ea09690a9ecaa85a59d82bfc6eb86744151a2a54335866c83a3e9
@@ -47,6 +48,11 @@ jobs:
         with:
           node-version: "24"
           package-manager-cache: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: agent/go.mod
+          cache: false
       - name: Audit locked npm dependencies
         run: |
           npm ci --ignore-scripts
@@ -77,10 +83,22 @@ jobs:
           --cov-fail-under=90
       - name: Scan Phase 1 Python with Bandit
         run: bandit --recursive src --severity-level medium
+      - name: Check Phase 2 Go agent
+        working-directory: agent
+        run: |
+          test -z "$(gofmt -l .)"
+          go mod verify
+          go vet ./...
+          go test -race -covermode=atomic -coverprofile=coverage.out ./...
+          go test -run=^$ -fuzz=FuzzDecode -fuzztime=5s ./config
+          go test -run=^$ -fuzz=FuzzParseOSRelease -fuzztime=5s ./collector
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - name: Run Semgrep Community Edition
         run: |
           semgrep scan --config p/javascript --error scripts
           semgrep scan --config p/python --error src tests
+          semgrep scan --config p/golang --error agent
       - name: Audit workflows with Zizmor
         run: zizmor .github/workflows --pedantic
       - name: Install checksum-verified native audit tools

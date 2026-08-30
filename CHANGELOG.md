@@ -23,4 +23,10 @@ Changelog structure and will adopt semantic versioning before its first release.
 - an ephemeral test-only CA and endpoint-bound client certificate fixture;
 - Ruff, mypy, pytest coverage, Bandit, and Python Semgrep checks in CI; and
 - infrastructure capacity, trust-zone, flow-policy, microsegmentation,
-  provisioning, validation, and rollback specification.
+  provisioning, validation, and rollback specification;
+- bounded Phase 2 Linux-agent source authorization without opening G2;
+- a standard-library-only Go agent core with strict configuration, allowlisted
+  collectors, compatible inventory encoding, and a checksum-validated quota
+  spool; and
+- Go format, vet, race, fuzz, static analysis, vulnerability, and Semgrep checks
+  in CI.

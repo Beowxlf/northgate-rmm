@@ -103,6 +103,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-38 | Compromised coordinator bypasses rollout health gates | separate signed approval, signed Z5 health attestation, exact request/digest binding              | reject status, isolate coordinator, freeze rollout, preserve evidence     |
 | TM-39 | Agent rollback erases the release-status sequence     | rollback-resistant external state, direct signed authority checkpoint, fail-closed recovery       | reject lower status, restore sequence floor, investigate state rollback   |
 | TM-40 | Status-authority restore reissues a lower sequence    | external monotonic allocator, Z5/Z6 anchors, max-floor reconciliation, fail-closed signing        | keep signing disabled, recover epoch under dual control, preserve linkage |
+| TM-41 | Endpoint revocation leaves an active G7 tunnel        | issuer revoke plus identity-bound Z8 termination; independent PEP isolation fallback              | verify tunnel/JIT teardown, preserve Z5/Z6 evidence, investigate session  |
 
 ## Denial-of-service considerations
 

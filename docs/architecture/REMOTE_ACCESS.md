@@ -182,7 +182,10 @@ recorded intentionally.
 ## Failure and containment
 
 - gateway, agent, or control-plane loss closes or expires the tunnel;
-- revoking operator, endpoint, or session terminates active access;
+- revoking an endpoint identity pairs issuer revocation with independent Z8
+  termination of every session bound to that identity, or endpoint-facing PEP
+  isolation when Z8 is unavailable or suspected;
+- revoking an operator or session terminates active access;
 - session gateway has no standing network route to arbitrary endpoints;
 - tunnel allowlist prevents loopback/service pivoting beyond the approved target;
 - reconnect requires a current authorization decision;

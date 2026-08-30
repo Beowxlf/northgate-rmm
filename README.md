@@ -32,6 +32,7 @@ The first executable lesson is
 - [Required free-software checks](docs/governance/REQUIRED_CHECKS.md)
 - [Architecture overview](docs/architecture/OVERVIEW.md)
 - [Infrastructure and microsegmentation](docs/architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md)
+- [NorthGate VM and network change packet](docs/change-plans/NORTHGATE_RMM_VM_AND_NETWORK_PACKET_2026-08-30.md)
 - [Cross-platform remote access](docs/architecture/REMOTE_ACCESS.md)
 - [Threat model](docs/security/THREAT_MODEL.md)
 - [Security requirements](docs/security/SECURITY_REQUIREMENTS.md)

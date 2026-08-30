@@ -110,6 +110,31 @@ func TestOSReleaseRejectsInvalidDistributionID(t *testing.T) {
 	}
 }
 
+func TestOSReleaseEnforcesVersionIDGrammar(t *testing.T) {
+	for _, versionID := range []string{`"Debian 12"`, `""`} {
+		source := validSource()
+		source.files["/etc/os-release"] = "ID=debian\nVERSION_ID=" + versionID + "\n"
+		_, err := (OSReleaseCollector{}).Collect(context.Background(), source)
+		if !errors.Is(err, ErrMalformed) {
+			t.Fatalf("Collect() accepted VERSION_ID=%s: %v", versionID, err)
+		}
+	}
+	source := validSource()
+	source.files["/etc/os-release"] = "ID=debian\nVERSION_ID=\"BOOKWORM~1^2+3\"\n"
+	fields, err := (OSReleaseCollector{}).Collect(context.Background(), source)
+	if err != nil || fields["os.version_id"] != "BOOKWORM~1^2+3" {
+		t.Fatalf("Collect() rejected an allowed VERSION_ID: %#v, %v", fields, err)
+	}
+}
+
+func TestHostCollectorRejectsHostnameNormalization(t *testing.T) {
+	source := validSource()
+	source.hostname = "synthetic-canary\n"
+	if _, err := (HostCollector{}).Collect(context.Background(), source); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("Collect() error = %v, want ErrMalformed", err)
+	}
+}
+
 func TestOSReleaseUsesShellCompatibleQuoting(t *testing.T) {
 	raw := []byte("ID='debian'\nVERSION_ID='12'\nPRETTY_NAME=\"Cost \\$5 at C:\\\\Linux\"\n")
 	values, err := parseOSRelease(raw)

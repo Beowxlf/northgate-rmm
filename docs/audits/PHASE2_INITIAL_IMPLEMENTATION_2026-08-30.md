@@ -131,6 +131,13 @@ opens and verifies both parent and queue by stable directory handles with
 same-file checks, enforces the lowercase OS ID grammar, and constrains both
 message timestamps to years 1 through 9999.
 
+The eleventh exact-head review found that `VERSION_ID` lacked field-specific
+grammar validation and that hostname collection normalized surrounding control
+text. The follow-up change rejects hostname normalization and enforces the
+official `VERSION_ID` character set. Uppercase remains accepted because the
+systemd specification recommends, but does not require, lowercase for this
+field.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

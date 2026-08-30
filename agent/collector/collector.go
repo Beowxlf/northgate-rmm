@@ -32,6 +32,7 @@ var (
 	versionPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 	unquotedPattern  = regexp.MustCompile(`^[0-9A-Za-z._-]+$`)
 	osIDPattern      = regexp.MustCompile(`^[0-9a-z._-]+$`)
+	osVersionPattern = regexp.MustCompile(`^[0-9A-Za-z._~^+-]+$`)
 )
 
 type DiskUsage struct {
@@ -152,8 +153,8 @@ func (HostCollector) Collect(ctx context.Context, source Source) (map[string]str
 	if err != nil {
 		return nil, err
 	}
-	hostname = strings.TrimSpace(hostname)
-	if hostname == "" || len(hostname) > MaxHostnameBytes || !validText(hostname) {
+	if hostname == "" || hostname != strings.TrimSpace(hostname) ||
+		len(hostname) > MaxHostnameBytes || !validText(hostname) {
 		return nil, ErrMalformed
 	}
 	return map[string]string{
@@ -176,7 +177,7 @@ func (OSReleaseCollector) Collect(ctx context.Context, source Source) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	if !osIDPattern.MatchString(values["ID"]) || values["VERSION_ID"] == "" {
+	if !osIDPattern.MatchString(values["ID"]) || !osVersionPattern.MatchString(values["VERSION_ID"]) {
 		return nil, ErrMalformed
 	}
 	result := map[string]string{

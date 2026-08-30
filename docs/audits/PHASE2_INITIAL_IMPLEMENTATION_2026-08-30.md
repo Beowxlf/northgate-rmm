@@ -86,6 +86,12 @@ syncs the queue directory after temporary-file cleanup on every post-creation
 enqueue failure and applies strict UTF-8 validation to the architecture field as
 well as inventory keys and values.
 
+The fourth exact-head review found three final cases. The follow-up change rejects
+all control characters in state paths and protocol text, durably rolls back a
+published record when final sync fails, exposes a typed exact-ID uncertainty when
+rollback durability cannot be proven, and preserves the generated message ID in
+the snapshot result on every queue error.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

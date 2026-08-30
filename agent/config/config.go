@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"path"
 	"regexp"
-	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
 )
@@ -127,8 +127,8 @@ func (cfg Config) Validate() error {
 	if cfg.StateDirectory == "/" || !path.IsAbs(cfg.StateDirectory) || path.Clean(cfg.StateDirectory) != cfg.StateDirectory {
 		return errors.New("state_directory must be an absolute clean Linux path")
 	}
-	if strings.ContainsRune(cfg.StateDirectory, '\x00') {
-		return errors.New("state_directory contains a NUL byte")
+	if containsControl(cfg.StateDirectory) {
+		return errors.New("state_directory contains a control character")
 	}
 	if cfg.CollectionInterval < MinCollectionInterval || cfg.CollectionInterval > MaxCollectionInterval {
 		return errors.New("collection_interval is outside the supported range")
@@ -143,4 +143,13 @@ func (cfg Config) Validate() error {
 		return errors.New("max_spool_bytes is outside the supported range")
 	}
 	return nil
+}
+
+func containsControl(value string) bool {
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return true
+		}
+	}
+	return false
 }

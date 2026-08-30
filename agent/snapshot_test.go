@@ -123,3 +123,31 @@ func TestNewUUIDProducesCanonicalVersionFourID(t *testing.T) {
 		t.Fatalf("newUUID() = %q", id)
 	}
 }
+
+func TestSnapshotPreservesMessageIDOnQueueFailure(t *testing.T) {
+	runner, err := collector.NewRunner("0.2.0")
+	if err != nil {
+		t.Fatalf("NewRunner() error = %v", err)
+	}
+	queue := &memoryQueue{err: errors.New("synthetic queue failure")}
+	snapshotter, err := NewSnapshotter(runner, queue)
+	if err != nil {
+		t.Fatalf("NewSnapshotter() error = %v", err)
+	}
+	wantID := "123e4567-e89b-42d3-a456-426614174001"
+	ids := []string{wantID, "123e4567-e89b-42d3-a456-426614174002"}
+	snapshotter.newID = func() (string, error) {
+		id := ids[0]
+		ids = ids[1:]
+		return id, nil
+	}
+	result, err := snapshotter.Snapshot(
+		context.Background(),
+		"123e4567-e89b-42d3-a456-426614174003",
+		1,
+		syntheticSource{},
+	)
+	if err == nil || result.MessageID != wantID {
+		t.Fatalf("Snapshot() result = %#v, error = %v", result, err)
+	}
+}

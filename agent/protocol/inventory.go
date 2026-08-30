@@ -7,6 +7,7 @@ import (
 	"errors"
 	"regexp"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -100,8 +101,7 @@ func validatePayload(payload InventoryPayload) error {
 	if payload.Platform != "linux" {
 		return errors.New("inventory platform is unsupported")
 	}
-	if payload.Architecture == "" || len(payload.Architecture) > 32 ||
-		!utf8.ValidString(payload.Architecture) {
+	if payload.Architecture == "" || len(payload.Architecture) > 32 || !validText(payload.Architecture) {
 		return errors.New("inventory architecture is invalid")
 	}
 	if payload.SchemaVersion != InventorySchema {
@@ -115,9 +115,21 @@ func validatePayload(payload InventoryPayload) error {
 	}
 	for key, value := range payload.Fields {
 		if key == "" || len(key) > MaxFieldKeyBytes || len(value) > MaxFieldValueBytes ||
-			!utf8.ValidString(key) || !utf8.ValidString(value) {
+			!validText(key) || !validText(value) {
 			return errors.New("inventory field is empty or too long")
 		}
 	}
 	return nil
+}
+
+func validText(value string) bool {
+	if !utf8.ValidString(value) {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
 }

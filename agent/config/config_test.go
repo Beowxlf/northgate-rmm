@@ -51,6 +51,7 @@ func TestDecodeRejectsUnsafeDestinationsAndBounds(t *testing.T) {
 		{"empty query", "https://rmm.invalid/", "https://rmm.invalid?"},
 		{"relative state", "/var/lib/northgate-rmm", "state"},
 		{"root state", "/var/lib/northgate-rmm", "/"},
+		{"control in state", "/var/lib/northgate-rmm", "/var/lib/northgate\\nspool"},
 		{"small spool", "1048576", "1024"},
 		{"fast collection", "5m", "1s"},
 	}

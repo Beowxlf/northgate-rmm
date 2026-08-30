@@ -46,6 +46,19 @@ type record struct {
 	SHA256        string    `json:"sha256"`
 }
 
+// CommitUncertainError exposes the exact item ID when durable rollback cannot
+// prove whether a published record may survive a crash.
+type CommitUncertainError struct {
+	ID    string
+	Cause error
+}
+
+func (err *CommitUncertainError) Error() string {
+	return fmt.Sprintf("spool commit outcome is uncertain for %s: %v", err.ID, err.Cause)
+}
+
+func (err *CommitUncertainError) Unwrap() error { return err.Cause }
+
 type Queue struct {
 	mu       sync.Mutex
 	root     *os.Root
@@ -201,13 +214,36 @@ func (queue *Queue) Enqueue(ctx context.Context, id string, payload []byte) (ret
 		return fmt.Errorf("publish spool item: %w", err)
 	}
 	if err := queue.root.Remove(temporary); err != nil {
-		return fmt.Errorf("remove temporary spool item: %w", err)
+		removeTemporary = false
+		return queue.rollbackPublished(id, filename, temporary, fmt.Errorf("remove temporary spool item: %w", err))
 	}
 	removeTemporary = false
 	if err := syncDirectory(queue.root); err != nil {
-		return fmt.Errorf("sync spool directory: %w", err)
+		return queue.rollbackPublished(id, filename, "", fmt.Errorf("sync spool directory: %w", err))
 	}
 	return nil
+}
+
+func (queue *Queue) rollbackPublished(id, filename, temporary string, cause error) error {
+	removeFinalErr := queue.root.Remove(filename)
+	if errors.Is(removeFinalErr, fs.ErrNotExist) {
+		removeFinalErr = nil
+	}
+	var removeTemporaryErr error
+	if temporary != "" {
+		removeTemporaryErr = queue.root.Remove(temporary)
+		if errors.Is(removeTemporaryErr, fs.ErrNotExist) {
+			removeTemporaryErr = nil
+		}
+	}
+	syncErr := syncDirectory(queue.root)
+	if removeFinalErr == nil && removeTemporaryErr == nil && syncErr == nil {
+		return cause
+	}
+	return &CommitUncertainError{
+		ID:    id,
+		Cause: errors.Join(cause, removeFinalErr, removeTemporaryErr, syncErr),
+	}
 }
 
 // Read validates the record schema, file binding, payload bound, and digest

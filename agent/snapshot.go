@@ -95,15 +95,16 @@ func (snapshotter *Snapshotter) Snapshot(
 	if err != nil {
 		return SnapshotResult{}, err
 	}
-	if err := snapshotter.queue.Enqueue(ctx, messageID, raw); err != nil {
-		return SnapshotResult{}, err
-	}
-	return SnapshotResult{
+	snapshotResult := SnapshotResult{
 		MessageID: messageID,
 		Complete:  result.Complete,
 		Issues:    append([]collector.Issue(nil), result.Issues...),
 		Bytes:     len(raw),
-	}, nil
+	}
+	if err := snapshotter.queue.Enqueue(ctx, messageID, raw); err != nil {
+		return snapshotResult, err
+	}
+	return snapshotResult, nil
 }
 
 func newUUID() (string, error) {

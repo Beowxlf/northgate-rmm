@@ -123,4 +123,18 @@ func TestEncodeInventoryRejectsInvalidEnvelopeAndPayload(t *testing.T) {
 			t.Fatal("EncodeInventory() accepted invalid architecture UTF-8")
 		}
 	})
+	t.Run("control in architecture", func(t *testing.T) {
+		payload := validPayload()
+		payload.Architecture = "amd64\n"
+		if _, err := EncodeInventory(validEnvelope(), payload); err == nil {
+			t.Fatal("EncodeInventory() accepted architecture control text")
+		}
+	})
+	t.Run("control in field", func(t *testing.T) {
+		payload := validPayload()
+		payload.Fields = map[string]string{"value": "line\nbreak"}
+		if _, err := EncodeInventory(validEnvelope(), payload); err == nil {
+			t.Fatal("EncodeInventory() accepted field control text")
+		}
+	})
 }

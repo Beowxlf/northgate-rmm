@@ -100,7 +100,8 @@ func validatePayload(payload InventoryPayload) error {
 	if payload.Platform != "linux" {
 		return errors.New("inventory platform is unsupported")
 	}
-	if payload.Architecture == "" || len(payload.Architecture) > 32 {
+	if payload.Architecture == "" || len(payload.Architecture) > 32 ||
+		!utf8.ValidString(payload.Architecture) {
 		return errors.New("inventory architecture is invalid")
 	}
 	if payload.SchemaVersion != InventorySchema {

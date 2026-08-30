@@ -81,6 +81,11 @@ across processes. Queue creation now requires an existing real parent and syncs
 that parent before success. Non-Linux queue locking and sync remain development
 test shims and make no operational durability claim.
 
+The third exact-head review found two final edge cases. The follow-up change
+syncs the queue directory after temporary-file cleanup on every post-creation
+enqueue failure and applies strict UTF-8 validation to the architecture field as
+well as inventory keys and values.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

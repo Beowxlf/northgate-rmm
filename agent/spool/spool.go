@@ -122,7 +122,7 @@ func (queue *Queue) Close() error {
 
 // Enqueue durably writes a new item without overwriting an existing ID. Queue
 // exhaustion rejects the new item; it never silently evicts evidence.
-func (queue *Queue) Enqueue(ctx context.Context, id string, payload []byte) error {
+func (queue *Queue) Enqueue(ctx context.Context, id string, payload []byte) (returnErr error) {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
 	if err := queue.ready(ctx); err != nil {
@@ -172,7 +172,13 @@ func (queue *Queue) Enqueue(ctx context.Context, id string, payload []byte) erro
 	removeTemporary := true
 	defer func() {
 		if removeTemporary {
-			_ = queue.root.Remove(temporary)
+			cleanupErr := queue.root.Remove(temporary)
+			if cleanupErr == nil {
+				cleanupErr = syncDirectory(queue.root)
+			}
+			if cleanupErr != nil {
+				returnErr = errors.Join(returnErr, fmt.Errorf("clean temporary spool item: %w", cleanupErr))
+			}
 		}
 	}()
 	if _, err := file.Write(raw); err != nil {

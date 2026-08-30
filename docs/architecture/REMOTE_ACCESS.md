@@ -169,10 +169,15 @@ alert contains no credential secret. It also retains a host-protected
 pending-revocation record for retry and operator reconciliation.
 
 Independent emergency termination does not rely on the Z8-to-Z2 lifecycle path.
-The Z1 recovery client appends signed intent and observed/result evidence to Z5
-before and after the action (or Z6 when Z5 is unavailable), and the gateway sends
-its signed termination event directly to protected Z5 session evidence. Evidence
-distinguishes gateway-claimed outcome from independently observed teardown.
+The Z1 recovery client appends signed intent and observed/result evidence to the
+protected Z5 recovery-audit intake before and after the action. If Z5 is
+unavailable, suspected, or otherwise untrusted, the client instead writes the
+same signed bundle to the independent immutable Z6 evidence intake and requires
+that trusted intake's acknowledgement. A responsive but untrusted Z5
+acknowledgement is not sufficient. The gateway sends its signed termination event
+directly to protected Z5 session evidence when that route is available; when Z5
+is untrusted, the Z1 bundle carried to Z6 includes the gateway-claimed result and
+the independently observed teardown so the evidence preserves their distinction.
 
 Screen recording and terminal transcription are not universally enabled. The
 project must decide retention, access, notification, redaction, and legal/privacy

@@ -117,6 +117,13 @@ change rejects the raw fragment delimiter and uses a bounded format-specific
 decoder supporting single or double quotes and literal shell-style escapes
 without interpolation or execution.
 
+The ninth exact-head review found that trimming assignment values accepted
+invalid whitespace after `=` and that the decoder applied double-quote escape
+semantics to single-quoted content. The follow-up change preserves the source
+line boundary, rejects surrounding value whitespace, treats single-quoted
+content literally, and limits double-quoted escape removal to shell-special
+characters.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

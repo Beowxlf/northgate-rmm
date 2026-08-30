@@ -117,9 +117,29 @@ func TestOSReleaseRejectsUnterminatedOrEmbeddedQuote(t *testing.T) {
 	for _, raw := range [][]byte{
 		[]byte("ID='debian\nVERSION_ID=12\n"),
 		[]byte("ID='deb'ian'\nVERSION_ID=12\n"),
+		[]byte("ID= 'debian'\nVERSION_ID=12\n"),
+		[]byte("ID='debian' \nVERSION_ID=12\n"),
 	} {
 		if _, err := parseOSRelease(raw); !errors.Is(err, ErrMalformed) {
 			t.Fatalf("parseOSRelease(%q) error = %v, want ErrMalformed", raw, err)
+		}
+	}
+}
+
+func TestOSReleaseHonorsActiveQuoteMode(t *testing.T) {
+	tests := []struct {
+		encoded string
+		want    string
+	}{
+		{`'Cost \$5'`, `Cost \$5`},
+		{`"It\'s"`, `It\'s`},
+		{`"Cost \$5"`, `Cost $5`},
+		{`"C:\\Linux"`, `C:\Linux`},
+	}
+	for _, test := range tests {
+		got, err := decodeOSReleaseValue(test.encoded)
+		if err != nil || got != test.want {
+			t.Fatalf("decodeOSReleaseValue(%q) = %q, %v; want %q", test.encoded, got, err, test.want)
 		}
 	}
 }

@@ -196,8 +196,8 @@ func parseOSRelease(raw []byte) (map[string]string, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	scanner.Buffer(make([]byte, 256), MaxSourceFileBytes)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 		key, value, found := strings.Cut(line, "=")
@@ -235,8 +235,7 @@ func validText(value string) bool {
 }
 
 func decodeOSReleaseValue(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
+	if value == "" || value != strings.TrimSpace(value) {
 		return "", ErrMalformed
 	}
 	quote := byte(0)
@@ -249,6 +248,12 @@ func decodeOSReleaseValue(value string) (string, error) {
 		body = value[1 : len(value)-1]
 	} else if !unquotedPattern.MatchString(value) {
 		return "", ErrMalformed
+	}
+	if quote == '\'' {
+		if strings.ContainsRune(body, '\'') {
+			return "", ErrMalformed
+		}
+		return body, nil
 	}
 
 	var decoded strings.Builder
@@ -268,7 +273,7 @@ func decodeOSReleaseValue(value string) (string, error) {
 		index++
 		escaped := body[index]
 		switch escaped {
-		case '$', '\'', '"', '\\', '`':
+		case '$', '"', '\\', '`':
 			decoded.WriteByte(escaped)
 		default:
 			// Shell-style double quoting preserves a backslash before a

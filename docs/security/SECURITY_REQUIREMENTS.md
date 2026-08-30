@@ -113,7 +113,9 @@ tests, audits, risks, and exceptions.
   expiry, and signing-key compromise.
 - **SR-UPD-004:** Rollout MUST use canary rings, a separately authorized
   request-bound rollout decision, independently signed current health-gate
-  evidence, pause, and recovery.
+  evidence, pause, and recovery. The artifact repository MUST receive and
+  independently verify the decision and health evidence before rollout start,
+  advance, or resumption.
 - **SR-UPD-005:** Dependencies and CI actions MUST be locked and continuously
   scanned.
 - **SR-UPD-006:** Immediately before installation, agents MUST obtain current,

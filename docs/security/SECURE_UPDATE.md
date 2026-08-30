@@ -55,9 +55,12 @@ only after the external monotonic allocator durably records a signed pending
 anchor bound to that restrictive payload and authorization. Authority-increasing
 status remains disabled until the pending anchor is acknowledged by a restored
 sink and reconciled.
-An audit acknowledgement alone is not rollout authority: the status signer and
-repository also verify the independently signed approval and exact current-ring or
-pre-deployment health-attestation digests bound into the status request.
+An audit acknowledgement alone is not rollout authority. The publication
+envelope carries the independently signed approval and exact current-ring or
+pre-deployment health attestation beside the signed status. The status signer and
+repository independently pin and verify those signatures, authorization roles,
+separation of duties, scope, freshness, outcome, and the evidence digests bound
+into the acknowledgement-free status payload before activation.
 
 ## Agent behavior
 

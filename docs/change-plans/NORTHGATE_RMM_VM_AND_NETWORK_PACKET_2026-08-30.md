@@ -77,10 +77,10 @@ host policy or the separately controlled network packet, not the VM manifest.
 | Data classification       | confidential                                                              |
 | Lifecycle                 | proposed until change approval                                            |
 | Image / generation        | Debian 12.12 immutable image / Generation 2                               |
-| Firmware                  | RMM Linux Gen2 Secure Boot profile; vTPM decision required                |
+| Firmware                  | Proposed `rmm-linux-gen2-vtpm`; Secure Boot and vTPM required             |
 | Compute                   | 4 vCPU; dynamic 4-GiB minimum, 8-GiB startup and maximum                  |
-| OS storage                | 80 GiB through proposed `persistent-rmm-protected-f`                      |
-| Service data              | Separate 100-GiB dynamic VHDX through the same protected class            |
+| OS storage                | 80-GiB LUKS2 volume through proposed `persistent-rmm-protected-f`         |
+| Service data              | Separate 100-GiB dynamic VHDX with an independent LUKS2 volume            |
 | Network                   | One vNIC through proposed `rmm-service` profile only                      |
 | Bootstrap                 | Proposed `debian12-rmm-control-plane`                                     |
 | Recovery                  | Proposed `rmm-control-plane-protected`                                    |
@@ -91,13 +91,18 @@ Required Factory additions before a deployable manifest exists:
 
 1. schema, planner, host-plan, executor, receipt, and postcondition support for
    one explicitly declared service-data disk;
-2. a negative-test-covered `rmm-service` network profile;
-3. an asset-bound Debian bootstrap profile with no embedded secret;
-4. protected F: storage and recovery profiles with reserve checks;
-5. immutable identity-ledger entries and unique locally administered MAC
+2. a `rmm-linux-gen2-vtpm` firmware profile that requires Secure Boot and vTPM;
+3. a negative-test-covered `rmm-service` network profile;
+4. an asset-bound Debian bootstrap profile with no embedded secret;
+5. protected F: storage and recovery profiles with reserve checks;
+6. LUKS2 encryption for both disks, TPM-bound normal unlock, and distinct
+   recovery material escrowed in an approved system outside the VM;
+7. acceptance checks proving both volumes are encrypted and that a controlled
+   recovery-key boot succeeds without exposing the key in Factory evidence;
+8. immutable identity-ledger entries and unique locally administered MAC
    `02AABBCC0016` for `NG-VM-022`;
-6. exact release, policy, image, bootstrap-media, catalog, and manifest hashes;
-7. a fresh post-merge host-issued plan and separate one-time approval.
+9. exact release, policy, image, bootstrap-media, catalog, and manifest hashes;
+10. a fresh post-merge host-issued plan and separate one-time approval.
 
 ## Target disposable canary manifest
 
@@ -138,18 +143,43 @@ host firewall. A networked Z3 database requires a later separation decision.
 All other new inter-zone paths are denied and logged. Stateful return traffic is
 implicit and does not authorize a reverse initiating flow.
 
-| Source                         | Destination              | Service                                           | Gate / control                                                     |
-| ------------------------------ | ------------------------ | ------------------------------------------------- | ------------------------------------------------------------------ |
-| `10.10.100.11`, `10.10.100.21` | `10.10.170.10`           | TCP 443                                           | Z1 operator access; OIDC MFA and RBAC required before privilege    |
-| `10.10.100.11`, `10.10.100.21` | `10.10.170.10`           | TCP 22                                            | Key-only admin; exact sources; no root/password login              |
-| `10.10.180.10`                 | `10.10.170.10`           | TCP 443                                           | G2 only; bootstrap TLS then endpoint-bound mTLS                    |
-| `10.10.170.10`                 | `10.10.100.150`          | TCP/UDP 53; UDP 123                               | Exact internal DNS and time dependencies                           |
-| `10.10.180.10`                 | approved DNS/time        | existing exact services                           | G2 only; no broad route created by RMM                             |
-| `10.10.170.10`                 | `10.10.100.14`           | approved Wazuh ports                              | Write-only monitoring path; confirm current listener before change |
-| `10.10.170.10`                 | approved package mirrors | TCP 443, and TCP 80 only when repository-required | Named aliases and signed packages; maintenance only                |
+No rule containing `TBD` may be installed. Each conditional row must first be
+replaced by an exact destination identity, address/alias, service, and validation
+case. The owner reviews every rule by 2026-09-30; continued need requires a new
+evidence-backed review date.
+
+| ID          | Source                         | Destination                           | Service                        | Activation gate / control                                  | Owner                   | Evidence reference    |
+| ----------- | ------------------------------ | ------------------------------------- | ------------------------------ | ---------------------------------------------------------- | ----------------------- | --------------------- |
+| RMM-NET-001 | `10.10.100.11`, `10.10.100.21` | `10.10.170.10`                        | TCP 443                        | OIDC MFA, source/device policy, RBAC, and audit proven     | RMM service owner       | `NG-CHG-20260830-001` |
+| RMM-NET-002 | `10.10.100.11`, `10.10.100.21` | `10.10.170.10`                        | TCP 22                         | Key-only admin; exact sources; no root/password login      | Linux platform owner    | `NG-CHG-20260830-001` |
+| RMM-NET-003 | `10.10.180.10`                 | `10.10.170.10`                        | TCP 443                        | G2 only; bootstrap TLS then endpoint-bound mTLS            | RMM service owner       | `NG-CHG-20260830-001` |
+| RMM-NET-004 | `10.10.170.10`                 | `10.10.100.150`                       | TCP/UDP 53; UDP 123            | Exact internal DNS and monitored time                      | Linux platform owner    | `NG-CHG-20260830-001` |
+| RMM-NET-005 | `10.10.180.10`                 | approved exact DNS/time services      | Existing exact services        | G2; no broad route created by RMM                          | RMM endpoint owner      | `NG-CHG-20260830-001` |
+| RMM-NET-006 | `10.10.170.10`                 | `10.10.100.14`                        | Exact approved Wazuh ports     | Listener revalidated; write-only monitoring path           | Security monitoring     | `NG-CHG-20260830-001` |
+| RMM-NET-007 | `10.10.170.10`                 | approved exact package-mirror aliases | TCP 443; conditional TCP 80    | Maintenance window; signed packages; exact repositories    | Linux platform owner    | `NG-CHG-20260830-001` |
+| RMM-NET-008 | `10.10.170.10`                 | `TBD approved human IdP`              | TCP 443                        | Required before operator privilege; signed tuple/status    | Identity service owner  | `NG-CHG-20260830-001` |
+| RMM-NET-009 | `10.10.170.10`                 | `TBD endpoint issuer`                 | TCP 443                        | G2; workload mTLS; issuance/renewal/revocation/status only | Endpoint PKI owner      | `NG-CHG-20260830-001` |
+| RMM-NET-010 | `10.10.170.10`                 | `TBD server PKI`                      | TCP 443                        | Required before TLS activation; exact lifecycle APIs       | Server PKI owner        | `NG-CHG-20260830-001` |
+| RMM-NET-011 | Z1 managed TLS client          | `TBD server-PKI status service`       | TCP 443                        | Signed status only; stale/unknown/revoked fails closed     | Server PKI owner        | `NG-CHG-20260830-001` |
+| RMM-NET-012 | `10.10.180.10`                 | `TBD server-PKI status service`       | TCP 443                        | G2; exact certificate status only; hard-fail policy        | Endpoint PKI owner      | `NG-CHG-20260830-001` |
+| RMM-NET-013 | Z2 audit-writer identity       | `TBD protected Z5 audit sink`         | `TBD approved TLS port`        | Required before G2; mTLS, append only, no read/delete      | Security evidence owner | `NG-CHG-20260830-001` |
+| RMM-NET-014 | Z2 backup-export identity      | `TBD protected Z6 backup target`      | `TBD approved backup protocol` | Required before service acceptance; write only, immutable  | Recovery owner          | `NG-CHG-20260830-001` |
+| RMM-NET-015 | Z3 database-backup identity    | `TBD protected Z6 backup target`      | `TBD approved backup protocol` | Database-consistent encrypted backup; no delete authority  | Recovery owner          | `NG-CHG-20260830-001` |
 
 No server-initiated management route from Z2 to Z4 is permitted in this phase.
 The endpoint initiates the only RMM connection.
+
+### Initial IPv6 policy
+
+IPv6 is fail-closed for the first lab slice. VLAN 170 and 180 have no IPv6
+gateway, router advertisement, DHCPv6, global address, ULA, or IPv6 NAT. OPNsense
+must install and log an explicit inbound IPv6 deny on both interfaces. Both
+Linux guests must disable non-loopback IPv6 before connection to the fabric and
+must expose no IPv6 listener. Acceptance tests verify no global or link-local
+guest address, no IPv6 default route, no IPv6 listener, and failed IPv6 traffic
+between Z1, Z2, Z4, and the Internet. Enabling IPv6 later requires equivalent
+source/destination policy, DNS, PKI, monitoring, and negative tests in a separate
+reviewed change.
 
 ### Network actions requiring separate approval
 
@@ -160,10 +190,13 @@ The endpoint initiates the only RMM connection.
    `110,120,130,140,150,160,170,180,240,250`.
 3. Create OPNsense VLAN 170 and 180 interfaces with the candidate gateway
    addresses; disable DHCP unless an explicit reservation design is approved.
-4. Add only the rules in the minimum flow table, plus explicit default-deny
-   logging on each new interface.
-5. Add exact DNS records and address reservations only after collision checks.
-6. Validate management access, existing VLANs, DNS, time, Wazuh, NAT, and
+4. Disable RA and DHCPv6, add the explicit IPv6 deny policy, and validate the
+   initial IPv6 postconditions before attaching either VM.
+5. Install only non-`TBD`, gate-satisfied rules from the minimum flow table, with
+   their ID, owner, evidence reference, and 2026-09-30 review date, plus explicit
+   IPv4 default-deny logging on each new interface.
+6. Add exact DNS records and address reservations only after collision checks.
+7. Validate management access, existing VLANs, DNS, time, Wazuh, NAT, and
    expected blocked paths before considering the network change complete.
 
 ## G2 blockers
@@ -175,8 +208,11 @@ G2 remains closed until evidence identifies and validates:
 - offline endpoint root, restricted issuer, renewal, revocation, and status;
 - protected append-only audit destination independent of the RMM service;
 - encrypted backup target, retention, RPO/RTO, and isolated restore proof;
+- approved external recovery-key escrow plus verified LUKS2 recovery for both
+  control-plane disks;
 - the final signed Linux agent package and enrollment protocol;
 - exact DNS names and approved addresses;
+- the initial fail-closed IPv6 tests or a later equivalent dual-stack policy;
 - Factory support for the complete server and canary manifests; and
 - before/after network validation and rollback evidence.
 
@@ -186,12 +222,18 @@ approved phase model.
 
 ## Rollback and containment
 
-Network rollback restores the hash-verified pre-change OPNsense configuration,
-returns the trunk to its original allowed list, and confirms all existing VLAN
-and management paths. VM rollback uses the Factory receipt and exact plan-bound
-cleanup or quarantine path; it never infers deletion from a missing manifest.
-Failed bootstrap leaves the VM off and isolated. No checkpoint is treated as a
-backup.
+The network change requires an exclusive firewall-change lock and a fresh
+configuration hash immediately before apply. Rollback normally applies the
+reviewed scoped inverse: remove only the new RMM rules/interfaces and return the
+exact trunk adapter to its original allowed list, then verify the resulting
+hash and all existing management/VLAN paths. Full configuration restore is
+permitted only when the current hash proves that no intervening change occurred.
+If the hash differs, stop and reconcile the later change instead of overwriting
+it. The recovery operator retains the verified export and Hyper-V console path.
+
+VM rollback uses the Factory receipt and exact plan-bound cleanup or quarantine
+path; it never infers deletion from a missing manifest. Failed bootstrap leaves
+the VM off and isolated. No checkpoint is treated as a backup.
 
 ## Approval boundaries
 

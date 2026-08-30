@@ -128,10 +128,10 @@ IDs, separate receipts, and separate acceptance decisions.
 
 These exact values are candidates for review, not live reservations:
 
-| Zone           | Factory profile | VLAN / subnet               | Address                            |
-| -------------- | --------------- | --------------------------- | ---------------------------------- |
-| Z2 RMM service | `rmm-service`   | VLAN 170 / `10.10.170.0/24` | gateway `.1`; `NG-RMM-CP01` `.10`  |
-| Z4 RMM canary  | `rmm-canary`    | VLAN 180 / `10.10.180.0/24` | gateway `.1`; `NG-RMM-CAN01` `.10` |
+| Zone           | Factory profile | VLAN / subnet               | Address                                                               |
+| -------------- | --------------- | --------------------------- | --------------------------------------------------------------------- |
+| Z2 RMM service | `rmm-service`   | VLAN 170 / `10.10.170.0/24` | gateway `.1`; `NG-RMM-CP01` operator/admin `.10`, agent ingress `.11` |
+| Z4 RMM canary  | `rmm-canary`    | VLAN 180 / `10.10.180.0/24` | gateway `.1`; `NG-RMM-CAN01` `.10`                                    |
 
 The RMM database remains on the control-plane VM for the first lab slice. The
 future Z2-to-Z3 boundary is enforced by a local PostgreSQL socket, distinct Unix
@@ -154,10 +154,10 @@ they are not installable firewall objects. The owner reviews every rule by
 | ----------- | ------------------------------------------------------------ | -------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | --------------------- |
 | RMM-NET-001 | `10.10.100.11`, `10.10.100.21`                               | `10.10.170.10`                                           | TCP 443                          | OIDC MFA, source/device policy, RBAC, and audit proven                                                                                                                                                                           | RMM service owner       | `NG-CHG-20260830-001` |
 | RMM-NET-002 | `10.10.100.11`, `10.10.100.21`                               | `10.10.170.10`                                           | TCP 22                           | Key-only admin; exact sources; no root/password login                                                                                                                                                                            | Linux platform owner    | `NG-CHG-20260830-001` |
-| RMM-NET-003 | `10.10.180.10`                                               | `10.10.170.10`                                           | TCP 443                          | G2 only; bootstrap TLS then endpoint-bound mTLS                                                                                                                                                                                  | RMM service owner       | `NG-CHG-20260830-001` |
+| RMM-NET-003 | `10.10.180.10`                                               | `10.10.170.11`                                           | TCP 443                          | G2 only; exact agent service name and dedicated agent listener/certificate/authentication/policy/rate-limit/logging path; bootstrap TLS then endpoint-bound mTLS; Z4 access to operator `.10` must fail                          | RMM service owner       | `NG-CHG-20260830-001` |
 | RMM-NET-004 | `10.10.170.10`                                               | `10.10.100.150`                                          | TCP/UDP 53                       | Exact internal DNS only                                                                                                                                                                                                          | Linux platform owner    | `NG-CHG-20260830-001` |
 | RMM-NET-005 | `10.10.180.10`                                               | `TBD exact DNS firewall aliases`                         | TCP/UDP 53                       | G2; exact approved DNS only; no broad route created by RMM                                                                                                                                                                       | RMM endpoint owner      | `NG-CHG-20260830-001` |
-| RMM-NET-006 | `10.10.170.10`                                               | `10.10.100.14`                                           | `TBD exact approved Wazuh ports` | Listener revalidated; write-only monitoring path                                                                                                                                                                                 | Security monitoring     | `NG-CHG-20260830-001` |
+| RMM-NET-006 | `10.10.170.10`                                               | `10.10.100.14`                                           | `TBD exact approved Wazuh ports` | Required before service acceptance and G2; listener revalidated; bounded write-only logs, metrics, and traces; local failure buffer; no RMM control authority                                                                    | Security monitoring     | `NG-CHG-20260830-001` |
 | RMM-NET-007 | `10.10.170.10`                                               | `TBD exact package-mirror firewall aliases`              | TCP 443; conditional TCP 80      | Maintenance window; signed packages; exact repositories                                                                                                                                                                          | Linux platform owner    | `NG-CHG-20260830-001` |
 | RMM-NET-008 | `10.10.170.10`                                               | `TBD approved human IdP`                                 | TCP 443                          | Required before operator privilege and G2; revalidate the signed issuer/tenant/subject/session/client tuple on every privileged request; positive cache at most 60 seconds; unknown, unavailable, stale, or revoked fails closed | Identity service owner  | `NG-CHG-20260830-001` |
 | RMM-NET-009 | `10.10.170.10`                                               | `TBD endpoint issuer`                                    | TCP 443                          | G2; workload mTLS; issuance/renewal/revocation/status only                                                                                                                                                                       | Endpoint PKI owner      | `NG-CHG-20260830-001` |
@@ -261,11 +261,17 @@ G2 remains closed until evidence identifies and validates:
   records the independently observed result;
 - exact Z6 recovery-health telemetry and read-only source/deployment-record
   collection, including alert-delivery and recovery-catalog validation;
+- the exact Z2-to-Z5 telemetry service and successful bounded write-only
+  logs/metrics/traces delivery, local failure buffering, and negative proof that
+  the central sink has no RMM control authority;
 - independent integrity and authority verification of re-established Z5,
   followed by successful reconciliation of a disposable Z6 emergency-evidence
   bundle into the protected Z5 recovery-audit intake; the test must fail closed
   when Z5 verification is absent or fails;
 - exact DNS names and approved addresses;
+- separate operator and agent service names resolving to `.10` and `.11`,
+  distinct listener and certificate identities, authentication/policy/rate-limit
+  and logging paths, and negative proof that Z4 cannot reach the operator UI/API;
 - exact authenticated NTS endpoints and trust policy for the server and canary,
   successful authenticated synchronization, monitored offset/freshness, and
   negative tests proving there is no unauthenticated NTP fallback;
@@ -290,13 +296,15 @@ configuration hash immediately before apply. Rollback uses this dependency order
    recovery and Z5/Z6 evidence routes needed to finish containment;
 4. stop affected application listeners and quarantine or clean up only through
    the exact Factory receipt-bound path;
-5. apply the reviewed scoped network inverse: remove only the new RMM
-   rules/interfaces and return the exact trunk adapter to its original allowed
-   list;
+5. apply only the non-recovery portion of the reviewed scoped network inverse,
+   explicitly retaining the exact Z1 recovery, Z5/Z6 evidence, supporting
+   interfaces, and trunk paths still needed for evidence reconciliation;
 6. verify the resulting hash and every existing management/VLAN path and prove
    no unintended route or listener remains; and
-7. reconcile and acknowledge recovery evidence, then remove the temporary Z1
-   recovery/evidence rules only after revocation and evidence custody are proven.
+7. reconcile and acknowledge recovery evidence, then apply the remaining reviewed
+   inverse to remove the temporary Z1 recovery/evidence rules, their supporting
+   interfaces, and the RMM VLANs from the trunk only after revocation and evidence
+   custody are proven; perform the final path and configuration-hash verification.
 
 Full configuration restore is permitted only when the current hash proves that
 no intervening change occurred. If the hash differs, stop and reconcile the later

@@ -49,6 +49,7 @@ func TestDecodeRejectsUnsafeDestinationsAndBounds(t *testing.T) {
 		{"userinfo", "https://rmm.invalid/", "https://user@rmm.invalid/"},
 		{"query", "https://rmm.invalid/", "https://rmm.invalid/?token=x"},
 		{"empty query", "https://rmm.invalid/", "https://rmm.invalid?"},
+		{"invalid port", "https://rmm.invalid/", "https://rmm.invalid:99999/"},
 		{"relative state", "/var/lib/northgate-rmm", "state"},
 		{"root state", "/var/lib/northgate-rmm", "/"},
 		{"control in state", "/var/lib/northgate-rmm", "/var/lib/northgate\\nspool"},
@@ -88,6 +89,24 @@ func TestValidateRejectsInvalidUTF8StateDirectory(t *testing.T) {
 	cfg.StateDirectory = "/tmp/" + string([]byte{0xff})
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() accepted an invalid UTF-8 state directory")
+	}
+}
+
+func TestValidateRejectsInvalidControlPlaneURL(t *testing.T) {
+	cfg, err := Decode(strings.NewReader(validConfig))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	tests := []string{
+		"https://exa" + string([]byte{0xff}) + "mple.invalid/",
+		"https://rmm.invalid:99999/",
+		"https://rmm.invalid:0/",
+	}
+	for _, controlPlaneURL := range tests {
+		cfg.ControlPlaneURL = controlPlaneURL
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("Validate() accepted invalid control-plane URL %q", controlPlaneURL)
+		}
 	}
 }
 

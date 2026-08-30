@@ -98,6 +98,11 @@ the JSON decoder already rejected it. The follow-up change applies the same UTF-
 boundary to both configuration entry paths and adds a direct-validation
 regression test.
 
+The sixth exact-head review found the same direct-call consistency issue for the
+control-plane URL and found that URL parsing alone accepted out-of-range numeric
+ports. The follow-up change rejects invalid UTF-8 before URL parsing and limits
+explicit ports to the TCP range of 1 through 65535.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

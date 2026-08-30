@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"strconv"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -115,9 +116,18 @@ func (cfg Config) Validate() error {
 	if !uuidPattern.MatchString(cfg.EndpointID) {
 		return errors.New("endpoint_id must be a canonical lowercase UUID")
 	}
+	if !utf8.ValidString(cfg.ControlPlaneURL) {
+		return errors.New("control_plane_url contains invalid UTF-8")
+	}
 	parsed, err := url.Parse(cfg.ControlPlaneURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return errors.New("control_plane_url must be an absolute HTTPS URL")
+	}
+	if port := parsed.Port(); port != "" {
+		portNumber, err := strconv.Atoi(port)
+		if err != nil || portNumber < 1 || portNumber > 65535 {
+			return errors.New("control_plane_url contains an invalid port")
+		}
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return errors.New("control_plane_url must not contain userinfo, query, or fragment")

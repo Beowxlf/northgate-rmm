@@ -63,6 +63,10 @@
   and reject acknowledgement/envelope self-reference or digest substitution;
 - allocator-receipt tests that reject a status activation or checkpoint with a
   missing, forged, mismatched, replayed, or rolled-back external receipt;
+- automatic-pause tests proving a failed threshold can invoke the dedicated
+  pause-only health authority but cannot freeze/revoke/start/advance/resume;
+- lost-floor recovery tests that reject stale or disagreeing authority,
+  allocator, anchored-ledger, and repository-activation proofs;
 - update-status authority restore with external sequence and Z5/Z6 anchor
   reconciliation;
 - audit integrity gap;

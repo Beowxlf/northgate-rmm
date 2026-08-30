@@ -68,10 +68,13 @@ into the acknowledgement-free status payload before activation. The decision and
 status payload also bind the same single-use correlation and exact predecessor
 status digest. The signer and repository reject reuse, and the repository
 atomically consumes both identifiers when it activates a transition. A freeze,
-revoke, or pause publication carries the exact signed Z1 restrictive
-authorization beside the status; the repository pins that key and independently
-verifies the signature, role, action, scope, predecessor, correlation, and
-freshness without treating it as start/advance/resume/unfreeze authority.
+revoke, or human-initiated pause carries the exact signed Z1 restrictive
+authorization beside the status. An automatic pause instead carries a short-lived
+authorization from the dedicated Z5 health-pause key, bound to the exact failed
+attestation, artifact/ring, policy, predecessor, and correlation. The repository
+pins both keys and independently verifies signature, role, action, scope,
+predecessor, correlation, failure result, and freshness without treating either
+as start/advance/resume/unfreeze authority.
 
 ## Agent behavior
 
@@ -89,11 +92,13 @@ The highest accepted release-status sequence lives in OS-protected,
 rollback-resistant state outside the replaceable agent payload. It survives
 restart, reinstall, and agent-version rollback. After VM/OS restore or any
 missing, corrupt, or inconsistent sequence state, the agent must obtain a current
-signed checkpoint plus the corresponding signed allocator receipt directly from
-the separated status authority over mTLS. It pins both keys, verifies the exact
-status digest, epoch, and sequence binding, and atomically raises its floor;
-repository or authority data alone cannot reinitialize or lower it. Failure to
-verify either object blocks installation.
+nonce-bound authority checkpoint, current allocator maximum, current Z5 anchored
+maximum/continuity proof, and current repository activation head/receipt directly
+from their independent endpoints. It pins all keys, requires the fresh epoch,
+sequence, and status/publish digests to agree, and atomically raises its floor.
+Any stale source, gap, mismatch, unavailable/untrusted source, or non-current
+activation blocks installation; repository or authority data alone cannot
+reinitialize or lower the floor.
 
 The status authority allocates sequences through a non-rollbackable counter kept
 outside its VM, operating-system image, database, and ordinary restore set. Each

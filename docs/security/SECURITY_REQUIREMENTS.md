@@ -119,14 +119,18 @@ tests, audits, risks, and exceptions.
   independently verify the decision and health evidence before rollout start,
   advance, or resumption. Each decision MUST bind a single-use status correlation
   and exact predecessor status that the authority and repository reject on reuse.
+  A dedicated non-human health role MUST be able to authorize only an automatic
+  pause bound to a signed failed threshold result and exact current rollout scope.
 - **SR-UPD-005:** Dependencies and CI actions MUST be locked and continuously
   scanned.
 - **SR-UPD-006:** Immediately before installation, agents MUST obtain current,
   independently signed release status with a maximum 60-second lifetime and MUST
   reject unavailable, stale, replayed, frozen, revoked, or mismatched status. The
-  highest accepted sequence MUST survive agent restart/reinstall/rollback, and
-  uncertain restored state MUST be reestablished directly with the status
-  authority before installation.
+  highest accepted sequence MUST survive agent restart/reinstall/rollback. After
+  uncertain or lost state, installation MUST require fresh nonce-bound agreement
+  among the authority checkpoint, external allocator maximum, protected sequence
+  anchor maximum, and repository activation head; no single source may establish
+  or lower the floor.
 - **SR-UPD-007:** The release-status authority MUST allocate sequences from
   rollback-resistant state outside its restorable VM and data, independently
   anchor every allocation, and remain unable to sign after restore or uncertain
@@ -147,7 +151,8 @@ tests, audits, risks, and exceptions.
   request core, status payload, authority epoch, sequence, action, correlation,
   and predecessor. Protected intake, repository, and checkpoint consumers MUST
   independently verify it and fail closed on absence, mismatch, replay, or
-  rollback.
+  rollback. Recovery MUST also prove that the independently signed current
+  allocator maximum, anchored maximum, and repository activation head agree.
 
 ## Remote access
 

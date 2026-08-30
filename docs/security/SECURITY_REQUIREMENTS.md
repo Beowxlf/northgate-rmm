@@ -100,8 +100,8 @@ tests, audits, risks, and exceptions.
 - **SR-AUDIT-003:** Audit access and export MUST themselves be audited.
 - **SR-AUDIT-004:** Authority-increasing release transitions MUST require an
   independently protected audit acknowledgement, while emergency freeze,
-  revocation, and pause MUST remain possible during audit-service failure with
-  signed pending evidence and raised incident severity.
+  revocation, and pause MUST remain possible during audit-service failure or
+  suspected compromise with signed pending evidence and raised incident severity.
 
 ## Updates and supply chain
 

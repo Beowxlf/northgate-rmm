@@ -31,8 +31,8 @@ replace a privileged fleet component.
    transition. Rollout start/advance/resume also requires a request-bound decision
    from a separate authorized approver and current signed health-gate evidence.
    Never block an emergency freeze, revocation, or pause because both audit sinks
-   are unavailable; retain signed recovery-client evidence, raise incident
-   severity, and reconcile it after recovery.
+   are unavailable or untrusted; retain signed recovery-client evidence, raise
+   incident severity, and reconcile it only after verified recovery.
 8. Roll out to development, test, canary, then approved broader rings.
 9. Pause automatically on defined health or security failures.
 10. Preserve a separately signature/digest-verified signed package, its metadata,

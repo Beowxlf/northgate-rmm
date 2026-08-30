@@ -47,9 +47,10 @@
 Direct operator-session/endpoint/server PKI recovery, G6 release
 freeze/revocation, and independent Z8 emergency termination record signed intent,
 component response, and independently observed result in protected Z5 evidence
-or, when Z5 is unavailable, the append-only Z6 emergency evidence intake. Failure
-of both paths is incomplete containment and must not be reported as a fully
-evidenced recovery.
+or, when Z5 is unavailable, suspected, or otherwise untrusted, the append-only Z6
+emergency evidence intake. Reconciliation waits until Z5 is re-established and
+independently verified. Failure of both trusted paths is incomplete containment
+and must not be reported as a fully evidenced recovery.
 
 When the Z2 TLS service is suspected, first disable or rotate its exact PKI
 issuance-client identity and verify the old client cannot obtain a replacement.

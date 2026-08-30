@@ -1,6 +1,6 @@
 # Phase 1 Exit Audit — 2026-08-30
 
-Status: Pass at reviewed implementation commit `0e6c4d020583220357a6cc91966a379c5b77046f`  
+Status: Candidate pending revalidation of migration-order hardening  
 Gate: G1 — Product coding  
 Scope: Phase 1 simulated control-plane exit
 

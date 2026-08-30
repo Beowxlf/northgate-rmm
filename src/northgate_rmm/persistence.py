@@ -85,6 +85,18 @@ def apply_migrations(dsn: str, directory: Path | None = None) -> tuple[str, ...]
             raise ValidationError(
                 f"applied migrations are missing from source: {missing}"
             )
+        if applied:
+            applied_head = max(applied)
+            out_of_order = sorted(
+                migration.name
+                for migration in migrations
+                if migration.name not in applied and migration.name < applied_head
+            )
+            if out_of_order:
+                raise ValidationError(
+                    "unapplied migrations precede the applied migration head "
+                    f"{applied_head}: {out_of_order}"
+                )
         for migration in migrations:
             script = migration.read_text(encoding="utf-8")
             checksum = hashlib.sha256(script.encode("utf-8")).hexdigest()

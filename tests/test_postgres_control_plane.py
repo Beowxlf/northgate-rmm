@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -145,6 +146,45 @@ def test_migrations_are_idempotent_and_checksum_protected(
     )
     with pytest.raises(ValidationError, match="missing from source"):
         apply_migrations(postgres_dsn, missing_directory)
+
+
+def test_migrations_reject_late_files_before_applied_head(
+    postgres_dsn: str,
+    tmp_path: Path,
+) -> None:
+    source = (
+        Path(__file__).parents[1]
+        / "src"
+        / "northgate_rmm"
+        / "migrations"
+        / "0001_phase1.sql"
+    )
+    migration_directory = tmp_path / "out-of-order-migrations"
+    migration_directory.mkdir()
+    source_text = source.read_text(encoding="utf-8")
+    (migration_directory / source.name).write_text(source_text, encoding="utf-8")
+    late_name = "9002_late.sql"
+    head_name = "9003_applied_head.sql"
+    late_script = "SELECT 1;\n"
+    head_script = "SELECT 2;\n"
+    (migration_directory / late_name).write_text(late_script, encoding="utf-8")
+    (migration_directory / head_name).write_text(head_script, encoding="utf-8")
+
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO schema_migrations (version, sha256) VALUES (%s, %s)",
+            (head_name, hashlib.sha256(head_script.encode()).hexdigest()),
+        )
+
+    try:
+        with pytest.raises(ValidationError, match="precede the applied migration head"):
+            apply_migrations(postgres_dsn, migration_directory)
+    finally:
+        with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM schema_migrations WHERE version = %s",
+                (head_name,),
+            )
 
 
 def test_message_authorization_and_time_failures_are_audited(

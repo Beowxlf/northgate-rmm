@@ -81,6 +81,13 @@ func TestDecodeRejectsInvalidUTF8(t *testing.T) {
 	}
 }
 
+func TestDecodeRejectsUnpairedSurrogateEscape(t *testing.T) {
+	input := strings.Replace(validConfig, "/var/lib/northgate-rmm", `/tmp/\ud800`, 1)
+	if _, err := Decode(strings.NewReader(input)); err == nil {
+		t.Fatal("Decode() accepted an unpaired surrogate escape")
+	}
+}
+
 func TestValidateRejectsInvalidUTF8StateDirectory(t *testing.T) {
 	cfg, err := Decode(strings.NewReader(validConfig))
 	if err != nil {

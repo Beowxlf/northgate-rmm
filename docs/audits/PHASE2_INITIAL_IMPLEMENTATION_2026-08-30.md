@@ -138,6 +138,12 @@ official `VERSION_ID` character set. Uppercase remains accepted because the
 systemd specification recommends, but does not require, lowercase for this
 field.
 
+The twelfth exact-head review found that deferred directory-entry metadata could
+escape the nested root descriptor on Linux and that Go's JSON decoder replaces
+unpaired surrogate escapes before schema validation. The follow-up change stats
+every spool entry relative to the stable queue root and rejects unpaired high or
+low surrogates in raw JSON strings before decoding.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

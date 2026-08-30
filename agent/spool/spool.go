@@ -352,27 +352,27 @@ func (queue *Queue) usageLocked() (int64, int, error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("list spool: %w", err)
 	}
-	dataEntries := make([]fs.DirEntry, 0, len(entries))
+	dataEntries := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if entry.Name() == ".lock" {
-			info, err := entry.Info()
+		name := entry.Name()
+		if name == ".lock" {
+			info, err := queue.root.Lstat(name)
 			if err != nil || !info.Mode().IsRegular() {
 				return 0, 0, ErrCorrupt
 			}
 			continue
 		}
-		dataEntries = append(dataEntries, entry)
+		dataEntries = append(dataEntries, name)
 	}
 	if len(dataEntries) > MaxEntries {
 		return 0, 0, ErrQuotaExceeded
 	}
 	var total int64
-	for _, entry := range dataEntries {
-		name := entry.Name()
+	for _, name := range dataEntries {
 		if !strings.HasSuffix(name, ".json") || !uuidPattern.MatchString(strings.TrimSuffix(name, ".json")) {
 			return 0, 0, ErrCorrupt
 		}
-		info, err := entry.Info()
+		info, err := queue.root.Lstat(name)
 		if err != nil || !info.Mode().IsRegular() || !privateRecord(info) ||
 			info.Size() < 1 || info.Size() > maxRecordBytes {
 			return 0, 0, ErrCorrupt

@@ -12,8 +12,17 @@ import (
 // collectors. It never invokes a shell or subprocess.
 type NativeSource struct{}
 
+var allowedSourceFiles = map[string]int64{
+	"/etc/os-release":                 MaxSourceFileBytes,
+	"/proc/sys/kernel/random/boot_id": 64,
+}
+
 func (NativeSource) ReadFile(ctx context.Context, name string, maxBytes int64) ([]byte, error) {
-	if maxBytes <= 0 || maxBytes > MaxSourceFileBytes {
+	allowedBytes, allowed := allowedSourceFiles[name]
+	if !allowed {
+		return nil, ErrUnsupported
+	}
+	if maxBytes <= 0 || maxBytes > allowedBytes {
 		return nil, ErrLimitExceeded
 	}
 	if err := ctx.Err(); err != nil {

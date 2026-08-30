@@ -7,6 +7,7 @@ import (
 	"errors"
 	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -109,7 +110,8 @@ func validatePayload(payload InventoryPayload) error {
 		return errors.New("too many inventory fields")
 	}
 	for key, value := range payload.Fields {
-		if key == "" || len(key) > MaxFieldKeyBytes || len(value) > MaxFieldValueBytes {
+		if key == "" || len(key) > MaxFieldKeyBytes || len(value) > MaxFieldValueBytes ||
+			!utf8.ValidString(key) || !utf8.ValidString(value) {
 			return errors.New("inventory field is empty or too long")
 		}
 	}

@@ -23,6 +23,7 @@ import (
 const (
 	SchemaVersion   = 1
 	MaxPayloadBytes = 65_536
+	MaxEntries      = 1024
 	maxRecordBytes  = 100_000
 )
 
@@ -75,7 +76,7 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 		return nil, fmt.Errorf("open spool root: %w", err)
 	}
 	queue := &Queue{root: root, maxBytes: maxBytes}
-	if _, err := queue.usageLocked(); err != nil {
+	if _, _, err := queue.usageLocked(); err != nil {
 		root.Close()
 		return nil, err
 	}
@@ -125,9 +126,12 @@ func (queue *Queue) Enqueue(ctx context.Context, id string, payload []byte) erro
 	if err != nil {
 		return fmt.Errorf("encode spool item: %w", err)
 	}
-	usage, err := queue.usageLocked()
+	usage, count, err := queue.usageLocked()
 	if err != nil {
 		return err
+	}
+	if count >= MaxEntries {
+		return ErrQuotaExceeded
 	}
 	if int64(len(raw)) > queue.maxBytes-usage {
 		return ErrQuotaExceeded
@@ -167,6 +171,9 @@ func (queue *Queue) Enqueue(ctx context.Context, id string, payload []byte) erro
 		return fmt.Errorf("remove temporary spool item: %w", err)
 	}
 	removeTemporary = false
+	if err := syncDirectory(queue.root); err != nil {
+		return fmt.Errorf("sync spool directory: %w", err)
+	}
 	return nil
 }
 
@@ -181,6 +188,10 @@ func (queue *Queue) Read(ctx context.Context, id string) ([]byte, error) {
 	if !uuidPattern.MatchString(id) {
 		return nil, errors.New("spool ID must be a canonical lowercase UUID")
 	}
+	return queue.readRecordLocked(id)
+}
+
+func (queue *Queue) readRecordLocked(id string) ([]byte, error) {
 	file, err := queue.root.Open(id + ".json")
 	if err != nil {
 		return nil, fmt.Errorf("open spool item: %w", err)
@@ -217,6 +228,9 @@ func (queue *Queue) Acknowledge(ctx context.Context, id string) error {
 	if err := queue.root.Remove(id + ".json"); err != nil {
 		return fmt.Errorf("remove spool item: %w", err)
 	}
+	if err := syncDirectory(queue.root); err != nil {
+		return fmt.Errorf("sync spool directory: %w", err)
+	}
 	return nil
 }
 
@@ -227,27 +241,34 @@ func (queue *Queue) ready(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (queue *Queue) usageLocked() (int64, error) {
+func (queue *Queue) usageLocked() (int64, int, error) {
 	entries, err := fs.ReadDir(queue.root.FS(), ".")
 	if err != nil {
-		return 0, fmt.Errorf("list spool: %w", err)
+		return 0, 0, fmt.Errorf("list spool: %w", err)
+	}
+	if len(entries) > MaxEntries {
+		return 0, 0, ErrQuotaExceeded
 	}
 	var total int64
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasSuffix(name, ".json") || !uuidPattern.MatchString(strings.TrimSuffix(name, ".json")) {
-			return 0, ErrCorrupt
+			return 0, 0, ErrCorrupt
 		}
 		info, err := entry.Info()
 		if err != nil || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > maxRecordBytes {
-			return 0, ErrCorrupt
+			return 0, 0, ErrCorrupt
 		}
 		if total > queue.maxBytes-info.Size() {
-			return 0, ErrQuotaExceeded
+			return 0, 0, ErrQuotaExceeded
+		}
+		id := strings.TrimSuffix(name, ".json")
+		if _, err := queue.readRecordLocked(id); err != nil {
+			return 0, 0, ErrCorrupt
 		}
 		total += info.Size()
 	}
-	return total, nil
+	return total, len(entries), nil
 }
 
 func decodeRecord(raw []byte) (record, error) {

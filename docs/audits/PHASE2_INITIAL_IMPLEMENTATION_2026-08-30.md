@@ -66,6 +66,13 @@ The repository security workflow also runs gofmt, module verification, vet, race
 tests, Staticcheck, govulncheck, and Semgrep for Go. A passing exact-head CI run
 is required before merge.
 
+The first exact-head review identified and blocked five boundary defects. The
+follow-up change enforces file and disk source allowlists in the native adapter,
+validates every existing spool record during startup, syncs Linux directory
+mutations before success, rejects an empty URL query delimiter, and rejects
+invalid UTF-8 before protocol encoding. A fresh exact-head review and CI run are
+required for those corrections.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

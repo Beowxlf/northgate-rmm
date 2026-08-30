@@ -102,4 +102,11 @@ func TestEncodeInventoryRejectsInvalidEnvelopeAndPayload(t *testing.T) {
 			t.Fatal("EncodeInventory() accepted oversized field")
 		}
 	})
+	t.Run("invalid UTF-8", func(t *testing.T) {
+		payload := validPayload()
+		payload.Fields = map[string]string{"value": string([]byte{0xff})}
+		if _, err := EncodeInventory(validEnvelope(), payload); err == nil {
+			t.Fatal("EncodeInventory() accepted invalid UTF-8")
+		}
+	})
 }

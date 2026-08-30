@@ -179,7 +179,7 @@ func (cfg Config) Validate() error {
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return errors.New("control_plane_url must be an absolute HTTPS URL")
 	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return errors.New("control_plane_url must not contain userinfo, query, or fragment")
 	}
 	if parsed.Path != "" && parsed.Path != "/" {

@@ -77,6 +77,17 @@ func TestOpenFailsClosedOnTemporaryOrUnknownEntry(t *testing.T) {
 	}
 }
 
+func TestOpenFailsClosedOnCorruptExistingRecord(t *testing.T) {
+	directory := t.TempDir()
+	name := filepath.Join(directory, testID+".json")
+	if err := os.WriteFile(name, []byte("not-json"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if _, err := Open(directory, 1<<20); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Open() error = %v, want ErrCorrupt", err)
+	}
+}
+
 func TestQueueRejectsOversizedPayloadAndCancelledContext(t *testing.T) {
 	queue, err := Open(t.TempDir(), 1<<20)
 	if err != nil {

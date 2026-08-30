@@ -9,6 +9,9 @@ import (
 )
 
 func (NativeSource) DiskUsage(ctx context.Context, name string) (DiskUsage, error) {
+	if name != "/" {
+		return DiskUsage{}, ErrUnsupported
+	}
 	if err := ctx.Err(); err != nil {
 		return DiskUsage{}, err
 	}

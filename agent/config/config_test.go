@@ -48,6 +48,7 @@ func TestDecodeRejectsUnsafeDestinationsAndBounds(t *testing.T) {
 		{"http", "https://rmm.invalid/", "http://rmm.invalid/"},
 		{"userinfo", "https://rmm.invalid/", "https://user@rmm.invalid/"},
 		{"query", "https://rmm.invalid/", "https://rmm.invalid/?token=x"},
+		{"empty query", "https://rmm.invalid/", "https://rmm.invalid?"},
 		{"relative state", "/var/lib/northgate-rmm", "state"},
 		{"root state", "/var/lib/northgate-rmm", "/"},
 		{"small spool", "1048576", "1024"},

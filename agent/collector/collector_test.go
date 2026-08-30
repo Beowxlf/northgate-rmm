@@ -120,3 +120,10 @@ func FuzzParseOSRelease(f *testing.F) {
 		_, _ = parseOSRelease(raw)
 	})
 }
+
+func TestNativeSourceRejectsUnapprovedPath(t *testing.T) {
+	_, err := (NativeSource{}).ReadFile(context.Background(), "/etc/shadow", MaxSourceFileBytes)
+	if !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("ReadFile() error = %v, want ErrUnsupported", err)
+	}
+}

@@ -129,7 +129,10 @@ tests, audits, risks, and exceptions.
   proves the next sequence is greater. The recovery identity MUST have only
   read-only, exact-authority/epoch access to those three sequence sources and no
   allocation, reset, signing, release, restore, delete, alteration, or unrelated
-  audit authority.
+  audit authority. If both anchors are unavailable, only a separately authorized
+  restrictive transition may proceed, and only after the external allocator
+  durably records a digest-bound append-only pending anchor that blocks
+  authority-increasing status until independently acknowledged and reconciled.
 
 ## Remote access
 

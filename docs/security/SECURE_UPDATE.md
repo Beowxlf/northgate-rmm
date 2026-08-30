@@ -50,7 +50,11 @@ beside that payload in a separate envelope, append its signed result to Z5 or Z6
 and obtain a result acknowledgement that the repository verifies before
 activating an authority-increasing status. Neither acknowledgement is included in
 the payload whose digest it signs. Only a Z1-authorized higher-sequence
-freeze/revocation/pause may proceed when both evidence sinks are unavailable.
+freeze/revocation/pause may proceed when both evidence sinks are unavailable, and
+only after the external monotonic allocator durably records a signed pending
+anchor bound to that restrictive payload and authorization. Authority-increasing
+status remains disabled until the pending anchor is acknowledged by a restored
+sink and reconciled.
 An audit acknowledgement alone is not rollout authority: the status signer and
 repository also verify the independently signed approval and exact current-ring or
 pre-deployment health-attestation digests bound into the status request.
@@ -78,7 +82,9 @@ Failure to verify the checkpoint blocks installation.
 The status authority allocates sequences through a non-rollbackable counter kept
 outside its VM, operating-system image, database, and ordinary restore set. Each
 allocation is digest-bound to the signed status and independently anchored in the
-protected Z5 sequence ledger or immutable Z6 fallback. After authority restore,
+protected Z5 sequence ledger or immutable Z6 fallback. When both sinks are down,
+only a Z1-authorized restrictive transition may use the allocator's append-only
+pending anchor, which must survive authority restore and reconcile later. After authority restore,
 rollback, rebuild, counter replacement, or uncertain state, signing remains
 disabled until a separate recovery process reconciles the allocator and both
 available anchors, establishes their maximum as the floor, and proves the next

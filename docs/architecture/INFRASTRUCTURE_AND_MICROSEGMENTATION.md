@@ -184,6 +184,7 @@ flowchart LR
   Signer -->|Detached signatures and signed metadata only| Build
   Build -->|Signed artifacts only| Artifacts[Artifact repository]
   Build -->|G6 acknowledgement-bound status request| UpdateStatus[Separated update metadata/status authority]
+  UpdateStatus -->|Allocate next sequence and persist digest-bound receipt| SeqAllocator[External monotonic allocator]
   SeqRecovery[Z1 status-sequence recovery] -. Read current counter and exact authority epoch .-> SeqAllocator[External monotonic allocator]
   SeqRecovery -. Read exact max sequence and continuity .-> Observe
   SeqRecovery -. Z5-unavailable read exact fallback anchor .-> Recovery
@@ -268,6 +269,7 @@ named gate and design evidence exist.
 | Z7 publisher                             | Artifact repository                                | TCP 443                       | G6                    | Separate identity; require valid signing-intent and signing-result intake acknowledgements bound to the artifact                            |
 | Approved update metadata/status role     | Artifact repository update-status endpoint         | Approved publication protocol | G6                    | Exact signed status plus current intent/result acknowledgements; repository verifies all; only Z1-authorized restrictive exception          |
 | Z7 status coordinator                    | Approved update metadata/status authority          | TCP 443                       | G6                    | Exact request with protected ack, separate signed rollout decision, and applicable signed health-attestation digest                         |
+| Approved update metadata/status role     | External monotonic sequence allocator              | Approved allocation protocol  | G6                    | Atomically allocate next sequence and persist signed status-digest receipt; no decrement/reset; emergency restrictive pending anchor only   |
 | Approved update metadata/status role     | Z5 rollout-health attestation service              | TCP 443                       | G6 authority increase | Read only exact signed artifact/ring/window/threshold/result/evidence digest; no raw telemetry, audit, or release authority                 |
 | Approved update metadata/status role     | Z5 protected release-audit intake                  | Approved TLS port             | G6                    | Append signed status result bound to request/output digest; require acknowledgement before authority-increasing publication                 |
 | Approved update metadata/status role     | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable    | Same write-only result and independent acknowledgement; no release, read, restore, or delete authority                                      |
@@ -611,7 +613,18 @@ emergency-recovery evidence rules above. The publisher or repository's own buffe
 does not satisfy this exception.
 The status authority may sign a higher-sequence restrictive status without Z5/Z6
 acknowledgement only after validating the independent Z1 recovery authorization;
-that exception cannot start, advance, resume, or unfreeze a rollout.
+that exception cannot start, advance, resume, or unfreeze a rollout. Before
+signing, the external monotonic allocator must atomically allocate the new
+sequence and durably retain an append-only signed pending-anchor receipt bound to
+the restrictive action, acknowledgement-free status-payload digest, authority
+epoch, Z1 authorization, correlation ID, and time. The allocator is outside the
+status-authority restore set and cannot decrement, replace, or discard an
+unreconciled receipt. The hardened Z1 recovery client retains a second copy.
+When either sink returns, the pending anchor is appended to Z5 or Z6 and marked
+reconciled only after the allocator verifies that sink's signed acknowledgement.
+Authority-increasing status remains disabled while any pending anchor is
+unreconciled. If the allocator cannot persist the pending anchor, status signing
+fails closed even for the emergency transition.
 
 ### Revocation-aware update download and installation
 
@@ -657,10 +670,12 @@ The status authority also maintains a highest-issued sequence outside its
 restorable VM, operating-system image, application data, and ordinary backup set.
 Sequence numbers are allocated atomically by a hardware-backed monotonic counter
 or an equivalently non-rollbackable separated service. Every allocation is bound
-to the signed status digest and written to the protected Z5 sequence ledger, or
-to the immutable Z6 fallback when Z5 is unavailable. Restoring a database,
-snapshot, VM, or application release cannot restore, reset, replace, or decrement
-the allocator.
+to the signed status digest and written to the protected Z5 sequence ledger or the
+immutable Z6 fallback. The sole both-sinks-unavailable exception is a
+Z1-authorized restrictive transition whose signed allocation receipt remains as
+an append-only pending anchor inside the non-rollbackable allocator until
+reconciled. Restoring a database, snapshot, VM, or application release cannot
+restore, reset, replace, or decrement the allocator or remove that pending state.
 
 After any status-authority restart from backup, rollback, rebuild, counter
 replacement, or uncertain state, status signing remains disabled. A separately
@@ -961,6 +976,12 @@ The deployment change packet must contain:
   the repository rejects missing result acknowledgements or envelope
   self-reference; with both sinks down, only Z1-authorized higher-sequence
   freeze/revoke/pause status may proceed;
+- a G6 both-sinks-unavailable test proving a Z1-authorized restrictive status
+  receives a durable digest-bound pending-anchor receipt from the external
+  allocator before signing, blocks every authority-increasing transition while
+  pending, survives status-authority restore, and reconciles only after verifying
+  a returned sink's signed acknowledgement; failure to persist the receipt must
+  block signing;
 - G6 tests treating Z7 as compromised and proving a correctly audited status
   request is still rejected for requester self-approval; missing/stale/failed or
   mismatched signed health evidence; and wrong artifact, source/destination ring,

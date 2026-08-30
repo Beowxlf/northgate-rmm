@@ -16,8 +16,9 @@ reconnection.
 - separately verified signed recovery packages, artifact/update metadata, SBOMs,
   provenance, and public verification keys;
 - protected release-status sequence ledger, signed status digests, allocator
-  checkpoints, and authority-epoch linkage; the non-rollbackable allocator itself
-  remains outside the authority VM and ordinary restore set;
+  checkpoints, pending-anchor receipts, reconciliation acknowledgements, and
+  authority-epoch linkage; the non-rollbackable allocator itself remains outside
+  the authority VM and ordinary restore set;
 - encrypted gateway/session metadata if enabled;
 - source commit and deployment manifests;
 - secret-store backup through its own approved mechanism.

@@ -72,6 +72,17 @@ missing, corrupt, or inconsistent sequence state, the agent must obtain a curren
 signed checkpoint directly from the separated status authority over mTLS and
 atomically raise its floor; repository data alone cannot reinitialize or lower it.
 Failure to verify the checkpoint blocks installation.
+
+The status authority allocates sequences through a non-rollbackable counter kept
+outside its VM, operating-system image, database, and ordinary restore set. Each
+allocation is digest-bound to the signed status and independently anchored in the
+protected Z5 sequence ledger or immutable Z6 fallback. After authority restore,
+rollback, rebuild, counter replacement, or uncertain state, signing remains
+disabled until a separate recovery process reconciles the allocator and both
+available anchors, establishes their maximum as the floor, and proves the next
+sequence is greater. Missing or inconsistent state fails closed. Replacing the
+allocator requires dual control, a monotonically later authority epoch, and
+protected linkage to the prior anchor.
 Each download also requires the short-lived, single-use, endpoint-key and
 artifact-bound authorization defined in the
 [infrastructure flow](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#revocation-aware-update-download-and-installation).

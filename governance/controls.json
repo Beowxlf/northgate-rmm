@@ -121,7 +121,8 @@
         "SR-UPD-002",
         "SR-UPD-003",
         "SR-UPD-004",
-        "SR-UPD-006"
+        "SR-UPD-006",
+        "SR-UPD-007"
       ],
       "evidence": [
         "docs/security/SECURE_UPDATE.md",

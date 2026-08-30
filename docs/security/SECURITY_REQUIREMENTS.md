@@ -122,6 +122,11 @@ tests, audits, risks, and exceptions.
   highest accepted sequence MUST survive agent restart/reinstall/rollback, and
   uncertain restored state MUST be reestablished directly with the status
   authority before installation.
+- **SR-UPD-007:** The release-status authority MUST allocate sequences from
+  rollback-resistant state outside its restorable VM and data, independently
+  anchor every allocation, and remain unable to sign after restore or uncertain
+  state until it reconciles the highest valid allocator and Z5/Z6 anchor and
+  proves the next sequence is greater.
 
 ## Remote access
 

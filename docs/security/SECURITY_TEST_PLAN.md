@@ -57,6 +57,8 @@
 - compromised key rotation;
 - database restore with revocations and expired work;
 - update freeze/rollback/signing compromise;
+- update-status authority restore with external sequence and Z5/Z6 anchor
+  reconciliation;
 - audit integrity gap;
 - emergency disable independent of suspected component.
 

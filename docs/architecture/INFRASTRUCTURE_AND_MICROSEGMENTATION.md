@@ -459,15 +459,16 @@ exercise a general revocation role.
 The backup specification is satisfied through bounded, artifact-specific
 mechanisms rather than one broadly privileged application backup account.
 
-| Required recovery material                                                                              | Authoritative source and bounded mechanism                                                                                                                                      | Protected destination            | Activation                        |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------------------- |
-| PostgreSQL data, schema, endpoint identity/revocation state, authorization policy, and phase-gate state | Z3 database backup identity performs a database-consistent export                                                                                                               | Z6 backup target                 | Required                          |
-| Audit events and integrity checkpoints                                                                  | Z5 protected audit archive exports append-only records and checkpoints                                                                                                          | Z6 immutable backup set          | Required before G2                |
-| Configuration and certificate state, excluding plaintext secrets                                        | Z2 backup exporter writes an encrypted, schema-versioned bundle                                                                                                                 | Z6 backup target                 | Required                          |
-| Source commit and deployment manifests                                                                  | Z6 collector reads only the exact commit/tag and deployment records named by the recovery set                                                                                   | Z6 signed recovery catalog       | Required                          |
-| Signed recovery packages, update metadata, SBOMs, provenance, and public verification keys              | Artifact-repository backup identity exports a separately signature/digest-verified release set; it cannot publish, replace, revoke, delete, or sign                             | Z6 immutable backup set          | G6                                |
-| Gateway and session metadata                                                                            | Z8 exporter encrypts the bounded metadata set before write-only transfer                                                                                                        | Z6 backup target                 | G7                                |
-| Secret-store state                                                                                      | The approved secret provider's recovery service uses its own separate backup authority and destination; no RMM runtime, Z2 exporter, or Z6 collector receives plaintext secrets | Dedicated secret recovery target | When a secret store is introduced |
+| Required recovery material                                                                              | Authoritative source and bounded mechanism                                                                                                                                                                                                                                           | Protected destination                          | Activation                        |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | --------------------------------- |
+| PostgreSQL data, schema, endpoint identity/revocation state, authorization policy, and phase-gate state | Z3 database backup identity performs a database-consistent export                                                                                                                                                                                                                    | Z6 backup target                               | Required                          |
+| Audit events and integrity checkpoints                                                                  | Z5 protected audit archive exports append-only records and checkpoints                                                                                                                                                                                                               | Z6 immutable backup set                        | Required before G2                |
+| Configuration and certificate state, excluding plaintext secrets                                        | Z2 backup exporter writes an encrypted, schema-versioned bundle                                                                                                                                                                                                                      | Z6 backup target                               | Required                          |
+| Source commit and deployment manifests                                                                  | Z6 collector reads only the exact commit/tag and deployment records named by the recovery set                                                                                                                                                                                        | Z6 signed recovery catalog                     | Required                          |
+| Signed recovery packages, update metadata, SBOMs, provenance, and public verification keys              | Artifact-repository backup identity exports a separately signature/digest-verified release set; it cannot publish, replace, revoke, delete, or sign                                                                                                                                  | Z6 immutable backup set                        | G6                                |
+| Release-status sequence ledger and independent checkpoints                                              | The separated status authority writes every allocated sequence and signed status digest to the protected Z5 release-audit intake, or the immutable Z6 fallback when Z5 is unavailable; the allocator's non-rollbackable counter remains outside the authority VM and its restore set | Z5 protected archive and Z6 immutable fallback | G6                                |
+| Gateway and session metadata                                                                            | Z8 exporter encrypts the bounded metadata set before write-only transfer                                                                                                                                                                                                             | Z6 backup target                               | G7                                |
+| Secret-store state                                                                                      | The approved secret provider's recovery service uses its own separate backup authority and destination; no RMM runtime, Z2 exporter, or Z6 collector receives plaintext secrets                                                                                                      | Dedicated secret recovery target               | When a secret store is introduced |
 
 Each recovery set records source identity, content manifest, schema/version,
 encryption key reference, digest or signature, retention class, and restore-test
@@ -610,6 +611,27 @@ current signed sequence checkpoint directly from the status authority over the
 listed read-only mTLS path before considering installation. It atomically raises
 its local floor and fails closed if the authority or checkpoint is unavailable or
 invalid. The artifact repository cannot initialize or lower the floor.
+
+The status authority also maintains a highest-issued sequence outside its
+restorable VM, operating-system image, application data, and ordinary backup set.
+Sequence numbers are allocated atomically by a hardware-backed monotonic counter
+or an equivalently non-rollbackable separated service. Every allocation is bound
+to the signed status digest and written to the protected Z5 sequence ledger, or
+to the immutable Z6 fallback when Z5 is unavailable. Restoring a database,
+snapshot, VM, or application release cannot restore, reset, replace, or decrement
+the allocator.
+
+After any status-authority restart from backup, rollback, rebuild, counter
+replacement, or uncertain state, status signing remains disabled. A separately
+authorized recovery process reads the non-rollbackable allocator and the highest
+valid independently anchored sequence from Z5 and Z6, verifies their signatures
+and continuity, and atomically establishes a floor equal to their maximum. The
+next status must use a sequence greater than that floor. Missing, unavailable,
+inconsistent, or lower state fails closed; neither the restored authority nor the
+artifact repository may select an initial value. Counter replacement requires
+dual-control recovery, a new authority epoch that sorts after the prior epoch,
+and protected evidence linking the old and new anchors before status issuance
+resumes.
 
 The repository cannot create or modify release status. It serves only signed
 objects received through the listed status-publication path. The constrained
@@ -899,6 +921,11 @@ The deployment change packet must contain:
   prior agent, then removes/corrupts local sequence state and proves a lower signed
   status is rejected; uncertain state must require a direct current signed
   authority checkpoint, and unavailable authority must block installation;
+- a G6 status-authority recovery test that restores the authority VM, database,
+  and application to a point before a recorded freeze/revocation, then proves the
+  external allocator and independently anchored Z5/Z6 ledger force the next
+  sequence above the pre-restore maximum; missing, lower, inconsistent, or
+  unavailable allocator/anchor state must keep status signing disabled;
 - agent no-listener and cross-endpoint isolation evidence;
 - backup/restore and revocation-invariant results;
 - capacity baseline and alert tests;

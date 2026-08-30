@@ -115,7 +115,8 @@ tests, audits, risks, and exceptions.
   request-bound rollout decision, independently signed current health-gate
   evidence, pause, and recovery. The artifact repository MUST receive and
   independently verify the decision and health evidence before rollout start,
-  advance, or resumption.
+  advance, or resumption. Each decision MUST bind a single-use status correlation
+  and exact predecessor status that the authority and repository reject on reuse.
 - **SR-UPD-005:** Dependencies and CI actions MUST be locked and continuously
   scanned.
 - **SR-UPD-006:** Immediately before installation, agents MUST obtain current,
@@ -135,6 +136,10 @@ tests, audits, risks, and exceptions.
   restrictive transition may proceed, and only after the external allocator
   durably records a digest-bound append-only pending anchor that blocks
   authority-increasing status until independently acknowledged and reconciled.
+  After authority recovery with both anchors unavailable, only a dual-controlled
+  allocator-verified restrictive mode may sign freeze, revoke, or pause; every
+  authority-increasing, unfreeze, checkpoint, and allocator-replacement operation
+  MUST remain disabled until protected-sink reconciliation succeeds.
 
 ## Remote access
 

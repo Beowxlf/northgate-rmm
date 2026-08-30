@@ -60,7 +60,10 @@ envelope carries the independently signed approval and exact current-ring or
 pre-deployment health attestation beside the signed status. The status signer and
 repository independently pin and verify those signatures, authorization roles,
 separation of duties, scope, freshness, outcome, and the evidence digests bound
-into the acknowledgement-free status payload before activation.
+into the acknowledgement-free status payload before activation. The decision and
+status payload also bind the same single-use correlation and exact predecessor
+status digest. The signer and repository reject reuse, and the repository
+atomically consumes both identifiers when it activates a transition.
 
 ## Agent behavior
 
@@ -88,15 +91,20 @@ allocation is digest-bound to the signed status and independently anchored in th
 protected Z5 sequence ledger or immutable Z6 fallback. When both sinks are down,
 only a Z1-authorized restrictive transition may use the allocator's append-only
 pending anchor, which must survive authority restore and reconcile later. After authority restore,
-rollback, rebuild, counter replacement, or uncertain state, signing remains
-disabled until a separate recovery process reconciles the allocator and both
-available anchors, establishes their maximum as the floor, and proves the next
-sequence is greater. Missing or inconsistent state fails closed. Replacing the
-allocator requires dual control, a monotonically later authority epoch, and
-protected linkage to the prior anchor. That recovery identity has narrowly scoped
-read-only access to the allocator's current counter/epoch and the exact Z5/Z6
-sequence anchors; it cannot allocate, reset, sign, release, restore, delete,
-alter, or read unrelated audit evidence.
+rollback, rebuild, counter replacement, or uncertain state, general signing
+remains disabled until a separate recovery process reconciles the allocator and
+all available anchors, establishes their maximum as the floor, and proves the
+next sequence is greater. When both anchors are unavailable, dual-controlled Z1
+recovery may verify the allocator epoch, counter, continuity, and pending-anchor
+chain and enable only higher-sequence freeze/revoke/pause signing. Every
+authority-increasing, unfreeze, and install-authorizing checkpoint operation
+remains disabled until a sink returns and reconciliation succeeds. Missing or
+inconsistent allocator state fails even the restrictive mode closed. Replacing
+the allocator requires dual control, a monotonically later authority epoch, and
+protected linkage to the prior anchor; it is forbidden in restrictive-only mode.
+The recovery identity has narrowly scoped read-only access to the allocator's
+current counter/epoch and the exact Z5/Z6 sequence anchors; it cannot allocate,
+reset, sign, release, restore, delete, alter, or read unrelated audit evidence.
 Each download also requires the short-lived, single-use, endpoint-key and
 artifact-bound authorization defined in the
 [infrastructure flow](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#revocation-aware-update-download-and-installation).

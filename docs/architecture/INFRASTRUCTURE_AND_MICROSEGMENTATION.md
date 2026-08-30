@@ -268,7 +268,7 @@ named gate and design evidence exist.
 | Z4 enrolled endpoint                     | Approved update metadata/status authority          | TCP 443                       | G6 state recovery     | mTLS read-only current signed sequence checkpoint after restart/reinstall/rollback/restore/missing state; no signing/admin authority              |
 | Z7 publisher                             | Artifact repository                                | TCP 443                       | G6                    | Separate identity; require valid signing-intent and signing-result intake acknowledgements bound to the artifact                                  |
 | Approved update metadata/status role     | Artifact repository update-status endpoint         | Approved publication protocol | G6                    | Signed status, intent/result acks, decision, and applicable health attestation; repository independently verifies all; restrictive exception only |
-| Z7 status coordinator                    | Approved update metadata/status authority          | TCP 443                       | G6                    | Exact request with protected ack, separate signed rollout decision, and applicable signed health-attestation digest                               |
+| Z7 status coordinator                    | Approved update metadata/status authority          | TCP 443                       | G6                    | Exact request with protected ack; decision binds one-use correlation and predecessor; applicable signed health evidence                           |
 | Approved update metadata/status role     | External monotonic sequence allocator              | Approved allocation protocol  | G6                    | Atomically allocate next sequence and persist signed status-digest receipt; no decrement/reset; emergency restrictive pending anchor only         |
 | Approved update metadata/status role     | Z5 rollout-health attestation service              | TCP 443                       | G6 authority increase | Read only exact signed artifact/ring/window/threshold/result/evidence digest; no raw telemetry, audit, or release authority                       |
 | Approved update metadata/status role     | Z5 protected release-audit intake                  | Approved TLS port             | G6                    | Append signed status result bound to request/output digest; require acknowledgement before authority-increasing publication                       |
@@ -565,7 +565,8 @@ instead.
 The same invariant applies to signed release-status transitions. Z7 first
 canonicalizes an acknowledgement-free status payload containing the exact action,
 artifact and metadata digests, version, current/destination rings, next sequence,
-policy, correlation ID, expiry, approval digest, and health-attestation digest.
+policy, single-use correlation ID, predecessor signed-status digest, expiry,
+approval digest, and health-attestation digest.
 It computes that payload digest and obtains an intent acknowledgement bound to it.
 A separate status envelope carries the unchanged payload, declared payload digest,
 and acknowledgement; the envelope is not hashed into its own payload digest. The
@@ -582,9 +583,17 @@ An audit acknowledgement is evidence, not rollout authorization. For every
 rollout start, advance, or resumption, the request also carries a separately
 signed decision from the authorized release approver, who cannot be the requester.
 The decision binds artifact and metadata digests, version, current and destination
-rings, action, policy digest, applicable health-attestation digest, not-before,
-expiry, and approval identity. The status authority pins the approval keys and
-verifies role, separation of duties, scope, digest, freshness, and policy.
+rings, action, policy digest, applicable health-attestation digest, the same
+single-use status correlation ID, the exact predecessor signed-status digest (or
+the fixed genesis-state digest for the first transition), not-before, expiry, and
+approval identity. This request binding is acyclic because the decision does not
+include its own digest or the completed status-payload digest. The status
+authority pins the approval keys and verifies role, separation of duties, scope,
+digest, freshness, predecessor, correlation, and policy. The status authority and
+repository each reject a decision or status correlation already consumed; the
+repository atomically records both as consumed when it activates the transition.
+A later pause, freeze, revoke, or other status change therefore invalidates any
+earlier unexpired start, advance, or resumption decision.
 
 For an advance or resumption, the status authority independently retrieves and
 verifies a signed Z5 health-gate attestation for the exact artifact, observed ring,
@@ -690,16 +699,28 @@ reconciled. Restoring a database, snapshot, VM, or application release cannot
 restore, reset, replace, or decrement the allocator or remove that pending state.
 
 After any status-authority restart from backup, rollback, rebuild, counter
-replacement, or uncertain state, status signing remains disabled. A separately
-authorized recovery process reads the non-rollbackable allocator and the highest
-valid independently anchored sequence from Z5 and Z6, verifies their signatures
-and continuity, and atomically establishes a floor equal to their maximum. The
-next status must use a sequence greater than that floor. Missing, unavailable,
-inconsistent, or lower state fails closed; neither the restored authority nor the
-artifact repository may select an initial value. Counter replacement requires
+replacement, or uncertain state, general status signing remains disabled. A
+separately authorized recovery process reads the non-rollbackable allocator and
+the highest valid independently anchored sequence from every available Z5/Z6
+sink, verifies their signatures and continuity, and atomically establishes a
+floor equal to their maximum. The next status must use a sequence greater than
+that floor. Inconsistent or lower state fails closed; neither the restored
+authority nor the artifact repository may select an initial value.
+
+If both Z5 and Z6 are unavailable, a dual-controlled Z1 emergency authorization
+may place the recovered authority into allocator-backed restrictive-only mode.
+The recovery process verifies the allocator's authority epoch, current counter,
+continuity, and complete append-only pending-anchor chain, then uses that counter
+as a provisional floor. The authority may allocate and sign only a higher-sequence
+freeze, revoke, or pause through the pending-anchor procedure above. It cannot
+start, advance, resume, unfreeze, publish an install-authorizing checkpoint, or
+clear pending state. Missing, rolled-back, inconsistent, or inaccessible
+allocator state blocks even restrictive signing. General signing remains disabled
+until a sink returns and the allocator, every pending receipt, and all available
+anchors are reconciled with signed acknowledgements. Counter replacement requires
 dual-control recovery, a new authority epoch that sorts after the prior epoch,
-and protected evidence linking the old and new anchors before status issuance
-resumes.
+and protected evidence linking the old and new anchors before any status issuance;
+it is not permitted in restrictive-only mode.
 
 The repository cannot create or modify release status. It serves only signed
 objects received through the listed status-publication path. The constrained
@@ -988,12 +1009,21 @@ The deployment change packet must contain:
   the repository rejects missing result acknowledgements or envelope
   self-reference; with both sinks down, only Z1-authorized higher-sequence
   freeze/revoke/pause status may proceed;
+- G6 decision-replay tests proving each approval binds the single-use status
+  correlation and exact predecessor status, both the authority and repository
+  reject reuse, and a pause/freeze/revoke makes every earlier unexpired start,
+  advance, or resumption decision unusable;
 - a G6 both-sinks-unavailable test proving a Z1-authorized restrictive status
   receives a durable digest-bound pending-anchor receipt from the external
   allocator before signing, blocks every authority-increasing transition while
   pending, survives status-authority restore, and reconciles only after verifying
   a returned sink's signed acknowledgement; failure to persist the receipt must
   block signing;
+- a G6 both-sinks-unavailable restore test proving dual-controlled Z1 recovery
+  can establish only the allocator's verified counter as a provisional floor and
+  issue a higher-sequence restrictive pending anchor, while missing or inconsistent
+  allocator state and every start/advance/resume/unfreeze/checkpoint attempt fail
+  closed until a protected sink returns and reconciliation succeeds;
 - G6 tests treating Z7 as compromised and proving a correctly audited status
   request is still rejected for requester self-approval; missing/stale/failed or
   mismatched signed health evidence; and wrong artifact, source/destination ring,

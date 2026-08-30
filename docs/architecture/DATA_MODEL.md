@@ -70,7 +70,12 @@ sanitized metadata.
 
 ## Database invariants
 
+- Phase 1 endpoint and identity creation is one deferred-constraint transaction;
 - endpoint key fingerprint is unique;
+- message ID is globally unique and each identity/boot sequence increases
+  atomically under a database constraint;
+- observations and audit events are append-oriented; the Phase 1 application API
+  exposes no update, delete, or truncate operation for either record type;
 - enrollment use increments atomically and cannot exceed the maximum;
 - revoked identities cannot authenticate or receive work;
 - job transitions satisfy the defined state graph;
@@ -80,6 +85,11 @@ sanitized metadata.
 - approval digest must equal immutable job intent digest;
 - audit event IDs and correlation IDs are indexed;
 - destructive cascades do not delete audit, approval, or revocation evidence.
+
+The executable Phase 1 schema is migration
+`src/northgate_rmm/migrations/0001_phase1.sql`. Entities for enrollment grants,
+jobs, leases, results, and approvals remain future schema and are not executable
+capabilities in Phase 1.
 
 ## Retention
 

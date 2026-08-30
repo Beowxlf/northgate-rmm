@@ -64,6 +64,31 @@ Revocation is immediate and idempotent. Communication health remains separate
 from lifecycle: an endpoint can have a recent heartbeat while its identity is
 already revoked.
 
+### `codec.py`
+
+Decodes only exact-schema UTF-8 JSON below the encoded size limit. Duplicate or
+unknown fields, invalid scalar types, malformed timestamps/identifiers, excessive
+field counts, replay, and expiry fail as bounded domain errors rather than being
+silently coerced.
+
+### `persistence.py` and `migrations/`
+
+Provide the PostgreSQL-backed version of the same synthetic boundary. Database
+constraints and row-level transactions make fingerprint enrollment, message ID,
+boot sequence, revocation, observation, and audit state durable across restart and
+safe under competing writers. Migration checksums prevent an applied migration
+from being rewritten silently.
+
+The recovery test creates a database dump, restores it into a separate database,
+and proves the restored identity remains revoked before accepting any message.
+
+### `views.py` and test credentials
+
+The endpoint list/detail functions produce escaped HTML from read-only methods;
+they do not start a web server. The test support code creates a short-lived
+in-memory Ed25519 root and endpoint-bound client certificate. Those credentials
+are fixtures only and are never deployed or written to the repository.
+
 ## Freshness example
 
 With the default policy:
@@ -91,15 +116,19 @@ pytest --cov=northgate_rmm --cov-branch --cov-fail-under=90
 bandit --recursive src --severity-level medium
 ```
 
-The negative tests are as important as the success test. Read
-`tests/test_control_plane.py` and explain why each rejection must fail closed.
+The PostgreSQL concurrency and restore cases require the isolated test service
+configured by the security workflow. The negative tests are as important as the
+success test. Read `tests/test_control_plane.py`, `tests/test_codec.py`, and
+`tests/test_postgres_control_plane.py`, then explain why each rejection must fail
+closed.
 
 ## Gate boundary
 
-G1 permits this local simulation. It does not authorize a web listener, real
-certificate authority, database deployment, endpoint installation, OS inventory
-collector, command execution, remote shell, desktop control, or production
-service. Those require later evidence and gates.
+G1 permits this local simulation and its ephemeral CI database. It does not
+authorize a live web listener, real certificate authority, lab database/service
+deployment, endpoint installation, OS inventory collector, command execution,
+remote shell, desktop control, or production service. Those require later
+evidence and gates.
 
 ## Completion check
 

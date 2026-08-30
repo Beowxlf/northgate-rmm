@@ -28,6 +28,7 @@ The first executable lesson is
 - [Development phases](docs/governance/PHASES.md)
 - [Authorization gates](docs/governance/AUTHORIZATION_GATES.md)
 - [Licensing policy](docs/governance/LICENSING.md)
+- [Third-party notice inventory](THIRD_PARTY_NOTICES.md)
 - [Required free-software checks](docs/governance/REQUIRED_CHECKS.md)
 - [Architecture overview](docs/architecture/OVERVIEW.md)
 - [Infrastructure and microsegmentation](docs/architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md)
@@ -41,6 +42,12 @@ The repository is in **Phase 1: Trustworthy vertical-slice simulation**. G1
 authorizes bounded product coding with synthetic data. Endpoint installation,
 remote jobs, privileged actions, agent updates, interactive remote access, and
 production deployment remain closed behind later gates.
+
+The Phase 1 implementation includes a strict message decoder, transactional
+PostgreSQL adapter and migrations, restart/concurrency/recovery tests, escaped
+server-rendered read models, and an in-memory test-only certificate authority.
+It remains a synthetic control-plane proof: no HTTP listener, real endpoint
+collector, job scheduler, or command-execution primitive is present.
 
 ## Phase 1 developer checks
 

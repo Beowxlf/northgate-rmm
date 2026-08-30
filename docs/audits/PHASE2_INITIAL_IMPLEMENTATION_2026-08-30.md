@@ -156,6 +156,11 @@ addresses even when Go's strict IP parser does not. The follow-up change rejects
 all-numeric legacy IPv4 candidates unless the authority is already a canonical
 IP literal.
 
+The fifteenth exact-head review found that a restarted process could validate
+persisted records but could not discover their IDs for delivery. The follow-up
+change adds a bounded, sorted `ListIDs` recovery API that revalidates every
+record and exposes no payload during enumeration.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

@@ -39,6 +39,46 @@ func TestQueueRoundTripAndAcknowledge(t *testing.T) {
 	}
 }
 
+func TestListIDsRecoversValidatedRecordsAfterRestart(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	ids := []string{
+		"123e4567-e89b-42d3-a456-426614174002",
+		"123e4567-e89b-42d3-a456-426614174001",
+	}
+	for _, id := range ids {
+		if err := queue.Enqueue(context.Background(), id, []byte(id)); err != nil {
+			t.Fatalf("Enqueue(%s) error = %v", id, err)
+		}
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	queue, err = Open(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("restart Open() error = %v", err)
+	}
+	defer queue.Close()
+	got, err := queue.ListIDs(context.Background())
+	if err != nil {
+		t.Fatalf("ListIDs() error = %v", err)
+	}
+	want := []string{ids[1], ids[0]}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("ListIDs() = %#v, want %#v", got, want)
+	}
+	for _, id := range got {
+		payload, err := queue.Read(context.Background(), id)
+		if err != nil || string(payload) != id {
+			t.Fatalf("Read(%s) = %q, %v", id, payload, err)
+		}
+	}
+}
+
 func TestAcknowledgeExposesUncertainDeletionOutcome(t *testing.T) {
 	directory := t.TempDir()
 	queue, err := Open(directory, 1<<20)

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -294,6 +295,22 @@ func (queue *Queue) Read(ctx context.Context, id string) ([]byte, error) {
 	return queue.readRecordLocked(id)
 }
 
+// ListIDs returns a deterministic, bounded snapshot of every validated queue
+// record so a restarted agent can resume delivery without retaining process
+// memory. Payloads are not returned by enumeration.
+func (queue *Queue) ListIDs(ctx context.Context) ([]string, error) {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	if err := queue.ready(ctx); err != nil {
+		return nil, err
+	}
+	_, ids, err := queue.inventoryLocked()
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 func (queue *Queue) readRecordLocked(id string) ([]byte, error) {
 	file, err := queue.root.Open(id + ".json")
 	if err != nil {
@@ -348,9 +365,14 @@ func (queue *Queue) ready(ctx context.Context) error {
 }
 
 func (queue *Queue) usageLocked() (int64, int, error) {
+	total, ids, err := queue.inventoryLocked()
+	return total, len(ids), err
+}
+
+func (queue *Queue) inventoryLocked() (int64, []string, error) {
 	entries, err := fs.ReadDir(queue.root.FS(), ".")
 	if err != nil {
-		return 0, 0, fmt.Errorf("list spool: %w", err)
+		return 0, nil, fmt.Errorf("list spool: %w", err)
 	}
 	dataEntries := make([]string, 0, len(entries))
 	for _, entry := range entries {
@@ -358,35 +380,38 @@ func (queue *Queue) usageLocked() (int64, int, error) {
 		if name == ".lock" {
 			info, err := queue.root.Lstat(name)
 			if err != nil || !info.Mode().IsRegular() {
-				return 0, 0, ErrCorrupt
+				return 0, nil, ErrCorrupt
 			}
 			continue
 		}
 		dataEntries = append(dataEntries, name)
 	}
 	if len(dataEntries) > MaxEntries {
-		return 0, 0, ErrQuotaExceeded
+		return 0, nil, ErrQuotaExceeded
 	}
 	var total int64
+	ids := make([]string, 0, len(dataEntries))
 	for _, name := range dataEntries {
 		if !strings.HasSuffix(name, ".json") || !uuidPattern.MatchString(strings.TrimSuffix(name, ".json")) {
-			return 0, 0, ErrCorrupt
+			return 0, nil, ErrCorrupt
 		}
 		info, err := queue.root.Lstat(name)
 		if err != nil || !info.Mode().IsRegular() || !privateRecord(info) ||
 			info.Size() < 1 || info.Size() > maxRecordBytes {
-			return 0, 0, ErrCorrupt
+			return 0, nil, ErrCorrupt
 		}
 		if total > queue.maxBytes-info.Size() {
-			return 0, 0, ErrQuotaExceeded
+			return 0, nil, ErrQuotaExceeded
 		}
 		id := strings.TrimSuffix(name, ".json")
 		if _, err := queue.readRecordLocked(id); err != nil {
-			return 0, 0, ErrCorrupt
+			return 0, nil, ErrCorrupt
 		}
 		total += info.Size()
+		ids = append(ids, id)
 	}
-	return total, len(dataEntries), nil
+	sort.Strings(ids)
+	return total, ids, nil
 }
 
 func decodeRecord(raw []byte) (record, error) {

@@ -144,6 +144,12 @@ unpaired surrogate escapes before schema validation. The follow-up change stats
 every spool entry relative to the stable queue root and rejects unpaired high or
 low surrogates in raw JSON strings before decoding.
 
+The thirteenth exact-head review found that HTTP IDNA handling can silently
+remove Unicode format characters from a configured hostname. The follow-up
+change restricts control-plane authorities to canonical ASCII DNS names,
+IPv4/IPv6 literals, or explicit ASCII punycode and rejects percent-escaped
+authorities.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

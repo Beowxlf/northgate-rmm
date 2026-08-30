@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"path"
 	"regexp"
@@ -123,12 +124,16 @@ func (cfg Config) Validate() error {
 	if strings.Contains(cfg.ControlPlaneURL, "#") {
 		return errors.New("control_plane_url must not contain a fragment delimiter")
 	}
+	if strings.Contains(cfg.ControlPlaneURL, "%") {
+		return errors.New("control_plane_url must not contain percent escapes")
+	}
 	parsed, err := url.Parse(cfg.ControlPlaneURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return errors.New("control_plane_url must be an absolute HTTPS URL")
 	}
 	hostname := parsed.Hostname()
-	if hostname == "" || !utf8.ValidString(hostname) || containsControl(hostname) {
+	if hostname == "" || !utf8.ValidString(hostname) || containsControl(hostname) ||
+		!validControlPlaneHostname(hostname) {
 		return errors.New("control_plane_url contains an invalid hostname")
 	}
 	if strings.HasSuffix(parsed.Host, ":") {
@@ -168,6 +173,29 @@ func (cfg Config) Validate() error {
 		return errors.New("max_spool_bytes is outside the supported range")
 	}
 	return nil
+}
+
+func validControlPlaneHostname(hostname string) bool {
+	if net.ParseIP(hostname) != nil {
+		return true
+	}
+	if len(hostname) > 253 || strings.HasSuffix(hostname, ".") {
+		return false
+	}
+	for _, label := range strings.Split(hostname, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for index := 0; index < len(label); index++ {
+			character := label[index]
+			if (character < 'a' || character > 'z') &&
+				(character < 'A' || character > 'Z') &&
+				(character < '0' || character > '9') && character != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func containsControl(value string) bool {

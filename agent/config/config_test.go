@@ -112,11 +112,34 @@ func TestValidateRejectsInvalidControlPlaneURL(t *testing.T) {
 		"https://rmm.invalid:/",
 		"https://rmm.invalid/#",
 		"https://rmm.invalid#",
+		"https://\u200bexample.com/",
+		"https://éxample.invalid/",
+		"https://%65xample.invalid/",
+		"https://bad_name.invalid/",
 	}
 	for _, controlPlaneURL := range tests {
 		cfg.ControlPlaneURL = controlPlaneURL
 		if err := cfg.Validate(); err == nil {
 			t.Fatalf("Validate() accepted invalid control-plane URL %q", controlPlaneURL)
+		}
+	}
+}
+
+func TestValidateAcceptsCanonicalControlPlaneHosts(t *testing.T) {
+	cfg, err := Decode(strings.NewReader(validConfig))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	for _, controlPlaneURL := range []string{
+		"https://rmm.invalid/",
+		"https://rmm.invalid:8443/",
+		"https://192.0.2.10/",
+		"https://[2001:db8::10]/",
+		"https://xn--xample-9ua.invalid/",
+	} {
+		cfg.ControlPlaneURL = controlPlaneURL
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("Validate() rejected canonical URL %q: %v", controlPlaneURL, err)
 		}
 	}
 }

@@ -88,6 +88,30 @@ func TestOpenFailsClosedOnCorruptExistingRecord(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsSecondQueueHandle(t *testing.T) {
+	directory := t.TempDir()
+	first, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("first Open() error = %v", err)
+	}
+	defer first.Close()
+	if _, err := Open(directory, 1<<20); !errors.Is(err, ErrLocked) {
+		t.Fatalf("second Open() error = %v, want ErrLocked", err)
+	}
+}
+
+func TestOpenRejectsDuplicateRecordKeys(t *testing.T) {
+	directory := t.TempDir()
+	name := filepath.Join(directory, testID+".json")
+	raw := `{"schema_version":1,"schema_version":1,"id":"123e4567-e89b-42d3-a456-426614174000","created_at":"2026-08-30T12:00:00Z","payload":"eA==","sha256":"2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"}`
+	if err := os.WriteFile(name, []byte(raw), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if _, err := Open(directory, 1<<20); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Open() error = %v, want ErrCorrupt", err)
+	}
+}
+
 func TestQueueRejectsOversizedPayloadAndCancelledContext(t *testing.T) {
 	queue, err := Open(t.TempDir(), 1<<20)
 	if err != nil {

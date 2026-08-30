@@ -73,6 +73,14 @@ mutations before success, rejects an empty URL query delimiter, and rejects
 invalid UTF-8 before protocol encoding. A fresh exact-head review and CI run are
 required for those corrections.
 
+The second exact-head review found five additional cases. The follow-up change
+adds raw configuration UTF-8 validation, duplicate-key validation shared by
+configuration and spool records, nil-map rejection for protocol object shape,
+and a lifetime-held Linux file lock that serializes quota check/publication
+across processes. Queue creation now requires an existing real parent and syncs
+that parent before success. Non-Linux queue locking and sync remain development
+test shims and make no operational durability claim.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

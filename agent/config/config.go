@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
 )
 
 const (
@@ -61,8 +63,8 @@ func Decode(reader io.Reader) (Config, error) {
 	if len(raw) > MaxEncodedBytes {
 		return Config{}, errors.New("configuration exceeds size limit")
 	}
-	if err := rejectDuplicateFields(raw); err != nil {
-		return Config{}, err
+	if err := strictjson.Validate(raw); err != nil {
+		return Config{}, fmt.Errorf("validate configuration JSON: %w", err)
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -95,69 +97,6 @@ func Decode(reader io.Reader) (Config, error) {
 		return Config{}, err
 	}
 	return result, nil
-}
-
-func rejectDuplicateFields(raw []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := checkJSONValue(decoder); err != nil {
-		return fmt.Errorf("validate configuration fields: %w", err)
-	}
-	if token, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		if err != nil {
-			return fmt.Errorf("validate trailing configuration data: %w", err)
-		}
-		return fmt.Errorf("configuration contains trailing token %v", token)
-	}
-	return nil
-}
-
-func checkJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("object key is not a string")
-			}
-			if _, exists := seen[key]; exists {
-				return fmt.Errorf("duplicate JSON field %q", key)
-			}
-			seen[key] = struct{}{}
-			if err := checkJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-	case '[':
-		for decoder.More() {
-			if err := checkJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-	default:
-		return errors.New("unexpected JSON delimiter")
-	}
-	closing, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	if closing != json.Delim(map[json.Delim]byte{'{': '}', '[': ']'}[delimiter]) {
-		return errors.New("mismatched JSON delimiter")
-	}
-	return nil
 }
 
 func requireEOF(decoder *json.Decoder) error {

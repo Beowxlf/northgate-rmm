@@ -106,6 +106,9 @@ func validatePayload(payload InventoryPayload) error {
 	if payload.SchemaVersion != InventorySchema {
 		return errors.New("unsupported inventory schema version")
 	}
+	if payload.Fields == nil {
+		return errors.New("inventory fields must be an object")
+	}
 	if len(payload.Fields) > MaxFields {
 		return errors.New("too many inventory fields")
 	}

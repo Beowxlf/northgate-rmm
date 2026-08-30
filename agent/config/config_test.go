@@ -71,6 +71,14 @@ func TestDecodeRejectsOversizedInput(t *testing.T) {
 	}
 }
 
+func TestDecodeRejectsInvalidUTF8(t *testing.T) {
+	raw := []byte(validConfig)
+	raw[len(raw)-3] = 0xff
+	if _, err := Decode(bytes.NewReader(raw)); err == nil {
+		t.Fatal("Decode() accepted invalid UTF-8")
+	}
+}
+
 func FuzzDecode(f *testing.F) {
 	f.Add([]byte(validConfig))
 	f.Add([]byte(`{"endpoint_id":null}`))

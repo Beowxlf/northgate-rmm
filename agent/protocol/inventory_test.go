@@ -109,4 +109,11 @@ func TestEncodeInventoryRejectsInvalidEnvelopeAndPayload(t *testing.T) {
 			t.Fatal("EncodeInventory() accepted invalid UTF-8")
 		}
 	})
+	t.Run("nil fields", func(t *testing.T) {
+		payload := validPayload()
+		payload.Fields = nil
+		if _, err := EncodeInventory(validEnvelope(), payload); err == nil {
+			t.Fatal("EncodeInventory() accepted nil fields")
+		}
+	})
 }

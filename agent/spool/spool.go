@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
 )
 
 const (
@@ -31,6 +33,7 @@ var (
 	ErrClosed        = errors.New("spool is closed")
 	ErrCorrupt       = errors.New("spool integrity check failed")
 	ErrDuplicate     = errors.New("spool item already exists")
+	ErrLocked        = errors.New("spool is already open")
 	ErrQuotaExceeded = errors.New("spool quota exceeded")
 	uuidPattern      = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 )
@@ -46,6 +49,7 @@ type record struct {
 type Queue struct {
 	mu       sync.Mutex
 	root     *os.Root
+	lock     directoryLock
 	maxBytes int64
 	closed   bool
 }
@@ -61,8 +65,17 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 	if directory == "" || !filepath.IsAbs(directory) || clean != directory || clean == volumeRoot {
 		return nil, errors.New("spool directory must be a non-root absolute clean path")
 	}
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, fmt.Errorf("create spool directory: %w", err)
+	parent := filepath.Dir(directory)
+	parentInfo, err := os.Lstat(parent)
+	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("spool parent must be an existing real directory")
+	}
+	if _, err := os.Lstat(directory); errors.Is(err, fs.ErrNotExist) {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			return nil, fmt.Errorf("create spool directory: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("inspect spool directory: %w", err)
 	}
 	info, err := os.Lstat(directory)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
@@ -71,12 +84,26 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 	if err := os.Chmod(directory, 0o700); err != nil {
 		return nil, fmt.Errorf("protect spool directory: %w", err)
 	}
+	if err := syncPathDirectory(parent); err != nil {
+		return nil, fmt.Errorf("sync spool parent: %w", err)
+	}
 	root, err := os.OpenRoot(directory)
 	if err != nil {
 		return nil, fmt.Errorf("open spool root: %w", err)
 	}
-	queue := &Queue{root: root, maxBytes: maxBytes}
+	lock, err := acquireDirectoryLock(root)
+	if err != nil {
+		root.Close()
+		return nil, err
+	}
+	queue := &Queue{root: root, lock: lock, maxBytes: maxBytes}
+	if err := syncDirectory(root); err != nil {
+		lock.Close()
+		root.Close()
+		return nil, fmt.Errorf("sync spool directory: %w", err)
+	}
 	if _, _, err := queue.usageLocked(); err != nil {
+		lock.Close()
 		root.Close()
 		return nil, err
 	}
@@ -90,7 +117,7 @@ func (queue *Queue) Close() error {
 		return nil
 	}
 	queue.closed = true
-	return queue.root.Close()
+	return errors.Join(queue.lock.Close(), queue.root.Close())
 }
 
 // Enqueue durably writes a new item without overwriting an existing ID. Queue
@@ -246,17 +273,29 @@ func (queue *Queue) usageLocked() (int64, int, error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("list spool: %w", err)
 	}
-	if len(entries) > MaxEntries {
+	dataEntries := make([]fs.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Name() == ".lock" {
+			info, err := entry.Info()
+			if err != nil || !info.Mode().IsRegular() {
+				return 0, 0, ErrCorrupt
+			}
+			continue
+		}
+		dataEntries = append(dataEntries, entry)
+	}
+	if len(dataEntries) > MaxEntries {
 		return 0, 0, ErrQuotaExceeded
 	}
 	var total int64
-	for _, entry := range entries {
+	for _, entry := range dataEntries {
 		name := entry.Name()
 		if !strings.HasSuffix(name, ".json") || !uuidPattern.MatchString(strings.TrimSuffix(name, ".json")) {
 			return 0, 0, ErrCorrupt
 		}
 		info, err := entry.Info()
-		if err != nil || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > maxRecordBytes {
+		if err != nil || !info.Mode().IsRegular() || !privateRecord(info) ||
+			info.Size() < 1 || info.Size() > maxRecordBytes {
 			return 0, 0, ErrCorrupt
 		}
 		if total > queue.maxBytes-info.Size() {
@@ -268,10 +307,13 @@ func (queue *Queue) usageLocked() (int64, int, error) {
 		}
 		total += info.Size()
 	}
-	return total, len(entries), nil
+	return total, len(dataEntries), nil
 }
 
 func decodeRecord(raw []byte) (record, error) {
+	if err := strictjson.Validate(raw); err != nil {
+		return record{}, err
+	}
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
 	decoder.DisallowUnknownFields()
 	var item record

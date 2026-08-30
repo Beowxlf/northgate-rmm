@@ -78,7 +78,11 @@ inspect endpoint authentication and network logs, and determine whether the
 gateway or endpoint was used to pivot.
 If the gateway or credential broker is suspected, revoke the exact JIT credential
 at the OS identity authority through the independent Z1 session-recovery route;
-do not use the suspected broker for containment. If the gateway is suspected,
+do not use the suspected broker for containment. Retrieve its opaque handle from
+the exact-session/grant Z5 lookup, or from the authority's exact-session/grant
+fallback when Z5 is unavailable, suspected, or otherwise untrusted. The fallback
+cannot list, search, inspect, issue, renew, or change policy, and its lookup and
+revocation evidence must reach trusted Z5 or Z6. If the gateway is suspected,
 the independent Z1 network-recovery operator must also block its exact
 endpoint-facing policy-enforcement scope outside Z8 and verify the active stream
 and tunnel are gone from endpoint or network evidence. A gateway termination

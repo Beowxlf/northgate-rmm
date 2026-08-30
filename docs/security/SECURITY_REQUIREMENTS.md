@@ -169,8 +169,10 @@ tests, audits, risks, and exceptions.
   sharing, and recording MUST be separately governed and disabled by default.
 - **SR-REMOTE-005:** Active session grants MUST bind the exact signed IdP
   issuer/tenant/subject/session/client tuple, protected evidence MUST preserve an
-  opaque independent revocation handle, and sessions MUST terminate on session,
-  operator, endpoint, or policy revocation and at idle/absolute timeout.
+  opaque independent revocation handle, the OS identity authority MUST support a
+  non-enumerable exact-session/grant recovery lookup when protected evidence is
+  unavailable or untrusted, and sessions MUST terminate on session, operator,
+  endpoint, or policy revocation and at idle/absolute timeout.
 - **SR-REMOTE-006:** Windows RDP, Linux SSH, and each Linux desktop backend MUST be
   independently qualified and patched.
 - **SR-REMOTE-007:** Session metadata MUST be audited; content recording MUST have

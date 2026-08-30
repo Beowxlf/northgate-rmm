@@ -76,6 +76,9 @@ sequenceDiagram
 - credential broker issues or retrieves a just-in-time credential without exposing
   it to the browser and may revoke only that session-issued credential by its
   returned opaque handle;
+- OS identity authority retains a signed exact-session/grant-to-handle mapping so
+  the independent recovery identity can retrieve one handle when Z5 is
+  unavailable or untrusted, without listing or inspecting credentials;
 - endpoint agent authorizes only the tunnel capability, not arbitrary local
   socket forwarding;
 - audit service records lifecycle metadata independently of the gateway.
@@ -159,6 +162,13 @@ returning credential material or the handle to Z8. The broker then appends a
 separate delivery event linked to the authority receipt before releasing the
 credential to the gateway. Failure of either append fails session establishment
 closed, so a compromised broker cannot be the sole source of the recovery handle.
+Before returning any credential or handle, the authority also durably and
+atomically retains the signed, non-secret exact session/grant, issuer, opaque
+handle, status, and expiry mapping for bounded recovery retention. If Z5 is
+unavailable or untrusted, a case-scoped independent MFA identity may retrieve
+only that exact session/grant's issuer and handle directly from the authority;
+listing, wildcard/time-range queries, credential inspection, issuance, renewal,
+and policy change remain denied.
 
 If the broker delivery append fails after issuance, the broker retains the
 non-secret handle, performs compensating revocation, and verifies the authority's

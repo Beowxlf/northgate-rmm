@@ -179,6 +179,9 @@ func validControlPlaneHostname(hostname string) bool {
 	if net.ParseIP(hostname) != nil {
 		return true
 	}
+	if looksLikeLegacyIPv4(hostname) {
+		return false
+	}
 	if len(hostname) > 253 || strings.HasSuffix(hostname, ".") {
 		return false
 	}
@@ -191,6 +194,33 @@ func validControlPlaneHostname(hostname string) bool {
 			if (character < 'a' || character > 'z') &&
 				(character < 'A' || character > 'Z') &&
 				(character < '0' || character > '9') && character != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func looksLikeLegacyIPv4(hostname string) bool {
+	for _, component := range strings.Split(hostname, ".") {
+		if component == "" {
+			return false
+		}
+		candidate := component
+		base := byte(10)
+		if len(candidate) > 2 && candidate[0] == '0' && (candidate[1] == 'x' || candidate[1] == 'X') {
+			candidate = candidate[2:]
+			base = 16
+		}
+		if candidate == "" {
+			return false
+		}
+		for index := 0; index < len(candidate); index++ {
+			character := candidate[index]
+			decimal := character >= '0' && character <= '9'
+			hexLetter := base == 16 && ((character >= 'a' && character <= 'f') ||
+				(character >= 'A' && character <= 'F'))
+			if !decimal && !hexLetter {
 				return false
 			}
 		}

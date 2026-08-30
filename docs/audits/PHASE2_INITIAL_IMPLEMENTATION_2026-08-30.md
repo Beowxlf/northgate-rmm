@@ -150,6 +150,12 @@ change restricts control-plane authorities to canonical ASCII DNS names,
 IPv4/IPv6 literals, or explicit ASCII punycode and rejects percent-escaped
 authorities.
 
+The fourteenth exact-head review found that Linux's native resolver can interpret
+noncanonical decimal, octal-looking, or hexadecimal numeric hostnames as IPv4
+addresses even when Go's strict IP parser does not. The follow-up change rejects
+all-numeric legacy IPv4 candidates unless the authority is already a canonical
+IP literal.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

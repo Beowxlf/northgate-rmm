@@ -116,6 +116,12 @@ func TestValidateRejectsInvalidControlPlaneURL(t *testing.T) {
 		"https://éxample.invalid/",
 		"https://%65xample.invalid/",
 		"https://bad_name.invalid/",
+		"https://127.1/",
+		"https://2130706433/",
+		"https://0177.0.0.1/",
+		"https://192.168.001.001/",
+		"https://0x7f000001/",
+		"https://0x7f.0.0.1/",
 	}
 	for _, controlPlaneURL := range tests {
 		cfg.ControlPlaneURL = controlPlaneURL
@@ -136,6 +142,7 @@ func TestValidateAcceptsCanonicalControlPlaneHosts(t *testing.T) {
 		"https://192.0.2.10/",
 		"https://[2001:db8::10]/",
 		"https://xn--xample-9ua.invalid/",
+		"https://123.example/",
 	} {
 		cfg.ControlPlaneURL = controlPlaneURL
 		if err := cfg.Validate(); err != nil {

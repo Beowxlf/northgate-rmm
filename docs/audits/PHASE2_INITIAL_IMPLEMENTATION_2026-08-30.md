@@ -92,6 +92,12 @@ published record when final sync fails, exposes a typed exact-ID uncertainty whe
 rollback durability cannot be proven, and preserves the generated message ID in
 the snapshot result on every queue error.
 
+The fifth exact-head review found that direct callers of the exported
+configuration validator could supply invalid UTF-8 in the state path even though
+the JSON decoder already rejected it. The follow-up change applies the same UTF-8
+boundary to both configuration entry paths and adds a direct-validation
+regression test.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
 )
@@ -123,6 +124,9 @@ func (cfg Config) Validate() error {
 	}
 	if parsed.Path != "" && parsed.Path != "/" {
 		return errors.New("control_plane_url must not contain an application path")
+	}
+	if !utf8.ValidString(cfg.StateDirectory) {
+		return errors.New("state_directory contains invalid UTF-8")
 	}
 	if cfg.StateDirectory == "/" || !path.IsAbs(cfg.StateDirectory) || path.Clean(cfg.StateDirectory) != cfg.StateDirectory {
 		return errors.New("state_directory must be an absolute clean Linux path")

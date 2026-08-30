@@ -80,6 +80,17 @@ func TestDecodeRejectsInvalidUTF8(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsInvalidUTF8StateDirectory(t *testing.T) {
+	cfg, err := Decode(strings.NewReader(validConfig))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	cfg.StateDirectory = "/tmp/" + string([]byte{0xff})
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() accepted an invalid UTF-8 state directory")
+	}
+}
+
 func FuzzDecode(f *testing.F) {
 	f.Add([]byte(validConfig))
 	f.Add([]byte(`{"endpoint_id":null}`))

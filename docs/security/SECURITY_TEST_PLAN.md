@@ -47,6 +47,8 @@
 - clipboard/file/device redirection denial;
 - credential exposure to browser, logs, recordings, or database;
 - idle/absolute timeout and forced revocation;
+- suspected-gateway isolation through an independent endpoint-facing policy
+  enforcement point with externally verified tunnel teardown;
 - disconnect/reconnect and orphan-tunnel cleanup;
 - concurrent session and cross-target isolation;
 - Linux/Windows host-key/certificate identity validation;
@@ -59,6 +61,8 @@
 - update freeze/rollback/signing compromise;
 - signing-envelope tests that recompute the acknowledgement-free payload digest
   and reject acknowledgement/envelope self-reference or digest substitution;
+- allocator-receipt tests that reject a status activation or checkpoint with a
+  missing, forged, mismatched, replayed, or rolled-back external receipt;
 - update-status authority restore with external sequence and Z5/Z6 anchor
   reconciliation;
 - audit integrity gap;

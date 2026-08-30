@@ -77,7 +77,11 @@ inspect endpoint authentication and network logs, and determine whether the
 gateway or endpoint was used to pivot.
 If the gateway or credential broker is suspected, revoke the exact JIT credential
 at the OS identity authority through the independent Z1 session-recovery route;
-do not use the suspected broker for containment.
+do not use the suspected broker for containment. If the gateway is suspected,
+the independent Z1 network-recovery operator must also block its exact
+endpoint-facing policy-enforcement scope outside Z8 and verify the active stream
+and tunnel are gone from endpoint or network evidence. A gateway termination
+response is only a claim and cannot complete containment.
 
 ## Recovery criteria
 

@@ -140,6 +140,12 @@ tests, audits, risks, and exceptions.
   allocator-verified restrictive mode may sign freeze, revoke, or pause; every
   authority-increasing, unfreeze, checkpoint, and allocator-replacement operation
   MUST remain disabled until protected-sink reconciliation succeeds.
+- **SR-UPD-008:** Every release-status activation and recovery checkpoint MUST
+  carry the external monotonic allocator's signed receipt bound to the exact
+  request core, status payload, authority epoch, sequence, action, correlation,
+  and predecessor. Protected intake, repository, and checkpoint consumers MUST
+  independently verify it and fail closed on absence, mismatch, replay, or
+  rollback.
 
 ## Remote access
 
@@ -148,7 +154,9 @@ tests, audits, risks, and exceptions.
 - **SR-REMOTE-002:** The gateway MUST NOT expose durable endpoint credentials to
   the browser or store them in the RMM database.
 - **SR-REMOTE-003:** Tunnels MUST restrict destination endpoint, protocol, port,
-  lifetime, concurrency, and reconnect behavior.
+  lifetime, concurrency, and reconnect behavior. When a gateway is suspected,
+  an independent recovery path MUST isolate its endpoint-facing enforcement scope
+  and verify teardown without trusting the gateway.
 - **SR-REMOTE-004:** Clipboard, file transfer, drive/device redirection, session
   sharing, and recording MUST be separately governed and disabled by default.
 - **SR-REMOTE-005:** Active session grants MUST bind the exact signed IdP

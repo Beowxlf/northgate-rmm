@@ -44,13 +44,17 @@ including request contents and evidence, are defined in the
 The normal Z5 acknowledgement, independently controlled Z6 fallback, fail-closed
 behavior, and reconciliation requirement are defined in
 [release-transition audit acknowledgement](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#release-transition-audit-acknowledgement).
-The separated metadata/status authority must recompute the digest of the exact
-acknowledgement-free status payload, verify the pre-action acknowledgement carried
-beside that payload in a separate envelope, append its signed result to Z5 or Z6,
-and obtain a result acknowledgement that the repository verifies before
-activating an authority-increasing status. Neither acknowledgement is included in
-the payload whose digest it signs. Only a Z1-authorized higher-sequence
-freeze/revocation/pause may proceed when both evidence sinks are unavailable, and
+The separated metadata/status authority submits the sequence-free request core to
+the external monotonic allocator, which adds the authority epoch and next
+sequence and returns the completed acknowledgement-free status payload plus a
+signed receipt bound to both digests. Z5/Z6, the status signer, and the repository
+independently verify that receipt. The authority then verifies the pre-action
+acknowledgement carried beside the payload and receipt in a separate envelope,
+appends its signed result to Z5 or Z6, and obtains a result acknowledgement that
+the repository verifies before activating any status. Neither acknowledgements
+nor the receipt are included in the payload whose digest they bind. Only a
+Z1-authorized higher-sequence freeze/revocation/pause may proceed when both
+evidence sinks are unavailable, and
 only after the external monotonic allocator durably records a signed pending
 anchor bound to that restrictive payload and authorization. Authority-increasing
 status remains disabled until the pending anchor is acknowledged by a restored
@@ -81,17 +85,21 @@ The highest accepted release-status sequence lives in OS-protected,
 rollback-resistant state outside the replaceable agent payload. It survives
 restart, reinstall, and agent-version rollback. After VM/OS restore or any
 missing, corrupt, or inconsistent sequence state, the agent must obtain a current
-signed checkpoint directly from the separated status authority over mTLS and
-atomically raise its floor; repository data alone cannot reinitialize or lower it.
-Failure to verify the checkpoint blocks installation.
+signed checkpoint plus the corresponding signed allocator receipt directly from
+the separated status authority over mTLS. It pins both keys, verifies the exact
+status digest, epoch, and sequence binding, and atomically raises its floor;
+repository or authority data alone cannot reinitialize or lower it. Failure to
+verify either object blocks installation.
 
 The status authority allocates sequences through a non-rollbackable counter kept
 outside its VM, operating-system image, database, and ordinary restore set. Each
-allocation is digest-bound to the signed status and independently anchored in the
-protected Z5 sequence ledger or immutable Z6 fallback. When both sinks are down,
-only a Z1-authorized restrictive transition may use the allocator's append-only
-pending anchor, which must survive authority restore and reconcile later. After authority restore,
-rollback, rebuild, counter replacement, or uncertain state, general signing
+allocation has a signed allocator receipt bound to the exact status-payload
+digest and is independently verified by Z5/Z6, the repository, and checkpoint
+consumers before being anchored in the protected Z5 sequence ledger or immutable
+Z6 fallback. When both sinks are down, only a Z1-authorized restrictive transition
+may use the allocator's append-only pending anchor, which must survive authority
+restore and reconcile later. After authority restore, rollback, rebuild, counter
+replacement, or uncertain state, general signing
 remains disabled until a separate recovery process reconciles the allocator and
 all available anchors, establishes their maximum as the floor, and proves the
 next sequence is greater. When both anchors are unavailable, dual-controlled Z1

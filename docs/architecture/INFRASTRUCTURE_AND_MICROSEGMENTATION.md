@@ -183,12 +183,12 @@ flowchart LR
   Build[Z7 Build and update] -->|G6 digest-bound request or offline bundle| Signer[Separated signing authority]
   Signer -->|Detached signatures and signed metadata only| Build
   Build -->|Signed artifacts only| Artifacts[Artifact repository]
-  Build -->|G6 acknowledgement-bound status request| UpdateStatus[Separated update metadata/status authority]
-  UpdateStatus -->|Allocate next sequence and persist digest-bound receipt| SeqAllocator[External monotonic allocator]
+  Build -->|G6 sequence-free status request core| UpdateStatus[Separated update metadata/status authority]
+  UpdateStatus -->|Allocate sequence and persist payload-bound receipt| SeqAllocator[External monotonic allocator]
   SeqRecovery[Z1 status-sequence recovery] -. Read current counter and exact authority epoch .-> SeqAllocator[External monotonic allocator]
   SeqRecovery -. Read exact max sequence and continuity .-> Observe
   SeqRecovery -. Z5-unavailable read exact fallback anchor .-> Recovery
-  UpdateStatus -->|G6 signed status and rollout evidence| Artifacts
+  UpdateStatus -->|G6 signed status, allocation receipt, and rollout evidence| Artifacts
   UpdateStatus -->|G6 protected status result acknowledgement| Observe
   UpdateStatus -->|G6 exact signed rollout-health attestation| Observe
   UpdateStatus -. Z5-unavailable G6 status result acknowledgement .-> Recovery
@@ -227,88 +227,88 @@ Stateful return traffic is part of the initiating row and does not create a
 second standing path. “Conditional” means the flow remains prohibited until its
 named gate and design evidence exist.
 
-| Source                                   | Destination                                        | Service                       | Status                | Required control                                                                                                                                  |
-| ---------------------------------------- | -------------------------------------------------- | ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Z1 admin path                            | Z2 operator ingress                                | TCP 443                       | Required              | OIDC MFA, device/source policy, RBAC, audit                                                                                                       |
-| Z1 admin path                            | Z2 control-plane host                              | TCP 22                        | Required              | Exact source; dedicated key-only identity, no password/root login, audit                                                                          |
-| Z1 browser                               | Approved human IdP                                 | TCP 443                       | Required              | Authorization endpoint only; TLS and IdP policy                                                                                                   |
-| Z2 control plane                         | Approved human IdP                                 | TCP 443                       | Required              | OIDC plus signed issuer/tenant/subject/session/client tuple, opaque revocation handle, and current status; cache at most 60 seconds               |
-| Z1 identity recovery operator            | Approved human IdP emergency revocation            | TCP 443                       | Incident only         | Independent MFA; revoke exact issuer/tenant/session/client or opaque handle only; no token/user/role/policy authority                             |
-| Z2 operator-session registrar            | Z5 protected operator-session evidence             | Approved TLS port             | Required              | Append signed issuer/tenant/subject/session/client binding plus opaque IdP revocation handle; acknowledgement before privilege                    |
-| Z1 identity recovery operator            | Z5 protected IdP revocation-handle lookup          | TCP 443                       | Incident only         | Independent MFA and case scope; exact RMM session/operator/time query; self-audited bounded handle/issuer result; no enumeration                  |
-| Z2 control plane                         | Approved endpoint issuer                           | TCP 443                       | G2/G3                 | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs                                                                        |
-| Z1 recovery operator                     | Endpoint issuer emergency revocation               | TCP 443                       | Incident only         | Dedicated MFA identity; revoke exact scope only, no issuance/renewal; terminate every active G7 session bound to the identity or isolate Z8       |
-| Z2 TLS service                           | Approved server PKI                                | TCP 443                       | Required              | Authenticated issuance, renewal, revocation/status endpoints only                                                                                 |
-| Z1 PKI recovery operator                 | Approved server PKI emergency containment          | TCP 443                       | Incident only         | Independent MFA; first disable/rotate exact Z2 issuance-client identity, then revoke/roll exact certificate; no unrelated authority               |
-| Z1 security recovery operators           | Z5 protected recovery-audit intake                 | TCP 443                       | Incident only         | Signed intent/result for exact human/certificate/session/tunnel/grant/release scope and outcome                                                   |
-| Z1 security recovery operators           | Z6 immutable emergency-evidence intake             | Approved evidence protocol    | Z5-unavailable only   | Signed append-only fallback bundle; no restore/delete authority; reconcile to Z5 after recovery                                                   |
-| Z1 managed TLS client                    | Approved server-PKI status service                 | TCP 443                       | Required              | Signed OCSP/CRL status only; independent of Z2; missing/stale/unknown/revoked fails closed                                                        |
-| Z4 endpoint TLS client                   | Approved server-PKI status service                 | TCP 443                       | G2/G3                 | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                                                              |
-| Z8 session gateway TLS client            | Approved server-PKI status service                 | TCP 443                       | G7 conditional        | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                                                              |
-| Z8 session gateway                       | Approved human IdP session-status service          | TCP 443                       | G7 conditional        | Exact issuer/tenant/subject/session/client status from signed grant; cache at most 60 seconds; no token/user admin                                |
-| Z4 unenrolled canary                     | Z2 enrollment ingress                              | TCP 443                       | G2/G3                 | Server-authenticated TLS; single-use exact-scope grant, key proof, limits                                                                         |
-| Z4 enrolled endpoint                     | Z2 agent ingress                                   | TCP 443                       | G2/G3                 | Outbound mTLS, revocation, endpoint binding, rate and size limits                                                                                 |
-| Z2 application                           | Z3 PostgreSQL                                      | TCP 5432 or local socket      | Required              | Named workload role, TLS if networked, least SQL privilege                                                                                        |
-| Z2 services                              | Z5 telemetry sink                                  | Approved TLS port             | Required              | Write-only service identity and bounded queue                                                                                                     |
-| Z2 audit writer                          | Z5 protected audit archive                         | Approved TLS port             | Required before G2    | Workload mTLS; append-only integrity-chained records/checkpoints, no read/delete/control authority                                                |
-| Z3 data services                         | Z5 telemetry sink                                  | Approved TLS port             | When separated        | Write-only service identity; no RMM control authority                                                                                             |
-| Z5 telemetry service                     | Approved alert destination                         | Approved TLS port             | Required              | Named destination, notification-only credential, bounded redacted payload                                                                         |
-| Z1 incident auditor                      | Z5 protected audit export                          | TCP 443                       | Incident/audit        | Independent MFA; exact case/time scope; immutable access/export event; no alter/delete                                                            |
-| Z3 database backup identity              | Z6 backup target                                   | Approved backup protocol      | Required              | Separate credential, encryption, integrity, immutability/retention                                                                                |
-| Z2 backup exporter                       | Z6 backup target                                   | Approved backup protocol      | Required              | Config/certificate-state scope; write-only identity, no delete authority                                                                          |
-| Z5 audit archive exporter                | Z6 backup target                                   | Approved backup protocol      | Required              | Audit/checkpoint scope; write-only identity, immutable destination                                                                                |
-| Z6 backup/recovery monitor               | Z5 telemetry sink                                  | Approved TLS port             | Required              | Write-only capacity, backup, retention, integrity, and restore-test health; no recovery content                                                   |
-| Z6 source-record collector               | Approved source/deployment repository              | TCP 443                       | Required              | Read-only exact commit, signed tag, and deployment-manifest scope                                                                                 |
-| Artifact repository backup identity      | Z6 backup target                                   | Approved backup protocol      | G6                    | Signed packages, metadata, SBOM, provenance, and public keys; write-only immutable recovery copy                                                  |
-| Z8 metadata exporter                     | Z6 backup target                                   | Approved backup protocol      | G7 conditional        | Encrypted session/gateway metadata only; write-only identity, no delete                                                                           |
-| Approved secret-store recovery service   | Dedicated secret recovery target                   | Provider-approved mechanism   | When present          | Separate authority, encryption, audit, retention, and restore test                                                                                |
-| Z6 recovery service                      | Isolated restore target                            | Approved restore protocol     | Recovery only         | Exact authorization, no endpoint/operator ingress, reconcile before use                                                                           |
-| Z2 runtime                               | Artifact repository                                | TCP 443                       | G6                    | Read-only, signed metadata, digest and expiry verification                                                                                        |
-| Z4 enrolled endpoint                     | Artifact repository and update-status endpoint     | TCP 443                       | G6                    | mTLS download authorization plus fresh independently signed release status immediately before install                                             |
-| Z4 enrolled endpoint                     | Approved update metadata/status authority          | TCP 443                       | G6 state recovery     | mTLS read-only current signed sequence checkpoint after restart/reinstall/rollback/restore/missing state; no signing/admin authority              |
-| Z7 publisher                             | Artifact repository                                | TCP 443                       | G6                    | Separate identity; require valid signing-intent and signing-result intake acknowledgements bound to the artifact                                  |
-| Approved update metadata/status role     | Artifact repository update-status endpoint         | Approved publication protocol | G6                    | Signed status, intent/result acks, decision, and applicable health attestation; repository independently verifies all; restrictive exception only |
-| Z7 status coordinator                    | Approved update metadata/status authority          | TCP 443                       | G6                    | Exact request with protected ack; decision binds one-use correlation and predecessor; applicable signed health evidence                           |
-| Approved update metadata/status role     | External monotonic sequence allocator              | Approved allocation protocol  | G6                    | Atomically allocate next sequence and persist signed status-digest receipt; no decrement/reset; emergency restrictive pending anchor only         |
-| Approved update metadata/status role     | Z5 rollout-health attestation service              | TCP 443                       | G6 authority increase | Read only exact signed artifact/ring/window/threshold/result/evidence digest; no raw telemetry, audit, or release authority                       |
-| Approved update metadata/status role     | Z5 protected release-audit intake                  | Approved TLS port             | G6                    | Append signed status result bound to request/output digest; require acknowledgement before authority-increasing publication                       |
-| Approved update metadata/status role     | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable    | Same write-only result and independent acknowledgement; no release, read, restore, or delete authority                                            |
-| Z7 release services                      | Z5 protected release-audit intake                  | Approved TLS port             | G6                    | Workload mTLS; append-only decisions/attempts/results, digest-bound, no read/delete/control authority                                             |
-| Artifact repository audit emitter        | Z5 protected release-audit intake                  | Approved TLS port             | G6                    | Append-only publish/freeze/revoke events; signed sequence/correlation, no read/delete authority                                                   |
-| Z7 release services                      | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable    | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                                          |
-| Artifact repository audit emitter        | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable    | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                                          |
-| Z6 immutable release-audit reconciler    | Z5 protected release-audit intake                  | Approved TLS port             | Recovery              | Write-only exact accepted event plus original Z6 acknowledgement; no release, read, alter, or delete authority                                    |
-| Z1 release recovery operator             | Artifact emergency metadata API                    | TCP 443                       | G6 incident           | Independent MFA; freeze/revoke only, offline-root authorization, no upload                                                                        |
-| Z1 release recovery operator             | Update metadata/status emergency API               | TCP 443                       | G6 incident           | Independent MFA; publish higher-sequence freeze/revoke status only; no release approval or artifact upload                                        |
-| Z1 status-sequence recovery operator     | External monotonic sequence allocator              | Approved recovery protocol    | G6 recovery           | Independent MFA and dual control; read current counter/epoch only; no allocate, decrement, reset, sign, or policy authority                       |
-| Z1 status-sequence recovery operator     | Z5 protected release-status sequence ledger        | TCP 443                       | G6 recovery           | Read exact authority/epoch maximum and signed continuity proofs only; case-scoped, self-audited, no general audit read or alteration              |
-| Z1 status-sequence recovery operator     | Z6 immutable release-status sequence fallback      | Approved evidence protocol    | G6 recovery           | Read exact authority/epoch maximum, signed fallback anchor, and linkage only; no restore, delete, release, or unrelated evidence authority        |
-| Z2/Z3/Z5/Z6/Z8 host updaters             | Approved OS repositories                           | TCP 443                       | Maintenance           | Separate exact-source rules; named repositories, signatures, change window                                                                        |
-| Z7 builder                               | Approved source/dependency registries              | TCP 443                       | G6                    | Read-only locked inputs, digest/provenance checks, no runtime secrets                                                                             |
-| Z7 builder                               | Approved CI workload IdP                           | TCP 443                       | G6                    | Ephemeral workload identity with exact audience and short expiry                                                                                  |
-| Z7 signing coordinator                   | Approved hardware-backed signing service           | TCP 443                       | G6 conditional        | Digest-bound request plus verifiable Z5/Z6 intent acknowledgement; signing policy/quorum; signatures only                                         |
-| Z1 recovery path                         | Z6 recovery service                                | Approved admin protocol       | Required              | Recovery role, MFA, reason, alert, evidence                                                                                                       |
-| Z1 network recovery operator             | Approved firewall/PEP management                   | Approved admin protocol       | Incident/change       | Independent MFA; exact device and rules, audit, expiry, tested rollback                                                                           |
-| Z2 control plane                         | Internal DNS and time                              | UDP/TCP 53; approved NTP      | Required              | Named servers only; monitor failure and drift                                                                                                     |
-| Z3/Z5/Z6/Z7/Z8 service hosts             | Internal DNS and time                              | UDP/TCP 53; approved NTP      | When present          | Separate exact-source rules to named servers; monitor failure and drift                                                                           |
-| Z4 endpoint                              | Internal DNS and time                              | Existing approved services    | G2/G3                 | No new broad route created by RMM                                                                                                                 |
-| Z1 admin path                            | Z0 hypervisor management                           | Existing approved path        | Existing              | Separate identity; never transits RMM service                                                                                                     |
-| Z1 browser                               | Z8 session gateway                                 | TCP 443                       | G7 conditional        | Single-use grant, timeout, recording/privacy policy                                                                                               |
-| Z1 recovery operator                     | Z8 emergency termination API                       | TCP 443                       | G7 conditional        | Dedicated MFA identity; terminate/revoke exact session or every session bound to an exact revoked endpoint identity; no creation                  |
-| Z2 control plane                         | Z8 gateway control API                             | TCP 443                       | G7 conditional        | Workload mTLS; signed one-session grant, revoke, and force termination                                                                            |
-| Z8 session gateway                       | Z2 event ingress                                   | TCP 443                       | G7 conditional        | Workload mTLS; bounded lifecycle events, no job or policy authority                                                                               |
-| Z8 session gateway                       | Z5 protected session evidence                      | Approved TLS port             | G7 conditional        | Direct signed append-only start/activity/termination events with session/grant sequence and correlation                                           |
-| Z8 session gateway                       | Z8 credential broker                               | Authenticated IPC or mTLS     | G7 conditional        | One-session retrieval or exact session/grant/handle-bound revocation trigger; no cross-session action                                             |
-| Z8 credential broker                     | Approved OS identity authority                     | Approved identity protocol    | G7 conditional        | Issue one session-bound credential; revoke only that credential by returned opaque handle; no list, inspect, policy, or broad revoke              |
-| Approved OS identity authority           | Z5 protected session evidence                      | Approved TLS port             | G7 conditional        | Direct signed append-only issuance/revocation receipt with session/grant, opaque handle, expiry; no secret                                        |
-| Z8 credential broker                     | Z5 protected session evidence                      | Approved TLS port             | G7 conditional        | Workload mTLS; delivery/cleanup event linked to authority receipt; no credential secret                                                           |
-| Z8 credential broker                     | Approved independent incident destination          | Approved TLS port             | G7 failure only       | Signed issuer/opaque handle/session/cleanup state alert; notification only, no credential secret                                                  |
-| Z1 session recovery operator             | Z5 protected revocation-handle lookup              | TCP 443                       | G7 incident           | Independent MFA; exact session/grant lookup, self-audited; returns opaque handle and issuer only                                                  |
-| Z1 session recovery operator             | Approved OS identity authority                     | Approved identity protocol    | G7 incident           | Independent MFA; revoke exact issued JIT credential only, no issuance/renewal/policy change                                                       |
-| Z4 exact endpoint authentication service | Approved OS identity validation/revocation service | Approved identity protocol    | G7 conditional        | Online validation or signed monotonic KRL/status, maximum 60-second freshness, no issuance authority                                              |
-| Z8 session gateway                       | Z5 telemetry sink                                  | Approved TLS port             | G7 conditional        | Write-only security and availability telemetry                                                                                                    |
-| Z4 exact endpoint                        | Z8 session gateway                                 | Outbound expiring tunnel      | G7 conditional        | Stateful return only; one protocol, port, grant, and expiry                                                                                       |
-| Z9 quarantined asset                     | Z5 evidence intake                                 | Approved evidence protocol    | Incident only         | Exact source, write-only bounded export, expiry, malware-safe handling                                                                            |
+| Source                                   | Destination                                        | Service                       | Status                | Required control                                                                                                                            |
+| ---------------------------------------- | -------------------------------------------------- | ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Z1 admin path                            | Z2 operator ingress                                | TCP 443                       | Required              | OIDC MFA, device/source policy, RBAC, audit                                                                                                 |
+| Z1 admin path                            | Z2 control-plane host                              | TCP 22                        | Required              | Exact source; dedicated key-only identity, no password/root login, audit                                                                    |
+| Z1 browser                               | Approved human IdP                                 | TCP 443                       | Required              | Authorization endpoint only; TLS and IdP policy                                                                                             |
+| Z2 control plane                         | Approved human IdP                                 | TCP 443                       | Required              | OIDC plus signed issuer/tenant/subject/session/client tuple, opaque revocation handle, and current status; cache at most 60 seconds         |
+| Z1 identity recovery operator            | Approved human IdP emergency revocation            | TCP 443                       | Incident only         | Independent MFA; revoke exact issuer/tenant/session/client or opaque handle only; no token/user/role/policy authority                       |
+| Z2 operator-session registrar            | Z5 protected operator-session evidence             | Approved TLS port             | Required              | Append signed issuer/tenant/subject/session/client binding plus opaque IdP revocation handle; acknowledgement before privilege              |
+| Z1 identity recovery operator            | Z5 protected IdP revocation-handle lookup          | TCP 443                       | Incident only         | Independent MFA and case scope; exact RMM session/operator/time query; self-audited bounded handle/issuer result; no enumeration            |
+| Z2 control plane                         | Approved endpoint issuer                           | TCP 443                       | G2/G3                 | Workload mTLS; named enrollment, issuance, renewal, revocation/status APIs                                                                  |
+| Z1 recovery operator                     | Endpoint issuer emergency revocation               | TCP 443                       | Incident only         | Dedicated MFA identity; revoke exact scope only, no issuance/renewal; terminate every active G7 session bound to the identity or isolate Z8 |
+| Z2 TLS service                           | Approved server PKI                                | TCP 443                       | Required              | Authenticated issuance, renewal, revocation/status endpoints only                                                                           |
+| Z1 PKI recovery operator                 | Approved server PKI emergency containment          | TCP 443                       | Incident only         | Independent MFA; first disable/rotate exact Z2 issuance-client identity, then revoke/roll exact certificate; no unrelated authority         |
+| Z1 security recovery operators           | Z5 protected recovery-audit intake                 | TCP 443                       | Incident only         | Signed intent/result for exact human/certificate/session/tunnel/grant/release scope and outcome                                             |
+| Z1 security recovery operators           | Z6 immutable emergency-evidence intake             | Approved evidence protocol    | Z5-unavailable only   | Signed append-only fallback bundle; no restore/delete authority; reconcile to Z5 after recovery                                             |
+| Z1 managed TLS client                    | Approved server-PKI status service                 | TCP 443                       | Required              | Signed OCSP/CRL status only; independent of Z2; missing/stale/unknown/revoked fails closed                                                  |
+| Z4 endpoint TLS client                   | Approved server-PKI status service                 | TCP 443                       | G2/G3                 | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                                                        |
+| Z8 session gateway TLS client            | Approved server-PKI status service                 | TCP 443                       | G7 conditional        | Signed status for exact Z2 certificate; no issuance/revocation API; hard-fail policy                                                        |
+| Z8 session gateway                       | Approved human IdP session-status service          | TCP 443                       | G7 conditional        | Exact issuer/tenant/subject/session/client status from signed grant; cache at most 60 seconds; no token/user admin                          |
+| Z4 unenrolled canary                     | Z2 enrollment ingress                              | TCP 443                       | G2/G3                 | Server-authenticated TLS; single-use exact-scope grant, key proof, limits                                                                   |
+| Z4 enrolled endpoint                     | Z2 agent ingress                                   | TCP 443                       | G2/G3                 | Outbound mTLS, revocation, endpoint binding, rate and size limits                                                                           |
+| Z2 application                           | Z3 PostgreSQL                                      | TCP 5432 or local socket      | Required              | Named workload role, TLS if networked, least SQL privilege                                                                                  |
+| Z2 services                              | Z5 telemetry sink                                  | Approved TLS port             | Required              | Write-only service identity and bounded queue                                                                                               |
+| Z2 audit writer                          | Z5 protected audit archive                         | Approved TLS port             | Required before G2    | Workload mTLS; append-only integrity-chained records/checkpoints, no read/delete/control authority                                          |
+| Z3 data services                         | Z5 telemetry sink                                  | Approved TLS port             | When separated        | Write-only service identity; no RMM control authority                                                                                       |
+| Z5 telemetry service                     | Approved alert destination                         | Approved TLS port             | Required              | Named destination, notification-only credential, bounded redacted payload                                                                   |
+| Z1 incident auditor                      | Z5 protected audit export                          | TCP 443                       | Incident/audit        | Independent MFA; exact case/time scope; immutable access/export event; no alter/delete                                                      |
+| Z3 database backup identity              | Z6 backup target                                   | Approved backup protocol      | Required              | Separate credential, encryption, integrity, immutability/retention                                                                          |
+| Z2 backup exporter                       | Z6 backup target                                   | Approved backup protocol      | Required              | Config/certificate-state scope; write-only identity, no delete authority                                                                    |
+| Z5 audit archive exporter                | Z6 backup target                                   | Approved backup protocol      | Required              | Audit/checkpoint scope; write-only identity, immutable destination                                                                          |
+| Z6 backup/recovery monitor               | Z5 telemetry sink                                  | Approved TLS port             | Required              | Write-only capacity, backup, retention, integrity, and restore-test health; no recovery content                                             |
+| Z6 source-record collector               | Approved source/deployment repository              | TCP 443                       | Required              | Read-only exact commit, signed tag, and deployment-manifest scope                                                                           |
+| Artifact repository backup identity      | Z6 backup target                                   | Approved backup protocol      | G6                    | Signed packages, metadata, SBOM, provenance, and public keys; write-only immutable recovery copy                                            |
+| Z8 metadata exporter                     | Z6 backup target                                   | Approved backup protocol      | G7 conditional        | Encrypted session/gateway metadata only; write-only identity, no delete                                                                     |
+| Approved secret-store recovery service   | Dedicated secret recovery target                   | Provider-approved mechanism   | When present          | Separate authority, encryption, audit, retention, and restore test                                                                          |
+| Z6 recovery service                      | Isolated restore target                            | Approved restore protocol     | Recovery only         | Exact authorization, no endpoint/operator ingress, reconcile before use                                                                     |
+| Z2 runtime                               | Artifact repository                                | TCP 443                       | G6                    | Read-only, signed metadata, digest and expiry verification                                                                                  |
+| Z4 enrolled endpoint                     | Artifact repository and update-status endpoint     | TCP 443                       | G6                    | mTLS download authorization plus fresh independently signed release status immediately before install                                       |
+| Z4 enrolled endpoint                     | Approved update metadata/status authority          | TCP 443                       | G6 state recovery     | mTLS read-only signed checkpoint plus exact allocator receipt after uncertain state; no signing/admin authority                             |
+| Z7 publisher                             | Artifact repository                                | TCP 443                       | G6                    | Separate identity; require valid signing-intent and signing-result intake acknowledgements bound to the artifact                            |
+| Approved update metadata/status role     | Artifact repository update-status endpoint         | Approved publication protocol | G6                    | Signed status, allocator receipt, acks, decision, and health evidence; repository independently verifies all; restrictive exception only    |
+| Z7 status coordinator                    | Approved update metadata/status authority          | TCP 443                       | G6                    | Exact request with protected ack; decision binds one-use correlation and predecessor; applicable signed health evidence                     |
+| Approved update metadata/status role     | External monotonic sequence allocator              | Approved allocation protocol  | G6                    | Atomically allocate next sequence and persist signed status-digest receipt; no decrement/reset; emergency restrictive pending anchor only   |
+| Approved update metadata/status role     | Z5 rollout-health attestation service              | TCP 443                       | G6 authority increase | Read only exact signed artifact/ring/window/threshold/result/evidence digest; no raw telemetry, audit, or release authority                 |
+| Approved update metadata/status role     | Z5 protected release-audit intake                  | Approved TLS port             | G6                    | Append signed status result bound to request/output digest; require acknowledgement before authority-increasing publication                 |
+| Approved update metadata/status role     | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable    | Same write-only result and independent acknowledgement; no release, read, restore, or delete authority                                      |
+| Z7 release services                      | Z5 protected release-audit intake                  | Approved TLS port             | G6                    | Workload mTLS; append-only decisions/attempts/results, digest-bound, no read/delete/control authority                                       |
+| Artifact repository audit emitter        | Z5 protected release-audit intake                  | Approved TLS port             | G6                    | Append-only publish/freeze/revoke events; signed sequence/correlation, no read/delete authority                                             |
+| Z7 release services                      | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable    | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                                    |
+| Artifact repository audit emitter        | Z6 immutable release-audit fallback                | Approved evidence protocol    | G6, Z5 unavailable    | Write-only signed event; independent acknowledgement before transition; no read/restore/delete authority                                    |
+| Z6 immutable release-audit reconciler    | Z5 protected release-audit intake                  | Approved TLS port             | Recovery              | Write-only exact accepted event plus original Z6 acknowledgement; no release, read, alter, or delete authority                              |
+| Z1 release recovery operator             | Artifact emergency metadata API                    | TCP 443                       | G6 incident           | Independent MFA; freeze/revoke only, offline-root authorization, no upload                                                                  |
+| Z1 release recovery operator             | Update metadata/status emergency API               | TCP 443                       | G6 incident           | Independent MFA; publish higher-sequence freeze/revoke status only; no release approval or artifact upload                                  |
+| Z1 status-sequence recovery operator     | External monotonic sequence allocator              | Approved recovery protocol    | G6 recovery           | Independent MFA and dual control; read current counter/epoch only; no allocate, decrement, reset, sign, or policy authority                 |
+| Z1 status-sequence recovery operator     | Z5 protected release-status sequence ledger        | TCP 443                       | G6 recovery           | Read exact authority/epoch maximum and signed continuity proofs only; case-scoped, self-audited, no general audit read or alteration        |
+| Z1 status-sequence recovery operator     | Z6 immutable release-status sequence fallback      | Approved evidence protocol    | G6 recovery           | Read exact authority/epoch maximum, signed fallback anchor, and linkage only; no restore, delete, release, or unrelated evidence authority  |
+| Z2/Z3/Z5/Z6/Z8 host updaters             | Approved OS repositories                           | TCP 443                       | Maintenance           | Separate exact-source rules; named repositories, signatures, change window                                                                  |
+| Z7 builder                               | Approved source/dependency registries              | TCP 443                       | G6                    | Read-only locked inputs, digest/provenance checks, no runtime secrets                                                                       |
+| Z7 builder                               | Approved CI workload IdP                           | TCP 443                       | G6                    | Ephemeral workload identity with exact audience and short expiry                                                                            |
+| Z7 signing coordinator                   | Approved hardware-backed signing service           | TCP 443                       | G6 conditional        | Digest-bound request plus verifiable Z5/Z6 intent acknowledgement; signing policy/quorum; signatures only                                   |
+| Z1 recovery path                         | Z6 recovery service                                | Approved admin protocol       | Required              | Recovery role, MFA, reason, alert, evidence                                                                                                 |
+| Z1 network recovery operator             | Approved firewall/PEP management                   | Approved admin protocol       | Incident/change       | Independent MFA; exact device and rules, audit, expiry, tested rollback                                                                     |
+| Z2 control plane                         | Internal DNS and time                              | UDP/TCP 53; approved NTP      | Required              | Named servers only; monitor failure and drift                                                                                               |
+| Z3/Z5/Z6/Z7/Z8 service hosts             | Internal DNS and time                              | UDP/TCP 53; approved NTP      | When present          | Separate exact-source rules to named servers; monitor failure and drift                                                                     |
+| Z4 endpoint                              | Internal DNS and time                              | Existing approved services    | G2/G3                 | No new broad route created by RMM                                                                                                           |
+| Z1 admin path                            | Z0 hypervisor management                           | Existing approved path        | Existing              | Separate identity; never transits RMM service                                                                                               |
+| Z1 browser                               | Z8 session gateway                                 | TCP 443                       | G7 conditional        | Single-use grant, timeout, recording/privacy policy                                                                                         |
+| Z1 recovery operator                     | Z8 emergency termination API                       | TCP 443                       | G7 conditional        | Dedicated MFA identity; terminate/revoke exact session or every session bound to an exact revoked endpoint identity; no creation            |
+| Z2 control plane                         | Z8 gateway control API                             | TCP 443                       | G7 conditional        | Workload mTLS; signed one-session grant, revoke, and force termination                                                                      |
+| Z8 session gateway                       | Z2 event ingress                                   | TCP 443                       | G7 conditional        | Workload mTLS; bounded lifecycle events, no job or policy authority                                                                         |
+| Z8 session gateway                       | Z5 protected session evidence                      | Approved TLS port             | G7 conditional        | Direct signed append-only start/activity/termination events with session/grant sequence and correlation                                     |
+| Z8 session gateway                       | Z8 credential broker                               | Authenticated IPC or mTLS     | G7 conditional        | One-session retrieval or exact session/grant/handle-bound revocation trigger; no cross-session action                                       |
+| Z8 credential broker                     | Approved OS identity authority                     | Approved identity protocol    | G7 conditional        | Issue one session-bound credential; revoke only that credential by returned opaque handle; no list, inspect, policy, or broad revoke        |
+| Approved OS identity authority           | Z5 protected session evidence                      | Approved TLS port             | G7 conditional        | Direct signed append-only issuance/revocation receipt with session/grant, opaque handle, expiry; no secret                                  |
+| Z8 credential broker                     | Z5 protected session evidence                      | Approved TLS port             | G7 conditional        | Workload mTLS; delivery/cleanup event linked to authority receipt; no credential secret                                                     |
+| Z8 credential broker                     | Approved independent incident destination          | Approved TLS port             | G7 failure only       | Signed issuer/opaque handle/session/cleanup state alert; notification only, no credential secret                                            |
+| Z1 session recovery operator             | Z5 protected revocation-handle lookup              | TCP 443                       | G7 incident           | Independent MFA; exact session/grant lookup, self-audited; returns opaque handle and issuer only                                            |
+| Z1 session recovery operator             | Approved OS identity authority                     | Approved identity protocol    | G7 incident           | Independent MFA; revoke exact issued JIT credential only, no issuance/renewal/policy change                                                 |
+| Z4 exact endpoint authentication service | Approved OS identity validation/revocation service | Approved identity protocol    | G7 conditional        | Online validation or signed monotonic KRL/status, maximum 60-second freshness, no issuance authority                                        |
+| Z8 session gateway                       | Z5 telemetry sink                                  | Approved TLS port             | G7 conditional        | Write-only security and availability telemetry                                                                                              |
+| Z4 exact endpoint                        | Z8 session gateway                                 | Outbound expiring tunnel      | G7 conditional        | Stateful return only; one protocol, port, grant, and expiry                                                                                 |
+| Z9 quarantined asset                     | Z5 evidence intake                                 | Approved evidence protocol    | Incident only         | Exact source, write-only bounded export, expiry, malware-safe handling                                                                      |
 
 Every Z1 incident/recovery route uses an identity and credential stored outside
 the ordinary RMM control plane and, when the primary IdP is in scope for the
@@ -366,7 +366,10 @@ explicit all-active scope, reason, time, and correlation ID. Z8 appends its own
 signed termination result directly to protected session evidence, independent of
 Z2, while Z1 appends the API result and independently observed tunnel/session
 state. A suspected gateway result is evidence, not trusted proof; the recovery
-record distinguishes claimed, observed, and verified outcome.
+record distinguishes claimed, observed, and verified outcome. When Z8 is
+suspected, the independent Z1 network-recovery path blocks the exact
+endpoint-facing policy-enforcement scope outside the gateway and verifies tunnel
+teardown from endpoint or network evidence; it does not wait for or trust Z8.
 
 Before G6 emergency freeze/revocation, the Z1 release-recovery client signs and
 appends intent containing the exact metadata role/key, artifact or rollout scope,
@@ -563,21 +566,32 @@ immutable Z6 release-audit fallback and requires that independent acknowledgemen
 instead.
 
 The same invariant applies to signed release-status transitions. Z7 first
-canonicalizes an acknowledgement-free status payload containing the exact action,
-artifact and metadata digests, version, current/destination rings, next sequence,
-policy, single-use correlation ID, predecessor signed-status digest, expiry,
-approval digest, and health-attestation digest.
-It computes that payload digest and obtains an intent acknowledgement bound to it.
-A separate status envelope carries the unchanged payload, declared payload digest,
-and acknowledgement; the envelope is not hashed into its own payload digest. The
-separated metadata/status authority pins the Z5/Z6 acknowledgement keys,
-recomputes the payload digest, and rejects a missing, invalid, expired,
-wrong-action, wrong-ring, wrong-sequence, wrong-correlation, or
-wrong-payload-digest acknowledgement. After signing the status object, the
-authority itself appends the result to Z5 or Z6 and obtains a second
-acknowledgement. The artifact repository verifies the status signature, payload
-digest, and both acknowledgements before making an authority-increasing status
-active.
+canonicalizes a sequence-free status request core containing the exact action,
+artifact and metadata digests, version, current/destination rings, policy,
+single-use correlation ID, predecessor signed-status digest, expiry, approval
+digest, and health-attestation digest. After verifying the request evidence, the
+metadata/status authority submits the unchanged core and its digest to the
+external monotonic allocator. The allocator validates the authority epoch,
+atomically chooses the next sequence, materializes the canonical
+acknowledgement-free status payload by adding that epoch and sequence, computes
+the payload digest, and durably persists a signed allocation receipt binding the
+epoch, sequence, request-core digest, payload digest, action, correlation, and
+predecessor. The receipt and completed payload are returned together. This
+construction is acyclic: neither object contains its own digest.
+
+Before issuing an intent acknowledgement, Z5 or Z6 pins the allocator key and
+independently verifies the receipt signature and every binding against the exact
+payload. A separate status envelope carries the unchanged payload, declared
+payload digest, allocator receipt, and intent acknowledgement; the envelope is
+not hashed into its own payload digest. The separated metadata/status authority
+pins the allocator and Z5/Z6 keys, recomputes the core and payload digests, and
+rejects a missing, invalid, expired, rolled-back, wrong-epoch, wrong-action,
+wrong-ring, wrong-sequence, wrong-correlation, wrong-predecessor, or
+wrong-payload-digest receipt or acknowledgement. After signing the status object,
+the authority itself appends the result to Z5 or Z6 and obtains a second
+acknowledgement. The artifact repository independently verifies the status
+signature, core and payload digests, allocator receipt, sequence continuity, and
+both acknowledgements before making any status active.
 
 An audit acknowledgement is evidence, not rollout authorization. For every
 rollout start, advance, or resumption, the request also carries a separately
@@ -602,17 +616,19 @@ result, evidence digest, and freshness. An initial rollout requires the equivale
 signed pre-deployment-test attestation. Missing, stale, failed, wrong-artifact,
 wrong-ring, or digest-mismatched evidence fails the authority-increasing status
 closed. The outer publication envelope carries the unchanged signed status
-object, current intent and result acknowledgements, the separately signed rollout
-decision, and the applicable signed current-ring health or pre-deployment-test
-attestation. The approval and attestation remain beside, not inside, the
-acknowledgement-free status payload; that payload binds their digests and is
-therefore not hashed into itself. The repository pins the approval and
-attestation verification keys and independently verifies their signatures,
-approver role and separation of duties, exact artifact and metadata digests,
+object, allocator receipt, current intent and result acknowledgements, the
+separately signed rollout decision, and the applicable signed current-ring health
+or pre-deployment-test attestation. The receipt, approval, and attestation remain
+beside, not inside, the acknowledgement-free status payload. The receipt binds
+the payload digest, while the payload binds the approval and attestation digests;
+none is hashed into itself. The repository pins the approval and attestation
+verification keys and independently verifies their signatures, approver role and
+separation of duties, exact artifact and metadata digests,
 version, action, source and destination rings, policy, window, thresholds,
-outcome, freshness, and status-bound digests before activation. It MUST NOT
-trust the metadata/status authority's assertion that those checks passed. A
-Z1-authorized freeze, revoke, or pause may omit rollout-authority evidence, but
+outcome, freshness, status-bound digests, and the separately pinned allocator
+receipt before activation. It MUST NOT trust the metadata/status authority's
+assertion that those checks passed. A Z1-authorized freeze, revoke, or pause may
+omit rollout-authority evidence, but
 the repository independently verifies that restrictive authorization and MUST
 NOT interpret it as authority to start, advance, or resume a rollout.
 
@@ -682,16 +698,22 @@ and recovery to the prior agent version. An eligible platform uses a TPM-backed
 monotonic value or another approved host-protected store plus a signed checkpoint
 from the separated status authority. After restart, reinstall, rollback, VM/OS
 restore, or any missing/corrupt/inconsistent local state, the endpoint retrieves a
-current signed sequence checkpoint directly from the status authority over the
-listed read-only mTLS path before considering installation. It atomically raises
-its local floor and fails closed if the authority or checkpoint is unavailable or
-invalid. The artifact repository cannot initialize or lower the floor.
+current signed sequence checkpoint and the exact corresponding allocator receipt
+directly from the status authority over the listed read-only mTLS path before
+considering installation. The checkpoint binds the latest active status-payload
+digest, authority epoch, and sequence. The endpoint pins both authority and
+allocator keys, independently verifies their signatures and exact bindings, and
+atomically raises its local floor. It fails closed if either object is unavailable,
+invalid, inconsistent, or rolled back. The status authority or artifact
+repository cannot initialize or lower the floor by itself.
 
 The status authority also maintains a highest-issued sequence outside its
 restorable VM, operating-system image, application data, and ordinary backup set.
 Sequence numbers are allocated atomically by a hardware-backed monotonic counter
 or an equivalently non-rollbackable separated service. Every allocation is bound
-to the signed status digest and written to the protected Z5 sequence ledger or the
+to the exact acknowledgement-free status-payload digest by a signed allocator
+receipt that is independently verified by the protected intake, repository, and
+checkpoint consumer, then written to the protected Z5 sequence ledger or the
 immutable Z6 fallback. The sole both-sinks-unavailable exception is a
 Z1-authorized restrictive transition whose signed allocation receipt remains as
 an append-only pending anchor inside the non-rollbackable allocator until
@@ -979,6 +1001,10 @@ The deployment change packet must contain:
   credential terminates before its prior expiry; a second run treats Z8 as
   suspected and proves independent endpoint-facing PEP isolation and observed
   teardown without trusting Z2 or Z8;
+- a G7 suspected-gateway active-session test proving the independent Z1 network
+  recovery path blocks the exact Z8 endpoint-facing enforcement scope, verifies
+  stream and tunnel teardown from endpoint/network evidence, and revokes the JIT
+  credential without trusting a gateway termination response;
 - database-role and unauthorized-access tests;
 - protected-audit access/export tests proving denied and successful attempts
   produce immutable correlated intent/result events without evidence payloads;
@@ -1009,6 +1035,11 @@ The deployment change packet must contain:
   the repository rejects missing result acknowledgements or envelope
   self-reference; with both sinks down, only Z1-authorized higher-sequence
   freeze/revoke/pause status may proceed;
+- G6 allocator-receipt tests treating the metadata/status authority as
+  compromised and proving Z5/Z6 intake, the repository, and a checkpoint consumer
+  reject missing, forged, replayed, rolled-back, or wrong-epoch/sequence/core/
+  payload/action/correlation/predecessor receipts even when the status signature
+  and audit acknowledgements are otherwise valid;
 - G6 decision-replay tests proving each approval binds the single-use status
   correlation and exact predecessor status, both the authority and repository
   reject reuse, and a pause/freeze/revoke makes every earlier unexpired start,

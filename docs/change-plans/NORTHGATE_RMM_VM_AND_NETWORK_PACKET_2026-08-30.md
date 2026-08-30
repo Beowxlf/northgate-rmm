@@ -186,6 +186,7 @@ they are not installable firewall objects. The owner reviews every rule by
 | RMM-NET-032 | `TBD exact Z6 emergency-evidence reconciler firewall alias`  | `TBD protected Z5 recovery-audit intake`                 | `TBD approved TLS port`          | Required before G2; only after Z5 re-establishment and independent integrity/authority verification, write the exact accepted fallback bundle plus original Z6 acknowledgement; no unrelated read, alter, or delete authority                                           | Security evidence owner | `NG-CHG-20260830-001` |
 | RMM-NET-033 | `10.10.170.10`                                               | `TBD exact authenticated-time firewall alias`            | TCP 4460 NTS-KE; UDP 123 NTS     | Required before service acceptance; authenticated NTS only, pinned trust policy, monitored offset/freshness, no unauthenticated NTP fallback; loss or invalid time fails closed for new privileged work and alerts                                                      | Linux platform owner    | `NG-CHG-20260830-001` |
 | RMM-NET-034 | `10.10.180.10`                                               | `TBD exact authenticated-time firewall alias`            | TCP 4460 NTS-KE; UDP 123 NTS     | Required before G2; authenticated NTS only, pinned trust policy, monitored offset/freshness, no unauthenticated NTP fallback; loss or invalid time fails canary admission and alerts                                                                                    | RMM endpoint owner      | `NG-CHG-20260830-001` |
+| RMM-NET-035 | `TBD exact Z2 host-capacity monitor firewall alias`          | `TBD independent alert destination`                      | `TBD approved TLS port`          | Required before service acceptance and G2; independent of Z5/Wazuh and RMM application health; notification-only credential; bounded redacted queue/storage state; rate limited; no RMM control authority                                                               | Linux platform owner    | `NG-CHG-20260830-001` |
 
 No server-initiated management route from Z2 to Z4 is permitted in this phase.
 The endpoint initiates the only RMM connection.
@@ -269,8 +270,9 @@ G2 remains closed until evidence identifies and validates:
   logs/metrics/traces delivery; exact local queue byte/record/age bounds, overflow
   policy, service-data warning/critical thresholds, and independent capacity
   alerts; outage and near-full-disk tests proving telemetry cannot exhaust the
-  service-data volume; and negative proof that the sink has no RMM control
-  authority;
+  service-data volume; delivery of warning, critical, and overflow alerts through
+  the Z2 host-monitor path while Z5/Wazuh and the RMM application are unavailable;
+  and negative proof that neither destination can exercise RMM control authority;
 - independent integrity and authority verification of re-established Z5,
   followed by successful reconciliation of a disposable Z6 emergency-evidence
   bundle into the protected Z5 recovery-audit intake; the test must fail closed

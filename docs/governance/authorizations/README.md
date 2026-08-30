@@ -9,5 +9,6 @@ public-repository transition. `G1-PRODUCT-CODING.md` authorizes only the bounded
 Phase 1 simulation and development scope named in that record.
 
 `P2-LINUX-AGENT-SOURCE-DEVELOPMENT.md` authorizes reviewable Phase 2 Linux-agent
-source and packaging-test work only. It does not open G2 or authorize endpoint,
-VM, network, identity, or service installation.
+source and hermetic packaging-test work only. It does not open G2, authorize
+installation on any endpoint or VM, or approve any VM Factory or infrastructure
+decision.

@@ -23,6 +23,11 @@ Begin bounded Phase 2 source development for a Linux read-only agent:
 - unit, race, fuzz, static-analysis, dependency, license, and packaging tests
   that use synthetic or local test data only.
 
+Package lifecycle tests must run only inside a hermetic, non-endpoint packaging
+sandbox. The sandbox must be unable to contact NorthGate or any real control
+plane and must contain no live credential, certificate, enrollment identity, or
+private infrastructure data.
+
 The first qualification candidate is Debian 12 amd64. This selection is a test
 target, not a support claim.
 
@@ -30,7 +35,7 @@ target, not a support claim.
 
 This record does not open G2 and does not authorize:
 
-- installation on any NorthGate endpoint or VM;
+- installation on any endpoint or VM;
 - creation, connection, or modification of a VM, VLAN, firewall rule, DNS
   record, certificate authority, listener, database, or service;
 - collection from a real endpoint;
@@ -38,8 +43,9 @@ This record does not open G2 and does not authorize:
   credentials, or private infrastructure data;
 - remote jobs, command text, shell execution, privileged helpers, remediation,
   file transfer, updates, or interactive access; or
-- promotion of proposed RMM network, storage, bootstrap, recovery, asset, or
-  host-policy records.
+- approval or promotion of any VM Factory profile, capability, catalog,
+  firmware, manifest, host policy, release, change packet, or infrastructure
+  decision.
 
 ## Exit evidence required before G2 installation authorization
 

@@ -14,9 +14,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 @dataclass(frozen=True, slots=True)
 class TestCredentialSet:
     root_certificate: x509.Certificate
-    root_private_key: Ed25519PrivateKey
     endpoint_certificate: x509.Certificate
-    endpoint_private_key: Ed25519PrivateKey
 
 
 def issue_test_endpoint_credential(
@@ -91,7 +89,5 @@ def issue_test_endpoint_credential(
     )
     return TestCredentialSet(
         root_certificate=root_certificate,
-        root_private_key=root_key,
         endpoint_certificate=endpoint_certificate,
-        endpoint_private_key=endpoint_key,
     )

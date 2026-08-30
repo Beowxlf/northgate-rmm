@@ -4,6 +4,9 @@ import path from "node:path";
 const root = process.cwd();
 const ignoredDirectories = new Set([
   ".git",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
   ".tools",
   ".venv",
   "node_modules",

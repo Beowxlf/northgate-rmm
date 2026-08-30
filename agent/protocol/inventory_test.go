@@ -95,6 +95,14 @@ func TestEncodeInventoryRejectsInvalidEnvelopeAndPayload(t *testing.T) {
 			t.Fatal("EncodeInventory() accepted non-UTC timestamps")
 		}
 	})
+	t.Run("year zero", func(t *testing.T) {
+		envelope := validEnvelope()
+		envelope.CreatedAt = time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC)
+		envelope.ExpiresAt = envelope.CreatedAt.Add(time.Minute)
+		if _, err := EncodeInventory(envelope, validPayload()); err == nil {
+			t.Fatal("EncodeInventory() accepted a year-zero timestamp")
+		}
+	})
 	t.Run("long field", func(t *testing.T) {
 		payload := validPayload()
 		payload.Fields["value"] = strings.Repeat("x", MaxFieldValueBytes+1)

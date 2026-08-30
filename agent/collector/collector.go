@@ -31,6 +31,7 @@ var (
 	uuidPattern      = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	versionPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 	unquotedPattern  = regexp.MustCompile(`^[0-9A-Za-z._-]+$`)
+	osIDPattern      = regexp.MustCompile(`^[0-9a-z._-]+$`)
 )
 
 type DiskUsage struct {
@@ -175,7 +176,7 @@ func (OSReleaseCollector) Collect(ctx context.Context, source Source) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	if values["ID"] == "" || values["VERSION_ID"] == "" {
+	if !osIDPattern.MatchString(values["ID"]) || values["VERSION_ID"] == "" {
 		return nil, ErrMalformed
 	}
 	result := map[string]string{

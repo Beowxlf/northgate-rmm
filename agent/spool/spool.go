@@ -98,26 +98,45 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("spool parent must be an existing real directory")
 	}
-	if _, err := os.Lstat(directory); errors.Is(err, fs.ErrNotExist) {
-		if err := os.Mkdir(directory, 0o700); err != nil {
+	parentRoot, err := os.OpenRoot(parent)
+	if err != nil {
+		return nil, fmt.Errorf("open spool parent: %w", err)
+	}
+	defer parentRoot.Close()
+	openedParentInfo, err := parentRoot.Stat(".")
+	if err != nil || !os.SameFile(parentInfo, openedParentInfo) {
+		return nil, errors.New("spool parent changed while opening")
+	}
+
+	base := filepath.Base(directory)
+	info, err := parentRoot.Lstat(base)
+	if errors.Is(err, fs.ErrNotExist) {
+		if err := parentRoot.Mkdir(base, 0o700); err != nil {
 			return nil, fmt.Errorf("create spool directory: %w", err)
 		}
+		info, err = parentRoot.Lstat(base)
 	} else if err != nil {
 		return nil, fmt.Errorf("inspect spool directory: %w", err)
 	}
-	info, err := os.Lstat(directory)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("spool directory must be a real directory")
 	}
-	if err := os.Chmod(directory, 0o700); err != nil {
-		return nil, fmt.Errorf("protect spool directory: %w", err)
-	}
-	if err := syncPathDirectory(parent); err != nil {
-		return nil, fmt.Errorf("sync spool parent: %w", err)
-	}
-	root, err := os.OpenRoot(directory)
+	root, err := parentRoot.OpenRoot(base)
 	if err != nil {
 		return nil, fmt.Errorf("open spool root: %w", err)
+	}
+	openedInfo, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, openedInfo) {
+		root.Close()
+		return nil, errors.New("spool directory changed while opening")
+	}
+	if err := root.Chmod(".", 0o700); err != nil {
+		root.Close()
+		return nil, fmt.Errorf("protect spool directory: %w", err)
+	}
+	if err := syncDirectory(parentRoot); err != nil {
+		root.Close()
+		return nil, fmt.Errorf("sync spool parent: %w", err)
 	}
 	lock, err := acquireDirectoryLock(root)
 	if err != nil {

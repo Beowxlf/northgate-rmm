@@ -175,3 +175,15 @@ func TestOpenRejectsFilesystemRootBeforePermissionChange(t *testing.T) {
 		t.Fatal("Open() accepted the filesystem root")
 	}
 }
+
+func TestOpenRejectsSymlinkQueueDirectory(t *testing.T) {
+	parent := t.TempDir()
+	target := t.TempDir()
+	link := filepath.Join(parent, "queue")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink creation is unavailable: %v", err)
+	}
+	if _, err := Open(link, 1<<20); err == nil {
+		t.Fatal("Open() accepted a symlink queue directory")
+	}
+}

@@ -124,6 +124,13 @@ line boundary, rejects surrounding value whitespace, treats single-quoted
 content literally, and limits double-quoted escape removal to shell-special
 characters.
 
+The tenth exact-head review found a path-replacement race between validating and
+opening the spool directory, a missing distribution-ID grammar check, and a
+year-zero timestamp mismatch with the Python control plane. The follow-up change
+opens and verifies both parent and queue by stable directory handles with
+same-file checks, enforces the lowercase OS ID grammar, and constrains both
+message timestamps to years 1 through 9999.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS

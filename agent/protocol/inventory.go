@@ -85,6 +85,10 @@ func validateEnvelope(envelope Envelope) error {
 	if envelope.CreatedAt.IsZero() || envelope.ExpiresAt.IsZero() {
 		return errors.New("message timestamps are required")
 	}
+	if envelope.CreatedAt.Year() < 1 || envelope.CreatedAt.Year() > 9999 ||
+		envelope.ExpiresAt.Year() < 1 || envelope.ExpiresAt.Year() > 9999 {
+		return errors.New("message timestamp year is outside the shared range")
+	}
 	_, createdOffset := envelope.CreatedAt.Zone()
 	_, expiresOffset := envelope.ExpiresAt.Zone()
 	if createdOffset != 0 || expiresOffset != 0 {

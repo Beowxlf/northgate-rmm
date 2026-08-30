@@ -101,6 +101,15 @@ func TestOSReleaseRejectsDuplicateAllowlistedField(t *testing.T) {
 	}
 }
 
+func TestOSReleaseRejectsInvalidDistributionID(t *testing.T) {
+	source := validSource()
+	source.files["/etc/os-release"] = "ID=\"Debian Linux\"\nVERSION_ID=12\n"
+	_, err := (OSReleaseCollector{}).Collect(context.Background(), source)
+	if !errors.Is(err, ErrMalformed) {
+		t.Fatalf("Collect() error = %v, want ErrMalformed", err)
+	}
+}
+
 func TestOSReleaseUsesShellCompatibleQuoting(t *testing.T) {
 	raw := []byte("ID='debian'\nVERSION_ID='12'\nPRETTY_NAME=\"Cost \\$5 at C:\\\\Linux\"\n")
 	values, err := parseOSRelease(raw)

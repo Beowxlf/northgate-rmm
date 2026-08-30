@@ -12,12 +12,3 @@ func syncDirectory(root *os.Root) error {
 	defer directory.Close()
 	return directory.Sync()
 }
-
-func syncPathDirectory(name string) error {
-	directory, err := os.Open(name)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
-}

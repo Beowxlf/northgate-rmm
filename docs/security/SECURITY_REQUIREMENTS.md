@@ -103,7 +103,8 @@ tests, audits, risks, and exceptions.
   revocation, and pause MUST remain possible during audit-service failure or
   suspected compromise with signed pending evidence and raised incident severity.
   The artifact repository MUST receive and independently verify the exact signed
-  restrictive authorization before activating such status.
+  restrictive authorization and external allocator pending-anchor receipt before
+  activating such status without audit acknowledgements.
 
 ## Updates and supply chain
 

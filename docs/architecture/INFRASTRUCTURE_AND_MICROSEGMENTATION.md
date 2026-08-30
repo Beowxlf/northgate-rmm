@@ -600,7 +600,15 @@ wrong-payload-digest receipt or acknowledgement. After signing the status object
 the authority itself appends the result to Z5 or Z6 and obtains a second
 acknowledgement. The artifact repository independently verifies the status
 signature, core and payload digests, allocator receipt, sequence continuity, and
-both acknowledgements before making any status active.
+both acknowledgements before making a normal status active. If both protected
+intakes are unavailable or untrusted, the sole exception is a higher-sequence
+freeze, revoke, or pause carrying the exact signed Z1 restrictive authorization
+and the allocator's unreconciled signed pending-anchor receipt. The repository
+pins both keys, verifies every action/scope/payload/authorization/epoch/sequence/
+predecessor/correlation/time binding and current continuity, and activates only
+that restrictive state without intent/result acknowledgements. A missing,
+reconciled-as-different, invalid, or mismatched pending receipt fails closed; the
+exception cannot start, advance, resume, unfreeze, or authorize installation.
 
 An audit acknowledgement is evidence, not rollout authorization. For every
 rollout start, advance, or resumption, the request also carries a separately
@@ -1085,8 +1093,10 @@ The deployment change packet must contain:
   receives a durable digest-bound pending-anchor receipt from the external
   allocator before signing, blocks every authority-increasing transition while
   pending, survives status-authority restore, and reconciles only after verifying
-  a returned sink's signed acknowledgement; failure to persist the receipt must
-  block signing;
+  a returned sink's signed acknowledgement; the repository must activate the
+  restrictive status without missing audit acknowledgements only after verifying
+  that receipt and the exact Z1 authorization. Missing or mismatched evidence
+  must block signing or activation;
 - a G6 both-sinks-unavailable restore test proving dual-controlled Z1 recovery
   can establish only the allocator's verified counter as a provisional floor and
   issue a higher-sequence restrictive pending anchor, while missing or inconsistent

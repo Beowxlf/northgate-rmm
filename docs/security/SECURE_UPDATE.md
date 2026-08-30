@@ -51,14 +51,16 @@ signed receipt bound to both digests. Z5/Z6, the status signer, and the reposito
 independently verify that receipt. The authority then verifies the pre-action
 acknowledgement carried beside the payload and receipt in a separate envelope,
 appends its signed result to Z5 or Z6, and obtains a result acknowledgement that
-the repository verifies before activating any status. Neither acknowledgements
-nor the receipt are included in the payload whose digest they bind. Only a
-Z1-authorized higher-sequence freeze/revocation/pause may proceed when both
-evidence sinks are unavailable, and
-only after the external monotonic allocator durably records a signed pending
-anchor bound to that restrictive payload and authorization. Authority-increasing
-status remains disabled until the pending anchor is acknowledged by a restored
-sink and reconciled.
+the repository verifies before normal activation. Neither acknowledgements nor
+the receipt are included in the payload whose digest they bind. When both
+evidence sinks are unavailable or untrusted, only a Z1-authorized higher-sequence
+freeze/revocation/pause may proceed, and only after the external monotonic
+allocator durably records a signed pending anchor bound to that restrictive
+payload and authorization. The repository independently verifies the pending
+receipt and Z1 authorization in lieu of the unavailable acknowledgements and can
+activate only that restrictive state. Authority-increasing status remains
+disabled until the pending anchor is acknowledged by a restored sink and
+reconciled.
 An audit acknowledgement alone is not rollout authority. The publication
 envelope carries the independently signed approval and exact current-ring or
 pre-deployment health attestation beside the signed status. The status signer and

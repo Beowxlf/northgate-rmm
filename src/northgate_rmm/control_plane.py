@@ -161,8 +161,14 @@ class ControlPlane:
         endpoint = self.get_endpoint(identity.endpoint_id)
         self._endpoints[endpoint.endpoint_id] = replace(
             endpoint,
-            last_receipt_at=received_at,
-            last_heartbeat_at=received_at,
+            last_receipt_at=max(
+                received_at,
+                endpoint.last_receipt_at or received_at,
+            ),
+            last_heartbeat_at=max(
+                received_at,
+                endpoint.last_heartbeat_at or received_at,
+            ),
         )
         self._audit_acceptance(
             identity=identity,
@@ -223,7 +229,10 @@ class ControlPlane:
         )
         self._endpoints[endpoint.endpoint_id] = replace(
             endpoint,
-            last_receipt_at=received_at,
+            last_receipt_at=max(
+                received_at,
+                endpoint.last_receipt_at or received_at,
+            ),
         )
         self._audit_acceptance(
             identity=identity,

@@ -33,6 +33,7 @@ feature containment.
 
 ## Licenses
 
-The repository remains private until the owner chooses a project license and a
-license scan confirms all distributed dependencies are compatible. “Source
-available” is not assumed to mean redistributable.
+The repository is public under Apache-2.0. A dependency license scan and
+third-party notice update are required before merge, and the exact release
+artifact receives a fresh compatibility and notice review before distribution.
+“Source available” is not assumed to mean redistributable.

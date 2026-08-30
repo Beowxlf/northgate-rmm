@@ -6,10 +6,12 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Protocol
 from uuid import UUID, uuid4
 
-from northgate_rmm.control_plane import ControlPlane
 from northgate_rmm.domain import (
+    Endpoint,
+    EndpointIdentity,
     HeartbeatMessage,
     HeartbeatPayload,
     InventoryMessage,
@@ -17,6 +19,21 @@ from northgate_rmm.domain import (
     MessageEnvelope,
     Platform,
 )
+
+
+class EnrollmentControlPlane(Protocol):
+    """Small interface needed by the unprivileged synthetic fixture."""
+
+    def enroll_synthetic_endpoint(
+        self,
+        *,
+        display_name: str,
+        platform: Platform,
+        architecture: str,
+        public_key_fingerprint: str,
+        now: datetime,
+        actor_id: str = "phase1-simulator",
+    ) -> tuple[Endpoint, EndpointIdentity]: ...
 
 
 @dataclass(slots=True)
@@ -34,7 +51,7 @@ class SyntheticAgent:
     @classmethod
     def enroll(
         cls,
-        control_plane: ControlPlane,
+        control_plane: EnrollmentControlPlane,
         *,
         display_name: str,
         platform: Platform,

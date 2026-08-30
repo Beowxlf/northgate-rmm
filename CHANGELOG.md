@@ -15,7 +15,12 @@ Changelog structure and will adopt semantic versioning before its first release.
 - typed Python domain models for endpoint identity, heartbeat, inventory,
   freshness, revocation, and audit evidence;
 - Windows and Linux synthetic fixtures with replay, expiry, binding, and
-  revocation tests; and
-- Ruff, mypy, pytest coverage, Bandit, and Python Semgrep checks in CI.
+  revocation tests;
+- strict bounded JSON decoding and escaped server-rendered endpoint list/detail
+  views;
+- transactional PostgreSQL migrations, concurrency-safe enrollment/ingestion,
+  and an isolated dump/restore test that preserves revocation;
+- an ephemeral test-only CA and endpoint-bound client certificate fixture;
+- Ruff, mypy, pytest coverage, Bandit, and Python Semgrep checks in CI; and
 - infrastructure capacity, trust-zone, flow-policy, microsegmentation,
   provisioning, validation, and rollback specification.

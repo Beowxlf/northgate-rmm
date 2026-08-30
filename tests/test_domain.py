@@ -62,6 +62,8 @@ def test_message_envelope_validates_protocol_sequence_and_ttl() -> None:
         envelope(protocol_version=2)
     with pytest.raises(ValidationError, match="sequence"):
         envelope(sequence=0)
+    with pytest.raises(ValidationError, match="sequence"):
+        envelope(sequence=2**63)
     with pytest.raises(ValidationError, match="lifetime"):
         envelope(expires_at=NOW)
     with pytest.raises(ValidationError, match="lifetime"):

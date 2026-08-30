@@ -13,10 +13,19 @@ reconnection.
 - authorization policy and phase-gate state;
 - audit events and integrity checkpoints;
 - configuration excluding plaintext secrets;
-- artifact/update metadata, SBOMs, provenance, and public verification keys;
+- separately verified signed recovery packages, artifact/update metadata, SBOMs,
+  provenance, and public verification keys;
+- protected release-status sequence ledger, signed status digests, allocator
+  checkpoints, pending-anchor receipts, reconciliation acknowledgements, and
+  authority-epoch linkage; the non-rollbackable allocator itself remains outside
+  the authority VM and ordinary restore set;
 - encrypted gateway/session metadata if enabled;
 - source commit and deployment manifests;
 - secret-store backup through its own approved mechanism.
+
+The authoritative source, bounded identity, destination, activation gate, and
+network path for each item are defined in
+[`INFRASTRUCTURE_AND_MICROSEGMENTATION.md`](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#backup-coverage).
 
 ## Separation
 
@@ -34,9 +43,12 @@ cannot delete every recovery copy.
 6. Run governance and data invariants, especially identity revocation and job
    cancellation/expiry.
 7. Reconcile secrets/keys rather than blindly restoring compromised authority.
-8. Authenticate test identities and one disposable canary only.
-9. Document achieved RPO/RTO, gaps, and residual risk.
-10. Authorize reconnection separately.
+8. Reconcile any restored status authority against its external allocator and the
+   highest valid Z5/Z6 sequence anchor; keep signing disabled until the next
+   sequence is proven greater than the pre-restore maximum.
+9. Authenticate test identities and one disposable canary only.
+10. Document achieved RPO/RTO, gaps, and residual risk.
+11. Authorize reconnection separately.
 
 ## Required restore tests
 
@@ -46,4 +58,9 @@ cannot delete every recovery copy.
 - active leases and remote sessions restore as expired/closed;
 - audit chain/checkpoints reconcile;
 - update trust does not regress to an unauthorized root/version;
+- restored or rolled-back agent state cannot lower the accepted release-status
+  sequence and must obtain a current signed authority checkpoint when uncertain;
+- restoring or rolling back the status authority cannot lower its highest-issued
+  sequence or undo a prior freeze/revocation; missing, lower, inconsistent, or
+  unavailable allocator/anchor state keeps signing disabled;
 - no restored environment contacts real endpoints during validation.

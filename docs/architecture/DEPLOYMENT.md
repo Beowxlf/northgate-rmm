@@ -47,6 +47,10 @@ capacity requirement:
 - egress destinations are documented and minimized;
 - certificate and DNS failure behavior is observable and fail-safe.
 
+The authoritative trust-zone model, minimum flow policy, provisioning sequence,
+and network acceptance evidence are defined in
+[Infrastructure and Microsegmentation](INFRASTRUCTURE_AND_MICROSEGMENTATION.md).
+
 ## Secrets
 
 Configuration references secrets supplied at runtime. Secrets are not embedded in

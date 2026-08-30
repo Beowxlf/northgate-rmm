@@ -28,12 +28,37 @@
 3. Preserve relevant audit, identity, gateway, network, build, and artifact evidence.
 4. Revoke affected operator sessions, endpoint identities, grants, jobs, tunnels,
    release keys, or service credentials.
+   When Z2 is suspected, pair direct IdP revocation with independent
+   policy-enforcement-point isolation and direct Z8 session-status enforcement;
+   retrieve the case-scoped opaque IdP revocation handle from protected Z5 when
+   exact IdP identifiers are not already known, and do not wait for Z2 to
+   acknowledge or propagate containment.
+   When an endpoint identity is revoked, also terminate every active Z8 session
+   bound to that exact identity through the independent Z1 recovery path. If Z8
+   is unavailable or suspected, isolate its endpoint-facing policy-enforcement
+   path and verify tunnel teardown independently.
 5. Stop dispatch/update/session capability at the narrowest safe boundary; use the
    global emergency stop when scope is unknown.
 6. Identify endpoints, actions, sessions, versions, and data affected.
 7. Recover from known-good source, artifacts, trust roots, and backups.
 8. Verify invariants before reconnecting endpoints or resuming dispatch.
 9. Document timeline, decisions, uncertainty, impact, notification, and follow-up.
+
+Direct operator-session/endpoint/server PKI recovery, G6 release
+freeze/revocation, and independent Z8 emergency termination record signed intent,
+component response, and independently observed result in protected Z5 evidence
+or, when Z5 is unavailable, suspected, or otherwise untrusted, the append-only Z6
+emergency evidence intake. Reconciliation waits until Z5 is re-established and
+independently verified. Failure of both trusted paths is incomplete containment
+and must not be reported as a fully evidenced recovery.
+
+When the Z2 TLS service is suspected, first disable or rotate its exact PKI
+issuance-client identity and verify the old client cannot obtain a replacement.
+Only then revoke/roll the served certificate; restore issuance authority solely
+to a rebuilt and verified Z2 through the approved secret-provisioning path. The
+protected recovery bundle records signed intent, old/new public client
+identifiers, the PKI result, and the verified denial-test digest/outcome without
+client secrets.
 
 ## Mandatory emergency capabilities before operational gates
 
@@ -51,6 +76,17 @@ Terminate the gateway session and endpoint tunnel, revoke the grant and JIT
 credential, disable redirection, preserve session metadata/authorized recording,
 inspect endpoint authentication and network logs, and determine whether the
 gateway or endpoint was used to pivot.
+If the gateway or credential broker is suspected, revoke the exact JIT credential
+at the OS identity authority through the independent Z1 session-recovery route;
+do not use the suspected broker for containment. Retrieve its opaque handle from
+the exact-session/grant Z5 lookup, or from the authority's exact-session/grant
+fallback when Z5 is unavailable, suspected, or otherwise untrusted. The fallback
+cannot list, search, inspect, issue, renew, or change policy, and its lookup and
+revocation evidence must reach trusted Z5 or Z6. If the gateway is suspected,
+the independent Z1 network-recovery operator must also block its exact
+endpoint-facing policy-enforcement scope outside Z8 and verify the active stream
+and tunnel are gone from endpoint or network evidence. A gateway termination
+response is only a claim and cannot complete containment.
 
 ## Recovery criteria
 

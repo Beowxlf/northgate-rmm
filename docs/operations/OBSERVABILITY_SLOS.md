@@ -15,6 +15,12 @@
 - update rings, failures, pauses, and rollback/recovery;
 - audit-write success, lag, and integrity checkpoint status.
 
+For G6, a constrained Z5 evaluator produces a signed rollout-health attestation
+binding the exact artifact, observed ring, window, sample size, required
+availability/security thresholds, result, evidence digest, and freshness. It
+cannot approve a rollout or alter release state; the status authority uses the
+attestation only alongside a separately signed rollout decision.
+
 Metrics must avoid endpoint names, job IDs, user IDs, or other unbounded sensitive
 labels.
 
@@ -34,6 +40,11 @@ attributes.
 
 Security-relevant records defined in the threat and authorization models. Audit
 has independent access, retention, and integrity controls.
+Before privileged operator use, protected evidence records the signed IdP
+issuer/tenant/subject/session/client binding, RMM session correlation, and a
+non-secret opaque IdP revocation handle for case-scoped recovery lookup.
+Every protected-audit query or export appends immutable correlated intent and
+result events; inability to record them fails the access/export closed.
 
 ## Initial service-level indicators
 

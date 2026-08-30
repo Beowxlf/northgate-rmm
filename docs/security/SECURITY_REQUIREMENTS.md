@@ -77,7 +77,8 @@ tests, audits, risks, and exceptions.
 - **SR-CRYPTO-002:** TLS server identity MUST be validated; post-enrollment agent
   traffic MUST use mutual authentication.
 - **SR-CRYPTO-003:** Keys MUST have documented purpose, owner, storage, rotation,
-  revocation, backup, and compromise procedures.
+  revocation, backup, and compromise procedures; a TLS service's PKI client
+  identity MUST be separately revocable from its served certificate.
 - **SR-CRYPTO-004:** Release/update signing authority MUST be separate from online
   application and ordinary operator credentials.
 - **SR-CRYPTO-005:** Secrets MUST NOT appear in repository content, URLs, command
@@ -97,6 +98,13 @@ tests, audits, risks, and exceptions.
 - **SR-AUDIT-002:** Audit events MUST use server time and correlation IDs and MUST
   be protected from ordinary application modification.
 - **SR-AUDIT-003:** Audit access and export MUST themselves be audited.
+- **SR-AUDIT-004:** Authority-increasing release transitions MUST require an
+  independently protected audit acknowledgement, while emergency freeze,
+  revocation, and pause MUST remain possible during audit-service failure or
+  suspected compromise with signed pending evidence and raised incident severity.
+  The artifact repository MUST receive and independently verify the exact signed
+  restrictive authorization and external allocator pending-anchor receipt before
+  activating such status without audit acknowledgements.
 
 ## Updates and supply chain
 
@@ -106,9 +114,46 @@ tests, audits, risks, and exceptions.
   before installation.
 - **SR-UPD-003:** Update design MUST address rollback, freeze, mix-and-match,
   expiry, and signing-key compromise.
-- **SR-UPD-004:** Rollout MUST use canary rings, health gates, pause, and recovery.
+- **SR-UPD-004:** Rollout MUST use canary rings, a separately authorized
+  request-bound rollout decision, independently signed current health-gate
+  evidence, pause, and recovery. The artifact repository MUST receive and
+  independently verify the decision and health evidence before rollout start,
+  advance, or resumption. Each decision MUST bind a single-use status correlation
+  and exact predecessor status that the authority and repository reject on reuse.
+  A dedicated non-human health role MUST be able to authorize only an automatic
+  pause bound to a signed failed threshold result and exact current rollout scope.
 - **SR-UPD-005:** Dependencies and CI actions MUST be locked and continuously
   scanned.
+- **SR-UPD-006:** Immediately before installation, agents MUST obtain current,
+  independently signed release status with a maximum 60-second lifetime and MUST
+  reject unavailable, stale, replayed, frozen, revoked, or mismatched status. The
+  highest accepted sequence MUST survive agent restart/reinstall/rollback. After
+  uncertain or lost state, installation MUST require fresh nonce-bound agreement
+  among the authority checkpoint, external allocator maximum, protected sequence
+  anchor maximum, and repository activation head; no single source may establish
+  or lower the floor.
+- **SR-UPD-007:** The release-status authority MUST allocate sequences from
+  rollback-resistant state outside its restorable VM and data, independently
+  anchor every allocation, and remain unable to sign after restore or uncertain
+  state until it reconciles the highest valid allocator and Z5/Z6 anchor and
+  proves the next sequence is greater. The recovery identity MUST have only
+  read-only, exact-authority/epoch access to those three sequence sources and no
+  allocation, reset, signing, release, restore, delete, alteration, or unrelated
+  audit authority. If both anchors are unavailable, only a separately authorized
+  restrictive transition may proceed, and only after the external allocator
+  durably records a digest-bound append-only pending anchor that blocks
+  authority-increasing status until independently acknowledged and reconciled.
+  After authority recovery with both anchors unavailable, only a dual-controlled
+  allocator-verified restrictive mode may sign freeze, revoke, or pause; every
+  authority-increasing, unfreeze, checkpoint, and allocator-replacement operation
+  MUST remain disabled until protected-sink reconciliation succeeds.
+- **SR-UPD-008:** Every release-status activation and recovery checkpoint MUST
+  carry the external monotonic allocator's signed receipt bound to the exact
+  request core, status payload, authority epoch, sequence, action, correlation,
+  and predecessor. Protected intake, repository, and checkpoint consumers MUST
+  independently verify it and fail closed on absence, mismatch, replay, or
+  rollback. Recovery MUST also prove that the independently signed current
+  allocator maximum, anchored maximum, and repository activation head agree.
 
 ## Remote access
 
@@ -117,11 +162,17 @@ tests, audits, risks, and exceptions.
 - **SR-REMOTE-002:** The gateway MUST NOT expose durable endpoint credentials to
   the browser or store them in the RMM database.
 - **SR-REMOTE-003:** Tunnels MUST restrict destination endpoint, protocol, port,
-  lifetime, concurrency, and reconnect behavior.
+  lifetime, concurrency, and reconnect behavior. When a gateway is suspected,
+  an independent recovery path MUST isolate its endpoint-facing enforcement scope
+  and verify teardown without trusting the gateway.
 - **SR-REMOTE-004:** Clipboard, file transfer, drive/device redirection, session
   sharing, and recording MUST be separately governed and disabled by default.
-- **SR-REMOTE-005:** Active sessions MUST terminate on session, operator, endpoint,
-  or policy revocation and at idle/absolute timeout.
+- **SR-REMOTE-005:** Active session grants MUST bind the exact signed IdP
+  issuer/tenant/subject/session/client tuple, protected evidence MUST preserve an
+  opaque independent revocation handle, the OS identity authority MUST support a
+  non-enumerable exact-session/grant recovery lookup when protected evidence is
+  unavailable or untrusted, and sessions MUST terminate on session, operator,
+  endpoint, or policy revocation and at idle/absolute timeout.
 - **SR-REMOTE-006:** Windows RDP, Linux SSH, and each Linux desktop backend MUST be
   independently qualified and patched.
 - **SR-REMOTE-007:** Session metadata MUST be audited; content recording MUST have

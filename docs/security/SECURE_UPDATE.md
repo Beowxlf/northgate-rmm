@@ -21,18 +21,112 @@ replace a privileged fleet component.
 2. Run required tests and scans.
 3. Generate SBOM and provenance.
 4. Produce platform-specific signed packages.
-5. Authorize artifacts through separated update metadata/signing roles.
-6. Verify signatures, provenance, version, platform, and policy before publishing.
-7. Roll out to development, test, canary, then approved broader rings.
-8. Pause automatically on defined health or security failures.
-9. Preserve a separately verified recovery artifact and procedure.
+5. Authorize artifacts through separated update metadata/signing roles only after
+   the signer validates an exact protected signing-intent acknowledgement.
+6. Require both the publisher and repository to verify signatures, provenance,
+   version, platform, policy, and both protected signing acknowledgements before
+   publishing.
+7. Require an independent protected audit acknowledgement before every
+   authority-increasing signing, publication, rollout-start/advance, or resumption
+   transition. Rollout start/advance/resume also requires a request-bound decision
+   from a separate authorized approver and current signed health-gate evidence.
+   Never block an emergency freeze, revocation, or pause because both audit sinks
+   are unavailable or untrusted; retain signed recovery-client evidence, raise
+   incident severity, and reconcile it only after verified recovery.
+8. Roll out to development, test, canary, then approved broader rings.
+9. Pause automatically on defined health or security failures.
+10. Preserve a separately signature/digest-verified signed package, its metadata,
+    trust material, and recovery procedure in the immutable Z6 recovery set.
+
+The permitted hardware-backed service flow and the alternative offline exchange,
+including request contents and evidence, are defined in the
+[infrastructure signing handoff](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#separated-signing-handoff).
+The normal Z5 acknowledgement, independently controlled Z6 fallback, fail-closed
+behavior, and reconciliation requirement are defined in
+[release-transition audit acknowledgement](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#release-transition-audit-acknowledgement).
+The separated metadata/status authority submits the sequence-free request core to
+the external monotonic allocator, which adds the authority epoch and next
+sequence and returns the completed acknowledgement-free status payload plus a
+signed receipt bound to both digests. Z5/Z6, the status signer, and the repository
+independently verify that receipt. The authority then verifies the pre-action
+acknowledgement carried beside the payload and receipt in a separate envelope,
+appends its signed result to Z5 or Z6, and obtains a result acknowledgement that
+the repository verifies before normal activation. Neither acknowledgements nor
+the receipt are included in the payload whose digest they bind. When both
+evidence sinks are unavailable or untrusted, only a Z1-authorized higher-sequence
+freeze/revocation/pause may proceed, and only after the external monotonic
+allocator durably records a signed pending anchor bound to that restrictive
+payload and authorization. The repository independently verifies the pending
+receipt and Z1 authorization in lieu of the unavailable acknowledgements and can
+activate only that restrictive state. Authority-increasing status remains
+disabled until the pending anchor is acknowledged by a restored sink and
+reconciled.
+An audit acknowledgement alone is not rollout authority. The publication
+envelope carries the independently signed approval and exact current-ring or
+pre-deployment health attestation beside the signed status. The status signer and
+repository independently pin and verify those signatures, authorization roles,
+separation of duties, scope, freshness, outcome, and the evidence digests bound
+into the acknowledgement-free status payload before activation. The decision and
+status payload also bind the same single-use correlation and exact predecessor
+status digest. The signer and repository reject reuse, and the repository
+atomically consumes both identifiers when it activates a transition. A freeze,
+revoke, or human-initiated pause carries the exact signed Z1 restrictive
+authorization beside the status. An automatic pause instead carries a short-lived
+authorization from the dedicated Z5 health-pause key, bound to the exact failed
+attestation, artifact/ring, policy, predecessor, and correlation. The repository
+pins both keys and independently verifies signature, role, action, scope,
+predecessor, correlation, failure result, and freshness without treating either
+as start/advance/resume/unfreeze authority.
 
 ## Agent behavior
 
 The agent verifies trusted root/metadata chain, signatures, digest, length,
 platform, architecture, version policy, expiry, rollout assignment, and disk
-preconditions. Installation is atomic where possible and leaves a recoverable
-prior version. A failed update does not erase identity, revocation, or audit state.
+preconditions. Immediately before replacement it also retrieves and verifies the
+current independently signed release-status object, whose exact artifact, ring,
+sequence, and freeze/revocation state expire within 60 seconds. Missing, stale,
+unavailable, replayed, rolled-back, frozen, or revoked status blocks installation
+even when the package was downloaded earlier. Installation is atomic where
+possible and leaves a recoverable prior version. A failed update does not erase
+identity, revocation, or audit state.
+
+The highest accepted release-status sequence lives in OS-protected,
+rollback-resistant state outside the replaceable agent payload. It survives
+restart, reinstall, and agent-version rollback. After VM/OS restore or any
+missing, corrupt, or inconsistent sequence state, the agent must obtain a current
+nonce-bound authority checkpoint, current allocator maximum, current Z5 anchored
+maximum/continuity proof, and current repository activation head/receipt directly
+from their independent endpoints. It pins all keys, requires the fresh epoch,
+sequence, and status/publish digests to agree, and atomically raises its floor.
+Any stale source, gap, mismatch, unavailable/untrusted source, or non-current
+activation blocks installation; repository or authority data alone cannot
+reinitialize or lower the floor.
+
+The status authority allocates sequences through a non-rollbackable counter kept
+outside its VM, operating-system image, database, and ordinary restore set. Each
+allocation has a signed allocator receipt bound to the exact status-payload
+digest and is independently verified by Z5/Z6, the repository, and checkpoint
+consumers before being anchored in the protected Z5 sequence ledger or immutable
+Z6 fallback. When both sinks are down, only a Z1-authorized restrictive transition
+may use the allocator's append-only pending anchor, which must survive authority
+restore and reconcile later. After authority restore, rollback, rebuild, counter
+replacement, or uncertain state, general signing
+remains disabled until a separate recovery process reconciles the allocator and
+all available anchors, establishes their maximum as the floor, and proves the
+next sequence is greater. When both anchors are unavailable, dual-controlled Z1
+recovery may verify the allocator epoch, counter, continuity, and pending-anchor
+chain and enable only higher-sequence freeze/revoke/pause signing. Every
+authority-increasing, unfreeze, and install-authorizing checkpoint operation
+remains disabled until a sink returns and reconciliation succeeds. Missing or
+inconsistent allocator state fails even the restrictive mode closed. Replacing
+the allocator requires dual control, a monotonically later authority epoch, and
+protected linkage to the prior anchor; it is forbidden in restrictive-only mode.
+The recovery identity has narrowly scoped read-only access to the allocator's
+current counter/epoch and the exact Z5/Z6 sequence anchors; it cannot allocate,
+reset, sign, release, restore, delete, alter, or read unrelated audit evidence.
+Each download also requires the short-lived, single-use, endpoint-key and
+artifact-bound authorization defined in the
+[infrastructure flow](../architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md#revocation-aware-update-download-and-installation).
 
 ## Key compromise
 

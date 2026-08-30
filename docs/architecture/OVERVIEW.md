@@ -69,6 +69,7 @@ for authorization boundaries.
 - [Agent protocol](PROTOCOL.md)
 - [Data model](DATA_MODEL.md)
 - [Deployment model](DEPLOYMENT.md)
+- [Infrastructure and microsegmentation](INFRASTRUCTURE_AND_MICROSEGMENTATION.md)
 - [Remote access architecture](REMOTE_ACCESS.md)
 - [Authorization model](../security/AUTHORIZATION_MODEL.md)
 - [Cryptography and keys](../security/CRYPTOGRAPHY_AND_KEYS.md)

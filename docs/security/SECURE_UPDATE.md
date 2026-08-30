@@ -67,7 +67,11 @@ separation of duties, scope, freshness, outcome, and the evidence digests bound
 into the acknowledgement-free status payload before activation. The decision and
 status payload also bind the same single-use correlation and exact predecessor
 status digest. The signer and repository reject reuse, and the repository
-atomically consumes both identifiers when it activates a transition.
+atomically consumes both identifiers when it activates a transition. A freeze,
+revoke, or pause publication carries the exact signed Z1 restrictive
+authorization beside the status; the repository pins that key and independently
+verifies the signature, role, action, scope, predecessor, correlation, and
+freshness without treating it as start/advance/resume/unfreeze authority.
 
 ## Agent behavior
 

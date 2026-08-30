@@ -102,6 +102,8 @@ tests, audits, risks, and exceptions.
   independently protected audit acknowledgement, while emergency freeze,
   revocation, and pause MUST remain possible during audit-service failure or
   suspected compromise with signed pending evidence and raised incident severity.
+  The artifact repository MUST receive and independently verify the exact signed
+  restrictive authorization before activating such status.
 
 ## Updates and supply chain
 

@@ -173,6 +173,15 @@ they are not installable firewall objects. The owner reviews every rule by
 | RMM-NET-019 | `TBD exact Z5 telemetry firewall alias`                      | `TBD independent alert destination`                 | `TBD approved TLS port`          | Required before G2; notification-only credential and redacted bounded payload                                                                                                     | Security monitoring     | `NG-CHG-20260830-001` |
 | RMM-NET-020 | `TBD exact Z1 endpoint-PKI recovery-operator firewall alias` | `TBD endpoint issuer emergency revocation endpoint` | TCP 443                          | Required before G2; independent MFA; exact endpoint identity; revoke/status only; signed intent/result; terminate bound sessions or isolate                                       | Endpoint PKI owner      | `NG-CHG-20260830-001` |
 | RMM-NET-021 | `TBD exact Z1 server-PKI recovery-operator firewall alias`   | `TBD server-PKI emergency-containment endpoint`     | TCP 443                          | Required before TLS activation and G2; independent MFA; disable/rotate exact Z2 issuance client, then revoke/roll exact certificate; signed intent/result; no unrelated authority | Server PKI owner        | `NG-CHG-20260830-001` |
+| RMM-NET-022 | `TBD exact Z1 operator-browser firewall alias`               | `TBD exact human IdP authorization endpoint`        | TCP 443                          | Required before operator privilege; authorization endpoint only; TLS and IdP policy                                                                                               | Identity service owner  | `NG-CHG-20260830-001` |
+| RMM-NET-023 | `TBD exact Z1 identity-recovery firewall alias`              | `TBD exact human IdP emergency-revocation endpoint` | TCP 443                          | Required before operator privilege and G2; independent MFA; exact issuer/tenant/session/client or opaque handle revocation only; no user/role/policy authority                    | Identity service owner  | `NG-CHG-20260830-001` |
+| RMM-NET-024 | `TBD exact Z2 operator-session registrar firewall alias`     | `TBD protected Z5 operator-session evidence intake` | `TBD approved TLS port`          | Required before operator privilege; append signed issuer/tenant/subject/session/client binding and opaque revocation handle; acknowledgement required                             | Security evidence owner | `NG-CHG-20260830-001` |
+| RMM-NET-025 | `TBD exact Z1 identity-recovery firewall alias`              | `TBD protected Z5 revocation-handle lookup`         | TCP 443                          | Required before operator privilege and G2; independent MFA and case scope; exact session/operator/time query; bounded result; no enumeration                                      | Security evidence owner | `NG-CHG-20260830-001` |
+| RMM-NET-026 | `TBD exact Z1 security-recovery firewall alias`              | `TBD protected Z5 recovery-audit intake`            | TCP 443                          | Required before TLS activation and G2; append signed intent before action and signed exact-scope result before containment completion                                             | Security evidence owner | `NG-CHG-20260830-001` |
+| RMM-NET-027 | `TBD exact Z1 security-recovery firewall alias`              | `TBD immutable Z6 emergency-evidence intake`        | `TBD approved evidence protocol` | Required before TLS activation and G2 as the Z5-unavailable or untrusted fallback; signed append-only bundle; no read/restore/delete authority                                    | Security evidence owner | `NG-CHG-20260830-001` |
+| RMM-NET-028 | `TBD exact Z1 recovery-operator firewall alias`              | `TBD exact Z6 recovery-service admin endpoint`      | `TBD approved admin protocol`    | Required before G2 backup acceptance; recovery role, independent MFA, exact recovery set, reason, alert, short expiry, and evidence                                               | Recovery owner          | `NG-CHG-20260830-001` |
+| RMM-NET-029 | `TBD exact Z6 recovery-service firewall alias`               | `TBD exact isolated-restore-target firewall alias`  | `TBD approved restore protocol`  | Required before G2 backup acceptance; exact authorization and recovery set; no endpoint/operator ingress; reconcile before use                                                    | Recovery owner          | `NG-CHG-20260830-001` |
+| RMM-NET-030 | `TBD exact Z1 incident-auditor firewall alias`               | `TBD protected Z5 audit-export endpoint`            | TCP 443                          | Required before G2; independent MFA; exact case/time scope; immutable access/export event; no alter/delete                                                                        | Security evidence owner | `NG-CHG-20260830-001` |
 
 No server-initiated management route from Z2 to Z4 is permitted in this phase.
 The endpoint initiates the only RMM connection.
@@ -213,7 +222,10 @@ reviewed change.
 
 G2 remains closed until evidence identifies and validates:
 
-- the human OIDC provider and phishing-resistant privileged MFA;
+- the human OIDC provider, phishing-resistant privileged MFA, browser
+  authorization, independently authenticated exact-scope IdP revocation,
+  acknowledged operator-session registration, and bounded revocation-handle
+  lookup;
 - server TLS PKI plus independent certificate-status service;
 - offline endpoint root, restricted issuer, renewal, revocation, and status;
 - protected append-only audit destination independent of the RMM service;
@@ -228,6 +240,10 @@ G2 remains closed until evidence identifies and validates:
 - an independent server-PKI recovery-operator route and a tested sequence that
   disables or rotates the exact Z2 issuance client before revoking or rolling
   the exact serving certificate;
+- protected Z5 recovery-audit intake and an immutable Z6 fallback that both
+  accept signed intent before containment and signed result before completion;
+- exact recovery-operator-to-Z6 and Z6-to-isolated-target routes used by the
+  successful isolated restore proof;
 - exact DNS names and approved addresses;
 - the initial fail-closed IPv6 tests or a later equivalent dual-stack policy;
 - Factory support for the complete server and canary manifests; and

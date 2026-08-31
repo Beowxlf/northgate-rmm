@@ -106,6 +106,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-41 | Endpoint revocation leaves an active G7 tunnel        | issuer revoke plus identity-bound Z8 termination; independent PEP isolation fallback               | verify tunnel/JIT teardown, preserve Z5/Z6 evidence, investigate session     |
 | TM-42 | Malformed local input spoofs or exhausts collection   | exact config schema, fixed-path allowlist, byte/field/time bounds, no shell, fuzz tests            | bounded issue code, reject or mark partial, preserve local test evidence     |
 | TM-43 | Local spool is altered, replayed, or rolled back      | private path, quota, no-overwrite IDs, corruption checksum; no operational use before G2           | fail closed on malformed/digest mismatch; add keyed integrity and sequence   |
+| TM-44 | Transport redirect or acknowledgement confusion       | exact HTTPS origin/path, no proxy/redirect/reuse, TLS 1.3 mTLS, exact ID acknowledgement           | reject permanently, retain spool item, investigate trust or routing          |
 
 ## Denial-of-service considerations
 
@@ -119,8 +120,11 @@ observable rejection. Endpoint spool and result output have hard quotas.
   authorized, installed, or qualified;
 - the current spool checksum detects accidental corruption but does not provide
   keyed integrity, encryption, or rollback resistance;
-- enrollment, mTLS, protected sequence persistence, retry/backoff, and secure
-  package/service lifecycle remain unimplemented;
+- enrollment, protected identity and sequence persistence, encrypted spool, and
+  secure package/service lifecycle remain unimplemented;
+- the mTLS sender and retry policy are source-tested only; endpoint certificate
+  status, operational PKI, redacted logging, and live revocation remain G2
+  blockers;
 - selected identity provider, PKI, secrets service, and session gateway versions
   are not yet qualified;
 - Linux desktop backend remains support-matrix dependent;

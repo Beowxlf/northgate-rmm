@@ -11,6 +11,18 @@
 - bounded request bodies, response bodies, headers, and decompression ratios;
 - idle, request, job, and shutdown timeouts.
 
+Post-enrollment inventory delivery uses `POST /v1/agent/messages`. A spool item
+is acknowledged only by an HTTP 200 JSON object containing exactly the same
+canonical `message_id` and `accepted: true`. Redirects, environment proxies,
+connection reuse, response compression, acknowledgement mismatch, and unknown
+acknowledgement fields fail closed. A transient network, rate-limit, or server
+error may use bounded exponential backoff with cryptographic jitter; permanent
+authentication, trust, protocol, or authorization failures do not retry.
+The server must make an accepted message ID idempotent: if the response is lost,
+an exact retry returns the same accepted acknowledgement without applying the
+message again. Reuse of the ID with different authenticated identity or payload
+fails permanently and is audited.
+
 ## Envelope
 
 Every post-enrollment message includes:

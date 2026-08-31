@@ -54,9 +54,11 @@ collector, job scheduler, or command-execution primitive is present.
 The in-progress Go agent source adds strict non-secret configuration, bounded
 allowlisted Linux collectors, the Phase 1-compatible inventory envelope, an
 checksum-validated quota spool, and an outbound-only transport interface. It
-has no network implementation, listener, command runner, privileged helper,
-package, or service installation. Encryption and keyed spool integrity remain
-G2 blockers.
+also includes a source-tested TLS 1.3 mutual-authentication sender with exact
+message acknowledgement and bounded jittered retry policy. It has no listener,
+enrollment implementation, identity persistence, command runner, privileged
+helper, package, or service installation. Operational PKI, protected sequence
+persistence, encryption, and keyed spool integrity remain G2 blockers.
 
 ## Phase 1 developer checks
 

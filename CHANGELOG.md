@@ -28,5 +28,7 @@ Changelog structure and will adopt semantic versioning before its first release.
 - a standard-library-only Go agent core with strict configuration, allowlisted
   collectors, compatible inventory encoding, and a checksum-validated quota
   spool; and
+- a source-tested TLS 1.3 mutual-authentication sender with exact bounded
+  acknowledgements and jittered exponential retry policy; and
 - Go format, vet, race, fuzz, static analysis, vulnerability, and Semgrep checks
   in CI.

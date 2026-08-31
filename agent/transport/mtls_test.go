@@ -9,11 +9,15 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
+	"errors"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -193,6 +197,9 @@ func TestMTLSSenderBoundsResponseAndClassifiesStatus(t *testing.T) {
 		{name: "rate limited", status: http.StatusTooManyRequests, retryable: true},
 		{name: "server failure", status: http.StatusServiceUnavailable, retryable: true},
 		{name: "authorization failure", status: http.StatusForbidden, retryable: false},
+		{name: "unsupported operation", status: http.StatusNotImplemented, retryable: false},
+		{name: "unsupported HTTP version", status: http.StatusHTTPVersionNotSupported, retryable: false},
+		{name: "network authentication required", status: http.StatusNetworkAuthenticationRequired, retryable: false},
 		{name: "oversized acknowledgement", status: http.StatusOK, body: string(make([]byte, MaxResponseBytes+1)), retryable: false},
 	}
 	for _, test := range tests {
@@ -266,6 +273,44 @@ func TestMTLSSenderTreatsConnectionFailureAsTransient(t *testing.T) {
 	}
 }
 
+func TestMTLSSenderDistinguishesCallerCancellationAndRequestTimeout(t *testing.T) {
+	pki := newTestPKI(t)
+	server := startMTLSServer(t, pki, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		writeAck(t, writer, testMessageID, true)
+	}))
+	sender := newTestSender(t, server, pki)
+	sender.client.Timeout = 10 * time.Millisecond
+	err := sender.Send(context.Background(), testMessageID, []byte(`{}`))
+	if err == nil || !IsRetryable(err) {
+		t.Fatalf("Send() request-timeout error = %v, want transient failure", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err = sender.Send(ctx, testMessageID, []byte(`{}`))
+	if err == nil || IsRetryable(err) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("Send() caller-cancellation error = %v, want permanent context cancellation", err)
+	}
+}
+
+func TestClassifyNetworkErrorRetriesDroppedHandshake(t *testing.T) {
+	transientCauses := []error{
+		io.EOF,
+		&net.OpError{Op: "read", Err: &os.SyscallError{Syscall: "read", Err: syscall.ECONNRESET}},
+	}
+	for _, cause := range transientCauses {
+		err := classifyNetworkError(context.Background(), &handshakeError{cause: cause})
+		if !IsRetryable(err) {
+			t.Fatalf("classifyNetworkError(%T) = %v, want transient dropped handshake", cause, err)
+		}
+	}
+	err := classifyNetworkError(context.Background(), &handshakeError{cause: errors.New("synthetic protocol failure")})
+	if IsRetryable(err) {
+		t.Fatalf("classifyNetworkError() = %v, want permanent protocol failure", err)
+	}
+}
+
 func TestNewMTLSSenderRejectsIncompleteInputs(t *testing.T) {
 	pki := newTestPKI(t)
 	tests := []struct {
@@ -281,7 +326,7 @@ func TestNewMTLSSenderRejectsIncompleteInputs(t *testing.T) {
 		{name: "Unicode host", origin: "https://example\u200d.test", credentials: Credentials{Certificate: pki.client, ServerRoots: pki.roots}, timeout: time.Second},
 		{name: "missing roots", origin: "https://127.0.0.1", credentials: Credentials{Certificate: pki.client}, timeout: time.Second},
 		{name: "missing certificate", origin: "https://127.0.0.1", credentials: Credentials{ServerRoots: pki.roots}, timeout: time.Second},
-		{name: "zero timeout", origin: "https://127.0.0.1", credentials: Credentials{Certificate: pki.client, ServerRoots: pki.roots}},
+		{name: "short timeout", origin: "https://127.0.0.1", credentials: Credentials{Certificate: pki.client, ServerRoots: pki.roots}, timeout: time.Second - 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

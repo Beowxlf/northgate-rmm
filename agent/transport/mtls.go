@@ -13,9 +13,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
@@ -25,6 +27,7 @@ const (
 	messagePath       = "/v1/agent/messages"
 	MaxResponseBytes  = 4 * 1024
 	MaxRequestBytes   = 65_536
+	minRequestTimeout = time.Second
 	maxRequestTimeout = time.Minute
 )
 
@@ -86,7 +89,7 @@ func NewMTLSSender(origin string, credentials Credentials, timeout time.Duration
 	if err != nil {
 		return nil, err
 	}
-	if timeout <= 0 || timeout > maxRequestTimeout {
+	if timeout < minRequestTimeout || timeout > maxRequestTimeout {
 		return nil, errors.New("request timeout is outside the supported range")
 	}
 	if credentials.ServerRoots == nil {
@@ -240,13 +243,13 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 
 	response, err := sender.client.Do(request)
 	if err != nil {
-		return classifyNetworkError(err)
+		return classifyNetworkError(ctx, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return &DeliveryError{
 			Code:      "http_status",
-			Retryable: response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500,
+			Retryable: retryableStatus(response.StatusCode),
 			Status:    response.StatusCode,
 		}
 	}
@@ -282,15 +285,25 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 	return nil
 }
 
-func classifyNetworkError(err error) error {
-	if errors.Is(err, context.Canceled) {
-		return &DeliveryError{Code: "request_stopped", cause: context.Canceled}
+func retryableStatus(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusInternalServerError,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return &DeliveryError{Code: "request_stopped", cause: context.DeadlineExceeded}
+}
+
+func classifyNetworkError(ctx context.Context, err error) error {
+	if callerErr := ctx.Err(); callerErr != nil {
+		return &DeliveryError{Code: "request_stopped", cause: callerErr}
 	}
 	if errors.Is(err, errRedirect) {
 		return &DeliveryError{Code: "request_stopped", cause: errRedirect}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &DeliveryError{Code: "request_timeout", Retryable: true}
 	}
 	var certificateError *tls.CertificateVerificationError
 	var failedHandshake *handshakeError
@@ -299,10 +312,27 @@ func classifyNetworkError(err error) error {
 	var hostnameError x509.HostnameError
 	var authorityError x509.UnknownAuthorityError
 	var rootsError x509.SystemRootsError
+	if errors.As(err, &failedHandshake) && transientHandshakeError(failedHandshake.cause) {
+		return &DeliveryError{Code: "network_failed", Retryable: true}
+	}
 	if errors.As(err, &failedHandshake) || errors.As(err, &certificateError) || errors.As(err, &alertError) ||
 		errors.As(err, &recordHeaderError) || errors.As(err, &hostnameError) ||
 		errors.As(err, &authorityError) || errors.As(err, &rootsError) {
 		return &DeliveryError{Code: "tls_trust_failed", cause: errInvalidTrust}
 	}
 	return &DeliveryError{Code: "network_failed", Retryable: true}
+}
+
+func transientHandshakeError(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, context.DeadlineExceeded) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	var systemCallError *os.SyscallError
+	var errorNumber syscall.Errno
+	if errors.As(err, &systemCallError) || errors.As(err, &errorNumber) {
+		return true
+	}
+	var networkError net.Error
+	return errors.As(err, &networkError) && networkError.Timeout()
 }

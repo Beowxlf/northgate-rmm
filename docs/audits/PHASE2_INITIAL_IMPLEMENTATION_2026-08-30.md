@@ -200,6 +200,13 @@ authentication and rejects leaf, issuer, or server-root certificates containing
 an unhandled critical extension. Synthetic regression certificates cover the
 restricted issuer and critical-root cases.
 
+The nineteenth exact-head review found that manual per-hop signature checks did
+not enforce issuer-name matching or CA path-length constraints. The follow-up
+change replaces the manual client-chain walk with Go's full X.509 path verifier,
+an explicit client-authentication purpose, the supplied chain's final CA as the
+explicit trust anchor, and the supplied intermediates. The store also requires a
+complete chain and a signing-capable leaf key usage before publication.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment, identity

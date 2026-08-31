@@ -261,6 +261,77 @@ func TestInstallRejectsRestrictedIssuerAndUnhandledCriticalRoot(t *testing.T) {
 	}
 }
 
+func TestVerifyClientChainRejectsIssuerNameAndPathLength(t *testing.T) {
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	caPublic, caPrivate, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caTemplate := certificateTemplate("actual-client-ca", now.Add(-time.Hour), now.Add(time.Hour), true)
+	caDER := createCertificate(t, caTemplate, caTemplate, caPublic, caPrivate)
+	caCertificate, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leafPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafTemplate := certificateTemplate("endpoint", now.Add(-time.Hour), now.Add(time.Hour), false)
+	leafTemplate.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	mismatchedParent := *caCertificate
+	mismatchedParent.Subject = pkix.Name{CommonName: "different-client-ca"}
+	mismatchedParent.RawSubject = nil
+	mismatchedLeafDER := createCertificate(t, leafTemplate, &mismatchedParent, leafPublic, caPrivate)
+	mismatchedLeaf, err := x509.ParseCertificate(mismatchedLeafDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyClientCertificateChain([]*x509.Certificate{mismatchedLeaf, caCertificate}, now); err == nil {
+		t.Fatal("issuer-name mismatch was accepted")
+	}
+
+	rootTemplate := certificateTemplate("path-root", now.Add(-time.Hour), now.Add(time.Hour), true)
+	rootTemplate.MaxPathLen = 0
+	rootTemplate.MaxPathLenZero = true
+	rootDER := createCertificate(t, rootTemplate, rootTemplate, caPublic, caPrivate)
+	rootCertificate, err := x509.ParseCertificate(rootDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intermediatePublic, intermediatePrivate, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intermediateTemplate := certificateTemplate("intermediate", now.Add(-time.Hour), now.Add(time.Hour), true)
+	intermediateDER := createCertificate(t, intermediateTemplate, rootCertificate, intermediatePublic, caPrivate)
+	intermediateCertificate, err := x509.ParseCertificate(intermediateDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathLeafPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathLeafTemplate := certificateTemplate("path-endpoint", now.Add(-time.Hour), now.Add(time.Hour), false)
+	pathLeafTemplate.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	pathLeafDER := createCertificate(t, pathLeafTemplate, intermediateCertificate, pathLeafPublic, intermediatePrivate)
+	pathLeaf, err := x509.ParseCertificate(pathLeafDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyClientCertificateChain(
+		[]*x509.Certificate{pathLeaf, intermediateCertificate, rootCertificate},
+		now,
+	); err == nil {
+		t.Fatal("CA path-length violation was accepted")
+	}
+	if err := verifyClientCertificateChain([]*x509.Certificate{pathLeaf}, now); err == nil {
+		t.Fatal("incomplete client certificate chain was accepted")
+	}
+}
+
 func TestLoadFailsClosedOnStoreTampering(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 	tests := []struct {

@@ -389,18 +389,12 @@ func validateMaterial(material Material, now time.Time) (tls.Certificate, *x509.
 	}
 	leaf, err := x509.ParseCertificate(certificate.Certificate[0])
 	if err != nil || leaf.IsCA || now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) ||
-		len(leaf.UnhandledCriticalExtensions) != 0 || !allowsClientAuthentication(leaf) ||
+		leaf.KeyUsage&x509.KeyUsageDigitalSignature == 0 ||
 		!matchesEndpointID(leaf, material.EndpointID) {
 		return tls.Certificate{}, nil, errors.New("endpoint client certificate is invalid or not currently usable")
 	}
-	for index := 1; index < len(clientCertificates); index++ {
-		issuer := clientCertificates[index]
-		if !issuer.IsCA || issuer.KeyUsage&x509.KeyUsageCertSign == 0 ||
-			now.Before(issuer.NotBefore) || !now.Before(issuer.NotAfter) ||
-			len(issuer.UnhandledCriticalExtensions) != 0 || !allowsClientAuthentication(issuer) ||
-			clientCertificates[index-1].CheckSignatureFrom(issuer) != nil {
-			return tls.Certificate{}, nil, errors.New("endpoint client certificate chain is invalid")
-		}
+	if err := verifyClientCertificateChain(clientCertificates, now); err != nil {
+		return tls.Certificate{}, nil, errors.New("endpoint client certificate chain is invalid")
 	}
 	certificate.Leaf = leaf
 
@@ -459,18 +453,6 @@ func parseCertificates(raw []byte, maxBlocks int) ([]*x509.Certificate, error) {
 	return certificates, nil
 }
 
-func allowsClientAuthentication(certificate *x509.Certificate) bool {
-	if len(certificate.ExtKeyUsage) == 0 {
-		return len(certificate.UnknownExtKeyUsage) == 0
-	}
-	for _, usage := range certificate.ExtKeyUsage {
-		if usage == x509.ExtKeyUsageClientAuth || usage == x509.ExtKeyUsageAny {
-			return true
-		}
-	}
-	return false
-}
-
 func allowsServerAuthentication(certificate *x509.Certificate) bool {
 	if len(certificate.ExtKeyUsage) == 0 {
 		return len(certificate.UnknownExtKeyUsage) == 0
@@ -481,6 +463,25 @@ func allowsServerAuthentication(certificate *x509.Certificate) bool {
 		}
 	}
 	return false
+}
+
+func verifyClientCertificateChain(certificates []*x509.Certificate, now time.Time) error {
+	if len(certificates) < 2 {
+		return errors.New("complete client certificate chain is required")
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(certificates[len(certificates)-1])
+	intermediates := x509.NewCertPool()
+	for _, certificate := range certificates[1 : len(certificates)-1] {
+		intermediates.AddCert(certificate)
+	}
+	_, err := certificates[0].Verify(x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: intermediates,
+		CurrentTime:   now,
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	})
+	return err
 }
 
 func matchesEndpointID(certificate *x509.Certificate, endpointID string) bool {

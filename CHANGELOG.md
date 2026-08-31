@@ -30,5 +30,8 @@ Changelog structure and will adopt semantic versioning before its first release.
   spool; and
 - a source-tested TLS 1.3 mutual-authentication sender with exact bounded
   acknowledgements and jittered exponential retry policy; and
+- a create-once, permission-restricted endpoint identity bundle with strict
+  certificate/key/root validation, endpoint URI binding, durable publication,
+  and fail-closed corruption and uncertain-install handling; and
 - Go format, vet, race, fuzz, static analysis, vulnerability, and Semgrep checks
   in CI.

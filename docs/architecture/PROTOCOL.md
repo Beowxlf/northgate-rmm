@@ -52,6 +52,12 @@ again before any future job or remote-session dispatch.
 6. First mTLS heartbeat confirms activation; failure leaves an inspectable pending
    state rather than silently repeating enrollment.
 
+The endpoint certificate contains exactly one URI subject alternative name in
+the form `urn:northgate-rmm:endpoint:<canonical-endpoint-uuid>`. The agent must
+match that binding to the stored endpoint ID before using the identity. Local
+identity publication is create-once and must fail closed on a partial,
+permissive, malformed, expired, or mismatched bundle.
+
 Enrollment grants are bootstrap authorization, not agent identities.
 
 ## Heartbeat and inventory

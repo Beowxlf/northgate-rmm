@@ -48,7 +48,7 @@ type DeliveryError struct {
 	Code      string
 	Retryable bool
 	Status    int
-	Cause     error
+	cause     error
 }
 
 func (err *DeliveryError) Error() string {
@@ -58,7 +58,7 @@ func (err *DeliveryError) Error() string {
 	return fmt.Sprintf("agent delivery failed (%s)", err.Code)
 }
 
-func (err *DeliveryError) Unwrap() error { return err.Cause }
+func (err *DeliveryError) Unwrap() error { return err.cause }
 
 // IsRetryable reports only the sender's explicit retry classification.
 func IsRetryable(err error) bool {
@@ -232,7 +232,7 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, sender.endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return &DeliveryError{Code: "request_build_failed", Cause: err}
+		return &DeliveryError{Code: "request_build_failed"}
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
@@ -258,19 +258,19 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, MaxResponseBytes+1))
 	if err != nil {
-		return &DeliveryError{Code: "response_read_failed", Retryable: true, Cause: err}
+		return &DeliveryError{Code: "response_read_failed", Retryable: true}
 	}
 	if len(raw) == 0 || len(raw) > MaxResponseBytes {
 		return &DeliveryError{Code: "invalid_response_size"}
 	}
 	if err := strictjson.Validate(raw); err != nil {
-		return &DeliveryError{Code: "invalid_acknowledgement", Cause: err}
+		return &DeliveryError{Code: "invalid_acknowledgement"}
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var ack acknowledgement
 	if err := decoder.Decode(&ack); err != nil {
-		return &DeliveryError{Code: "invalid_acknowledgement", Cause: err}
+		return &DeliveryError{Code: "invalid_acknowledgement"}
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
@@ -283,8 +283,14 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 }
 
 func classifyNetworkError(err error) error {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errRedirect) {
-		return &DeliveryError{Code: "request_stopped", Cause: err}
+	if errors.Is(err, context.Canceled) {
+		return &DeliveryError{Code: "request_stopped", cause: context.Canceled}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &DeliveryError{Code: "request_stopped", cause: context.DeadlineExceeded}
+	}
+	if errors.Is(err, errRedirect) {
+		return &DeliveryError{Code: "request_stopped", cause: errRedirect}
 	}
 	var certificateError *tls.CertificateVerificationError
 	var failedHandshake *handshakeError
@@ -296,7 +302,7 @@ func classifyNetworkError(err error) error {
 	if errors.As(err, &failedHandshake) || errors.As(err, &certificateError) || errors.As(err, &alertError) ||
 		errors.As(err, &recordHeaderError) || errors.As(err, &hostnameError) ||
 		errors.As(err, &authorityError) || errors.As(err, &rootsError) {
-		return &DeliveryError{Code: "tls_trust_failed", Cause: errInvalidTrust}
+		return &DeliveryError{Code: "tls_trust_failed", cause: errInvalidTrust}
 	}
-	return &DeliveryError{Code: "network_failed", Retryable: true, Cause: err}
+	return &DeliveryError{Code: "network_failed", Retryable: true}
 }

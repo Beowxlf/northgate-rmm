@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -259,6 +260,9 @@ func TestMTLSSenderTreatsConnectionFailureAsTransient(t *testing.T) {
 	err = sender.Send(context.Background(), testMessageID, []byte(`{}`))
 	if err == nil || !IsRetryable(err) {
 		t.Fatalf("Send() connection error = %v, want transient failure", err)
+	}
+	if strings.Contains(err.Error(), "127.0.0.1") {
+		t.Fatalf("Send() leaked the private origin in its error: %v", err)
 	}
 }
 

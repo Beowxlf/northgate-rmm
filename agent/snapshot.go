@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/Beowxlf/northgate-rmm/agent/collector"
@@ -22,11 +21,12 @@ type Queue interface {
 }
 
 type SequenceStore interface {
-	Reserve(context.Context, string) (int64, error)
+	// ReserveAndUse must serialize the durable reservation and callback across
+	// every consumer sharing this store.
+	ReserveAndUse(context.Context, string, func(int64) error) (int64, error)
 }
 
 type Snapshotter struct {
-	mu         sync.Mutex
 	runner     *collector.Runner
 	queue      Queue
 	sequences  SequenceStore
@@ -72,57 +72,49 @@ func (snapshotter *Snapshotter) Snapshot(
 	if bootID == "" {
 		return SnapshotResult{}, errors.New("boot identity is unavailable")
 	}
-	// The sequence and spool ordering are one local critical section. Without
-	// this boundary, concurrent collectors could reserve 1 then 2 but enqueue
-	// 2 first, causing the server to reject 1 as a replay.
-	snapshotter.mu.Lock()
-	defer snapshotter.mu.Unlock()
-	sequence, err := snapshotter.sequences.Reserve(ctx, bootID)
-	if err != nil {
-		return SnapshotResult{}, err
-	}
-	messageID, err := snapshotter.newID()
-	if err != nil {
-		return SnapshotResult{}, err
-	}
-	correlationID, err := snapshotter.newID()
-	if err != nil {
-		return SnapshotResult{}, err
-	}
-	now := snapshotter.clock().UTC()
-	raw, err := protocol.EncodeInventory(
-		protocol.Envelope{
-			MessageID:       messageID,
-			EndpointID:      endpointID,
-			BootID:          bootID,
-			Sequence:        sequence,
-			CreatedAt:       now,
-			ExpiresAt:       now.Add(snapshotter.messageTTL),
-			CorrelationID:   correlationID,
-			ProtocolVersion: protocol.Version,
-		},
-		protocol.InventoryPayload{
-			Platform:          result.Platform,
-			Architecture:      result.Architecture,
-			Fields:            result.Fields,
-			CollectorComplete: result.Complete,
-			SchemaVersion:     protocol.InventorySchema,
-		},
-	)
-	if err != nil {
-		return SnapshotResult{}, err
-	}
-	snapshotResult := SnapshotResult{
-		MessageID: messageID,
-		Sequence:  sequence,
-		Complete:  result.Complete,
-		Issues:    append([]collector.Issue(nil), result.Issues...),
-		Bytes:     len(raw),
-	}
-	if err := snapshotter.queue.Enqueue(ctx, messageID, raw); err != nil {
-		return snapshotResult, err
-	}
-	return snapshotResult, nil
+	var snapshotResult SnapshotResult
+	_, err = snapshotter.sequences.ReserveAndUse(ctx, bootID, func(sequence int64) error {
+		// The shared sequence-store boundary remains held through queue
+		// publication so multiple snapshotters cannot invert delivery order.
+		snapshotResult.Sequence = sequence
+		messageID, err := snapshotter.newID()
+		if err != nil {
+			return err
+		}
+		correlationID, err := snapshotter.newID()
+		if err != nil {
+			return err
+		}
+		now := snapshotter.clock().UTC()
+		raw, err := protocol.EncodeInventory(
+			protocol.Envelope{
+				MessageID:       messageID,
+				EndpointID:      endpointID,
+				BootID:          bootID,
+				Sequence:        sequence,
+				CreatedAt:       now,
+				ExpiresAt:       now.Add(snapshotter.messageTTL),
+				CorrelationID:   correlationID,
+				ProtocolVersion: protocol.Version,
+			},
+			protocol.InventoryPayload{
+				Platform:          result.Platform,
+				Architecture:      result.Architecture,
+				Fields:            result.Fields,
+				CollectorComplete: result.Complete,
+				SchemaVersion:     protocol.InventorySchema,
+			},
+		)
+		if err != nil {
+			return err
+		}
+		snapshotResult.MessageID = messageID
+		snapshotResult.Complete = result.Complete
+		snapshotResult.Issues = append([]collector.Issue(nil), result.Issues...)
+		snapshotResult.Bytes = len(raw)
+		return snapshotter.queue.Enqueue(ctx, messageID, raw)
+	})
+	return snapshotResult, err
 }
 
 func newUUID() (string, error) {

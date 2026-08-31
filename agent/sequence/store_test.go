@@ -9,6 +9,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 )
 
 const (
@@ -74,6 +75,82 @@ func TestStoreSerializesConcurrentReservations(t *testing.T) {
 	for index, value := range values {
 		if value != index+1 {
 			t.Fatalf("reservations = %v", values)
+		}
+	}
+}
+
+func TestReserveAndUseConsumesSequenceWhenPublicationFails(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "sequence"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+	publicationFailure := errors.New("synthetic publication failure")
+	value, err := store.ReserveAndUse(
+		context.Background(),
+		testBootID,
+		func(sequence int64) error {
+			if sequence != 1 {
+				t.Fatalf("callback sequence = %d, want 1", sequence)
+			}
+			return publicationFailure
+		},
+	)
+	if value != 1 || !errors.Is(err, publicationFailure) {
+		t.Fatalf("ReserveAndUse() = %d, %v", value, err)
+	}
+	if value, err := store.Reserve(context.Background(), testBootID); err != nil || value != 2 {
+		t.Fatalf("Reserve() after callback failure = %d, %v; want 2", value, err)
+	}
+	if _, err := store.ReserveAndUse(context.Background(), testBootID, nil); err == nil {
+		t.Fatal("ReserveAndUse() accepted a nil callback")
+	}
+}
+
+func TestReserveAndUseHoldsOrderingBoundaryThroughCallback(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "sequence"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+	firstUsing := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondUsing := make(chan struct{})
+	results := make(chan error, 2)
+	go func() {
+		_, err := store.ReserveAndUse(context.Background(), testBootID, func(int64) error {
+			close(firstUsing)
+			<-releaseFirst
+			return nil
+		})
+		results <- err
+	}()
+	select {
+	case <-firstUsing:
+	case <-time.After(time.Second):
+		t.Fatal("first callback did not start")
+	}
+	go func() {
+		_, err := store.ReserveAndUse(context.Background(), testBootID, func(int64) error {
+			close(secondUsing)
+			return nil
+		})
+		results <- err
+	}()
+	select {
+	case <-secondUsing:
+		t.Fatal("second callback started before first callback completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseFirst)
+	for range 2 {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatalf("ReserveAndUse() error = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("ReserveAndUse() calls did not finish")
 		}
 	}
 }

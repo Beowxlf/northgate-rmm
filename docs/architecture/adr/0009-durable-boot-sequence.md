@@ -23,11 +23,11 @@ reserving again may safely leave a gap.
 ## Consequences
 
 Agent process restart cannot normally reuse a message sequence, and competing
-instances cannot reserve the same number. An in-process mutex covers sequence
-reservation through queue publication so concurrent snapshots cannot invert
-durable delivery order. Sequence reservation precedes message ID generation,
-encoding, and durable spooling, so failures after reservation can create harmless
-gaps.
+instances cannot reserve the same number. The shared store's in-process mutex
+covers sequence reservation through queue publication for every snapshotter
+using that store, so concurrent snapshots cannot invert durable delivery order.
+Sequence reservation precedes message ID generation, encoding, and durable
+spooling, so failures after reservation can create harmless gaps.
 
 The unkeyed digest detects accidental corruption but is not an authenticity or
 anti-rollback mechanism. Restoring a VM or filesystem may restore a lower local

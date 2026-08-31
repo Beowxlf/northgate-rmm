@@ -165,9 +165,35 @@ func (store *Store) Close() error {
 
 // Reserve persists the next sequence before returning it. A new kernel boot
 // identity begins at one; the current boot continues from its durable floor.
-func (store *Store) Reserve(ctx context.Context, bootID string) (reserved int64, returnErr error) {
+func (store *Store) Reserve(ctx context.Context, bootID string) (int64, error) {
+	return store.ReserveAndUse(ctx, bootID, func(int64) error { return nil })
+}
+
+// ReserveAndUse holds the store's cross-consumer ordering boundary while use
+// publishes the work associated with the reserved sequence. The callback must
+// not re-enter this store. Its failure consumes the sequence and is returned to
+// the caller, making gaps safe while preventing publication order inversion.
+func (store *Store) ReserveAndUse(
+	ctx context.Context,
+	bootID string,
+	use func(int64) error,
+) (int64, error) {
+	if use == nil {
+		return 0, errors.New("sequence use callback is required")
+	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	reserved, err := store.reserveLocked(ctx, bootID)
+	if err != nil {
+		return 0, err
+	}
+	if err := use(reserved); err != nil {
+		return reserved, err
+	}
+	return reserved, nil
+}
+
+func (store *Store) reserveLocked(ctx context.Context, bootID string) (reserved int64, returnErr error) {
 	if store.closed {
 		return 0, ErrClosed
 	}

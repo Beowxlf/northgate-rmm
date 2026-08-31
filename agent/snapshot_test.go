@@ -28,14 +28,18 @@ type observingSequenceStore struct {
 	secondReserved chan struct{}
 }
 
-func (store *observingSequenceStore) Reserve(_ context.Context, _ string) (int64, error) {
+func (store *observingSequenceStore) ReserveAndUse(
+	_ context.Context,
+	_ string,
+	use func(int64) error,
+) (int64, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.next++
 	if store.next == 2 {
 		close(store.secondReserved)
 	}
-	return store.next, nil
+	return store.next, use(store.next)
 }
 
 type firstBlockingQueue struct {
@@ -62,12 +66,16 @@ func (queue *firstBlockingQueue) Enqueue(ctx context.Context, _ string, _ []byte
 	}
 }
 
-func (store *memorySequenceStore) Reserve(_ context.Context, _ string) (int64, error) {
+func (store *memorySequenceStore) ReserveAndUse(
+	_ context.Context,
+	_ string,
+	use func(int64) error,
+) (int64, error) {
 	if store.err != nil {
 		return 0, store.err
 	}
 	store.next++
-	return store.next, nil
+	return store.next, use(store.next)
 }
 
 func (queue *memoryQueue) Enqueue(_ context.Context, id string, payload []byte) error {
@@ -232,7 +240,7 @@ func TestSnapshotFailsBeforeMessageCreationWhenSequenceReservationFails(t *testi
 	}
 }
 
-func TestSnapshotSerializesSequenceReservationThroughEnqueue(t *testing.T) {
+func TestSnapshotSerializesSequenceReservationAcrossSnapshottersThroughEnqueue(t *testing.T) {
 	runner, err := collector.NewRunner("0.2.0")
 	if err != nil {
 		t.Fatalf("NewRunner() error = %v", err)
@@ -246,9 +254,13 @@ func TestSnapshotSerializesSequenceReservationThroughEnqueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSnapshotter() error = %v", err)
 	}
+	secondSnapshotter, err := NewSnapshotter(runner, queue, sequences)
+	if err != nil {
+		t.Fatalf("second NewSnapshotter() error = %v", err)
+	}
 	results := make(chan error, 2)
 	go func() {
-		_, err := snapshotter.Snapshot(
+		_, err := secondSnapshotter.Snapshot(
 			context.Background(),
 			"123e4567-e89b-42d3-a456-426614174003",
 			syntheticSource{},

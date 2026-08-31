@@ -80,6 +80,9 @@ func Open(directory string) (*Store, error) {
 		return nil, errors.New("sequence directory must be a non-root absolute clean path")
 	}
 	parentPath := filepath.Dir(directory)
+	if !protectedParentPath(parentPath) {
+		return nil, errors.New("sequence parent chain permits directory replacement")
+	}
 	parentInfo, err := os.Lstat(parentPath)
 	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("sequence parent must be an existing real directory")

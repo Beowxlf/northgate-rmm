@@ -77,9 +77,11 @@ cannot invert sequence order. The counter continues across agent restart for the
 same kernel boot ID and starts at one for a new kernel boot ID. Reservation gaps
 are valid after a later operation fails; reuse is not. A corrupt, ambiguous,
 wrong-owner, multiply linked, permissive, or concurrently opened store fails
-closed. This local crash-durability control does not claim to resist VM or
-filesystem rollback. A restored lower counter is rejected by the control plane's
-identity/boot floor; the separate G6 update-status sequence requires the
+closed. Linux validation also walks the parent chain and rejects symlinked,
+untrusted-owner, or mutable non-sticky ancestors that could replace the store's
+directory entry. This local crash-durability control does not claim to resist VM
+or filesystem rollback. A restored lower counter is rejected by the control
+plane's identity/boot floor; the separate G6 update-status sequence requires the
 externally allocated and independently anchored rollback-resistant design.
 
 ## Job delivery

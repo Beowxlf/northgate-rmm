@@ -91,6 +91,54 @@ func TestPrivacyPredicatesRejectDifferentOwner(t *testing.T) {
 	}
 }
 
+func TestParentPredicateRejectsDifferentOwner(t *testing.T) {
+	info, err := os.Stat(t.TempDir())
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("Stat() did not return syscall.Stat_t")
+	}
+	other := *stat
+	other.Uid = 1
+	if other.Uid == uint32(os.Geteuid()) {
+		other.Uid = 2
+	}
+	wrapped := fileInfoWithStat{FileInfo: info, stat: &other}
+	if protectedParentInfo(wrapped) {
+		t.Fatal("parent predicate accepted an untrusted owner")
+	}
+}
+
+func TestOpenRejectsWritableNonStickyParent(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "writable-parent")
+	if err := os.Mkdir(parent, 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	if err := os.Chmod(parent, 0o777); err != nil {
+		t.Fatalf("Chmod() error = %v", err)
+	}
+	if _, err := Open(filepath.Join(parent, "sequence")); err == nil {
+		t.Fatal("Open() accepted a writable non-sticky parent")
+	}
+}
+
+func TestOpenRejectsSymlinkInParentChain(t *testing.T) {
+	base := t.TempDir()
+	realParent := filepath.Join(base, "real")
+	if err := os.Mkdir(realParent, 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	linkedParent := filepath.Join(base, "linked")
+	if err := os.Symlink(realParent, linkedParent); err != nil {
+		t.Skipf("Symlink() unavailable: %v", err)
+	}
+	if _, err := Open(filepath.Join(linkedParent, "sequence")); err == nil {
+		t.Fatal("Open() accepted a symlink in the parent chain")
+	}
+}
+
 func TestOpenRejectsMultiplyLinkedState(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "sequence")
 	store, err := Open(directory)

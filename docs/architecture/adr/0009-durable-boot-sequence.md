@@ -15,10 +15,12 @@ Publication writes and syncs a restrictive temporary file, atomically replaces
 the prior state through a stable directory handle, and syncs the directory before
 returning the reservation. The directory and files must be owned by the effective
 agent UID, files must have one link, and group or other permission bits are not
-accepted. Corrupt, unknown, permissive, oversized, concurrently opened, or
-ambiguous state fails closed. A final directory-sync failure returns a typed
-uncertainty and the candidate sequence must not be emitted; reopening and
-reserving again may safely leave a gap.
+accepted. The Linux parent chain must contain only real directories owned by root
+or the effective UID; writable ancestors require sticky-entry protection. Corrupt,
+unknown, permissive, oversized, concurrently opened, or ambiguous state fails
+closed. A final directory-sync failure returns a typed uncertainty and the
+candidate sequence must not be emitted; reopening and reserving again may safely
+leave a gap.
 
 ## Consequences
 

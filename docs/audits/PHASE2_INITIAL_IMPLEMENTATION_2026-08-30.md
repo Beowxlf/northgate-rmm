@@ -49,6 +49,11 @@ are invoked at exact module versions: Staticcheck v0.8.1 and govulncheck v1.7.0.
   compression, TLS resumption, and retry on permanent failures disabled;
 - exact message-ID acknowledgement, bounded response parsing, sanitized error
   classes, and bounded exponential retry with cryptographic jitter; and
+- a create-once identity store that validates the exact endpoint URI binding,
+  certificate lifetime and client purpose, key match and strength, certificate
+  chain, and explicit server roots before durable permission-restricted
+  publication; partial, unknown, permissive, malformed, expired, and mismatched
+  stores fail closed without automatic reenrollment; and
 - no executable service, listener, command runner, privileged helper, package,
   or endpoint installation path.
 
@@ -61,7 +66,9 @@ are invoked at exact module versions: Staticcheck v0.8.1 and govulncheck v1.7.0.
 - Staticcheck v0.8.1: passed;
 - govulncheck v1.7.0: no vulnerabilities found;
 - five-second configuration fuzz campaign: passed with 88,882 executions;
-- five-second OS-release fuzz campaign: passed with 324,982 executions; and
+- five-second OS-release fuzz campaign: passed with 324,982 executions;
+- five-second identity-bundle fuzz campaign: passed locally with 430,577
+  executions; and
 - local Windows race test: not evidenced because the available local C compiler
   cannot build 64-bit race instrumentation. The required Ubuntu CI race run is
   the authoritative blocking check.
@@ -181,12 +188,32 @@ duplicate ordinals, and streams at most `MaxEntries+1` directory entries through
 the stable root. The schema 2 corruption checksum binds the record ID, durable
 order, and payload so order changes cannot pass integrity validation.
 
+The seventeenth exact-head review found two certificate-purpose edge cases in
+the new identity store. The follow-up change rejects a client certificate whose
+EKU extension contains only unknown purposes and rejects an explicit server
+trust root restricted away from server authentication. Synthetic regression
+certificates cover both cases.
+
+The eighteenth exact-head review extended those checks across the complete
+chain. The follow-up change rejects a client issuer restricted away from client
+authentication and rejects leaf, issuer, or server-root certificates containing
+an unhandled critical extension. Synthetic regression certificates cover the
+restricted issuer and critical-root cases.
+
+The nineteenth exact-head review found that manual per-hop signature checks did
+not enforce issuer-name matching or CA path-length constraints. The follow-up
+change replaces the manual client-chain walk with Go's full X.509 path verifier,
+an explicit client-authentication purpose, the supplied chain's final CA as the
+explicit trust anchor, and the supplied intermediates. The store also requires a
+complete chain and a signing-capable leaf key usage before publication.
+
 ## Remaining before G2
 
-This is not a complete Phase 2 qualification. At minimum, enrollment and
-protected identity storage, certificate status/revocation, protected sequence
-persistence, encrypted-spool policy, logging/redaction, package and unprivileged
-`systemd` lifecycle, resource-limit evidence, revoke behavior, clean removal,
-Debian 12 qualification, and the exact canary/network/recovery authorization
-remain unresolved. The mTLS sender and retry behavior are source-tested only and
-have not contacted a live control plane.
+This is not a complete Phase 2 qualification. At minimum, enrollment, identity
+encryption or an approved OS-backed alternative, certificate status/revocation,
+rotation, protected sequence persistence, encrypted-spool policy,
+logging/redaction, package and unprivileged `systemd` lifecycle, resource-limit
+evidence, revoke behavior, clean removal, Debian 12 qualification, and the exact
+canary/network/recovery authorization remain unresolved. The identity store,
+mTLS sender, and retry behavior are source-tested only and have not used a live
+credential or contacted a live control plane.

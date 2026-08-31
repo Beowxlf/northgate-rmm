@@ -257,6 +257,16 @@ func TestInstallFailsClosedOnNonemptyOrInvalidPaths(t *testing.T) {
 	if err := Install(directory, material, now); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("nonempty install error = %v, want ErrCorrupt", err)
 	}
+	malformedDirectory := filepath.Join(parent, "malformed")
+	if err := os.Mkdir(malformedDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(malformedDirectory, bundleName), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(malformedDirectory, material, now); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("malformed existing store error = %v, want ErrCorrupt", err)
+	}
 
 	missingParent := filepath.Join(parent, "missing", "identity")
 	if err := Install(missingParent, material, now); err == nil {

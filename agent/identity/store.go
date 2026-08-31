@@ -113,8 +113,8 @@ func Install(directory string, material Material, now time.Time) (returnErr erro
 		return err
 	}
 	if len(entries) != 0 {
-		for _, entry := range entries {
-			if entry.Name() == bundleName {
+		if len(entries) == 1 && entries[0].Name() == bundleName {
+			if _, loadErr := Load(directory, now); loadErr == nil {
 				return ErrExists
 			}
 		}
@@ -144,8 +144,11 @@ func Install(directory string, material Material, now time.Time) (returnErr erro
 			returnErr = errors.Join(returnErr, fmt.Errorf("clean endpoint identity staging file: %w", cleanupErr))
 		}
 	}()
-	if _, err := file.Write(raw); err != nil {
+	if written, err := file.Write(raw); err != nil || written != len(raw) {
 		_ = file.Close()
+		if err == nil {
+			err = io.ErrShortWrite
+		}
 		return fmt.Errorf("write endpoint identity staging file: %w", err)
 	}
 	if err := file.Sync(); err != nil {

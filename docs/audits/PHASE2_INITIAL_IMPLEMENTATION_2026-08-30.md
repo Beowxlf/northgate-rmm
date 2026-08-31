@@ -188,6 +188,12 @@ duplicate ordinals, and streams at most `MaxEntries+1` directory entries through
 the stable root. The schema 2 corruption checksum binds the record ID, durable
 order, and payload so order changes cannot pass integrity validation.
 
+The seventeenth exact-head review found two certificate-purpose edge cases in
+the new identity store. The follow-up change rejects a client certificate whose
+EKU extension contains only unknown purposes and rejects an explicit server
+trust root restricted away from server authentication. Synthetic regression
+certificates cover both cases.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment, identity

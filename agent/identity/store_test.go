@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -173,6 +174,42 @@ func TestInstallRejectsEndpointBindingAndChainMismatch(t *testing.T) {
 	)
 	if err := Install(filepath.Join(t.TempDir(), "identity"), material, now); err == nil {
 		t.Fatal("mismatched client certificate chain was accepted")
+	}
+}
+
+func TestInstallRejectsIncompatibleExtendedKeyUsage(t *testing.T) {
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	unknownUsage := []asn1.ObjectIdentifier{{1, 3, 6, 1, 4, 1, 55555, 1}}
+	unknownClient := customMaterialWithUsages(
+		t,
+		now.Add(-time.Hour),
+		now.Add(time.Hour),
+		[]x509.ExtKeyUsage(nil),
+		unknownUsage,
+		false,
+		true,
+		testEndpointID,
+		nil,
+		nil,
+	)
+	if err := Install(filepath.Join(t.TempDir(), "identity"), unknownClient, now); err == nil {
+		t.Fatal("unknown-only client EKU was accepted")
+	}
+
+	clientOnlyRoot := customMaterialWithUsages(
+		t,
+		now.Add(-time.Hour),
+		now.Add(time.Hour),
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		nil,
+		false,
+		true,
+		testEndpointID,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		nil,
+	)
+	if err := Install(filepath.Join(t.TempDir(), "identity"), clientOnlyRoot, now); err == nil {
+		t.Fatal("server root restricted to client authentication was accepted")
 	}
 }
 
@@ -424,6 +461,32 @@ func customMaterialWithBinding(
 	rootCA bool,
 	binding string,
 ) Material {
+	return customMaterialWithUsages(
+		t,
+		notBefore,
+		notAfter,
+		clientUsage,
+		nil,
+		clientCA,
+		rootCA,
+		binding,
+		nil,
+		nil,
+	)
+}
+
+func customMaterialWithUsages(
+	t *testing.T,
+	notBefore time.Time,
+	notAfter time.Time,
+	clientUsage []x509.ExtKeyUsage,
+	clientUnknownUsage []asn1.ObjectIdentifier,
+	clientCA bool,
+	rootCA bool,
+	binding string,
+	rootUsage []x509.ExtKeyUsage,
+	rootUnknownUsage []asn1.ObjectIdentifier,
+) Material {
 	t.Helper()
 	clientCAPublic, clientCAPrivate, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -438,6 +501,7 @@ func customMaterialWithBinding(
 	}
 	clientTemplate := certificateTemplate("synthetic-endpoint", notBefore, notAfter, clientCA)
 	clientTemplate.ExtKeyUsage = clientUsage
+	clientTemplate.UnknownExtKeyUsage = clientUnknownUsage
 	endpointURI, err := url.Parse("urn:northgate-rmm:endpoint:" + binding)
 	if err != nil {
 		t.Fatal(err)
@@ -454,6 +518,8 @@ func customMaterialWithBinding(
 		t.Fatal(err)
 	}
 	rootTemplate := certificateTemplate("synthetic-server-root", notBefore.Add(-time.Hour), notAfter.Add(time.Hour), rootCA)
+	rootTemplate.ExtKeyUsage = rootUsage
+	rootTemplate.UnknownExtKeyUsage = rootUnknownUsage
 	rootDER := createCertificate(t, rootTemplate, rootTemplate, rootPublic, rootPrivate)
 
 	return Material{

@@ -411,6 +411,9 @@ func validateMaterial(material Material, now time.Time) (tls.Certificate, *x509.
 		if !root.IsCA || root.KeyUsage&x509.KeyUsageCertSign == 0 || now.Before(root.NotBefore) || !now.Before(root.NotAfter) {
 			return tls.Certificate{}, nil, errors.New("server trust root is not a certificate authority")
 		}
+		if !allowsServerAuthentication(root) {
+			return tls.Certificate{}, nil, errors.New("server trust root does not permit server authentication")
+		}
 		roots.AddCert(root)
 	}
 	return certificate, roots, nil
@@ -455,10 +458,22 @@ func parseCertificates(raw []byte, maxBlocks int) ([]*x509.Certificate, error) {
 
 func allowsClientAuthentication(certificate *x509.Certificate) bool {
 	if len(certificate.ExtKeyUsage) == 0 {
-		return true
+		return len(certificate.UnknownExtKeyUsage) == 0
 	}
 	for _, usage := range certificate.ExtKeyUsage {
 		if usage == x509.ExtKeyUsageClientAuth || usage == x509.ExtKeyUsageAny {
+			return true
+		}
+	}
+	return false
+}
+
+func allowsServerAuthentication(certificate *x509.Certificate) bool {
+	if len(certificate.ExtKeyUsage) == 0 {
+		return len(certificate.UnknownExtKeyUsage) == 0
+	}
+	for _, usage := range certificate.ExtKeyUsage {
+		if usage == x509.ExtKeyUsageServerAuth || usage == x509.ExtKeyUsageAny {
 			return true
 		}
 	}

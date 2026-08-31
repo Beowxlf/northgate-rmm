@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +20,46 @@ type memoryQueue struct {
 type memorySequenceStore struct {
 	next int64
 	err  error
+}
+
+type observingSequenceStore struct {
+	mu             sync.Mutex
+	next           int64
+	secondReserved chan struct{}
+}
+
+func (store *observingSequenceStore) Reserve(_ context.Context, _ string) (int64, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.next++
+	if store.next == 2 {
+		close(store.secondReserved)
+	}
+	return store.next, nil
+}
+
+type firstBlockingQueue struct {
+	mu           sync.Mutex
+	calls        int
+	firstEntered chan struct{}
+	releaseFirst chan struct{}
+}
+
+func (queue *firstBlockingQueue) Enqueue(ctx context.Context, _ string, _ []byte) error {
+	queue.mu.Lock()
+	queue.calls++
+	first := queue.calls == 1
+	queue.mu.Unlock()
+	if !first {
+		return nil
+	}
+	close(queue.firstEntered)
+	select {
+	case <-queue.releaseFirst:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (store *memorySequenceStore) Reserve(_ context.Context, _ string) (int64, error) {
@@ -188,5 +229,59 @@ func TestSnapshotFailsBeforeMessageCreationWhenSequenceReservationFails(t *testi
 	if !errors.Is(err, sequenceFailure) || result.MessageID != "" || result.Sequence != 0 ||
 		result.Complete || len(result.Issues) != 0 || result.Bytes != 0 {
 		t.Fatalf("Snapshot() result = %#v, error = %v", result, err)
+	}
+}
+
+func TestSnapshotSerializesSequenceReservationThroughEnqueue(t *testing.T) {
+	runner, err := collector.NewRunner("0.2.0")
+	if err != nil {
+		t.Fatalf("NewRunner() error = %v", err)
+	}
+	queue := &firstBlockingQueue{
+		firstEntered: make(chan struct{}),
+		releaseFirst: make(chan struct{}),
+	}
+	sequences := &observingSequenceStore{secondReserved: make(chan struct{})}
+	snapshotter, err := NewSnapshotter(runner, queue, sequences)
+	if err != nil {
+		t.Fatalf("NewSnapshotter() error = %v", err)
+	}
+	results := make(chan error, 2)
+	go func() {
+		_, err := snapshotter.Snapshot(
+			context.Background(),
+			"123e4567-e89b-42d3-a456-426614174003",
+			syntheticSource{},
+		)
+		results <- err
+	}()
+	select {
+	case <-queue.firstEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first snapshot did not reach queue")
+	}
+	go func() {
+		_, err := snapshotter.Snapshot(
+			context.Background(),
+			"123e4567-e89b-42d3-a456-426614174003",
+			syntheticSource{},
+		)
+		results <- err
+	}()
+	select {
+	case <-sequences.secondReserved:
+		t.Fatal("second sequence was reserved before the first enqueue completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(queue.releaseFirst)
+	for range 2 {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatalf("Snapshot() error = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("concurrent snapshots did not finish")
+		}
 	}
 }

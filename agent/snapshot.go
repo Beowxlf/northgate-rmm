@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/Beowxlf/northgate-rmm/agent/collector"
@@ -25,6 +26,7 @@ type SequenceStore interface {
 }
 
 type Snapshotter struct {
+	mu         sync.Mutex
 	runner     *collector.Runner
 	queue      Queue
 	sequences  SequenceStore
@@ -70,6 +72,11 @@ func (snapshotter *Snapshotter) Snapshot(
 	if bootID == "" {
 		return SnapshotResult{}, errors.New("boot identity is unavailable")
 	}
+	// The sequence and spool ordering are one local critical section. Without
+	// this boundary, concurrent collectors could reserve 1 then 2 but enqueue
+	// 2 first, causing the server to reject 1 as a replay.
+	snapshotter.mu.Lock()
+	defer snapshotter.mu.Unlock()
 	sequence, err := snapshotter.sequences.Reserve(ctx, bootID)
 	if err != nil {
 		return SnapshotResult{}, err

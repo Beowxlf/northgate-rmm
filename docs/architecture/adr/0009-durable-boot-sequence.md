@@ -13,17 +13,21 @@ kernel boot UUID changes.
 
 Publication writes and syncs a restrictive temporary file, atomically replaces
 the prior state through a stable directory handle, and syncs the directory before
-returning the reservation. Corrupt, unknown, permissive, oversized, concurrently
-opened, or ambiguous state fails closed. A final directory-sync failure returns a
-typed uncertainty and the candidate sequence must not be emitted; reopening and
+returning the reservation. The directory and files must be owned by the effective
+agent UID, files must have one link, and group or other permission bits are not
+accepted. Corrupt, unknown, permissive, oversized, concurrently opened, or
+ambiguous state fails closed. A final directory-sync failure returns a typed
+uncertainty and the candidate sequence must not be emitted; reopening and
 reserving again may safely leave a gap.
 
 ## Consequences
 
 Agent process restart cannot normally reuse a message sequence, and competing
-instances cannot reserve the same number. Sequence reservation precedes message
-ID generation, encoding, and durable spooling, so failures after reservation can
-create harmless gaps.
+instances cannot reserve the same number. An in-process mutex covers sequence
+reservation through queue publication so concurrent snapshots cannot invert
+durable delivery order. Sequence reservation precedes message ID generation,
+encoding, and durable spooling, so failures after reservation can create harmless
+gaps.
 
 The unkeyed digest detects accidental corruption but is not an authenticity or
 anti-rollback mechanism. Restoring a VM or filesystem may restore a lower local

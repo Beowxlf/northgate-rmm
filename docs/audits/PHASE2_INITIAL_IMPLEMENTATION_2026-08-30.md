@@ -47,7 +47,9 @@ are invoked at exact module versions: Staticcheck v0.8.1 and govulncheck v1.7.0.
 - a private, exclusively locked per-boot sequence store that durably reserves
   each message sequence before construction, continues across process restart,
   resets only for a new canonical Linux boot ID, and exposes sync uncertainty
-  without permitting the candidate value to be emitted;
+  without permitting the candidate value to be emitted; Linux ownership,
+  permission, single-link, and cross-process lock checks fail closed, while the
+  snapshot critical section preserves sequence order through spool publication;
 - outbound-only TLS 1.3 mTLS sender accepting only injected endpoint identity
   and explicit roots, with environment proxies, redirects, connection reuse,
   compression, TLS resumption, and retry on permanent failures disabled;

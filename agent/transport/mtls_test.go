@@ -294,6 +294,41 @@ func TestMTLSSenderDistinguishesCallerCancellationAndRequestTimeout(t *testing.T
 	}
 }
 
+func TestMTLSSenderPreservesCancellationDuringResponseRead(t *testing.T) {
+	pki := newTestPKI(t)
+	headersWritten := make(chan struct{})
+	releaseHandler := make(chan struct{})
+	defer close(releaseHandler)
+	server := startMTLSServer(t, pki, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+		close(headersWritten)
+		<-releaseHandler
+	}))
+	sender := newTestSender(t, server, pki)
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		result <- sender.Send(ctx, testMessageID, []byte(`{}`))
+	}()
+	select {
+	case <-headersWritten:
+		cancel()
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("server did not send response headers")
+	}
+	select {
+	case err := <-result:
+		if err == nil || IsRetryable(err) || !errors.Is(err, context.Canceled) {
+			t.Fatalf("Send() response-read cancellation = %v, want permanent context cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Send() did not stop after caller cancellation")
+	}
+}
+
 func TestClassifyNetworkErrorRetriesDroppedHandshake(t *testing.T) {
 	transientCauses := []error{
 		io.EOF,

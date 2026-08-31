@@ -261,6 +261,9 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, MaxResponseBytes+1))
 	if err != nil {
+		if callerErr := ctx.Err(); callerErr != nil {
+			return &DeliveryError{Code: "request_stopped", cause: callerErr}
+		}
 		return &DeliveryError{Code: "response_read_failed", Retryable: true}
 	}
 	if len(raw) == 0 || len(raw) > MaxResponseBytes {

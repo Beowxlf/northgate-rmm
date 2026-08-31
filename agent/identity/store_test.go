@@ -186,9 +186,11 @@ func TestInstallRejectsIncompatibleExtendedKeyUsage(t *testing.T) {
 		now.Add(time.Hour),
 		[]x509.ExtKeyUsage(nil),
 		unknownUsage,
+		nil,
 		false,
 		true,
 		testEndpointID,
+		nil,
 		nil,
 		nil,
 	)
@@ -202,14 +204,60 @@ func TestInstallRejectsIncompatibleExtendedKeyUsage(t *testing.T) {
 		now.Add(time.Hour),
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		nil,
+		nil,
 		false,
 		true,
 		testEndpointID,
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		nil,
+		nil,
 	)
 	if err := Install(filepath.Join(t.TempDir(), "identity"), clientOnlyRoot, now); err == nil {
 		t.Fatal("server root restricted to client authentication was accepted")
+	}
+}
+
+func TestInstallRejectsRestrictedIssuerAndUnhandledCriticalRoot(t *testing.T) {
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	restrictedIssuer := customMaterialWithUsages(
+		t,
+		now.Add(-time.Hour),
+		now.Add(time.Hour),
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		nil,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		false,
+		true,
+		testEndpointID,
+		nil,
+		nil,
+		nil,
+	)
+	if err := Install(filepath.Join(t.TempDir(), "identity"), restrictedIssuer, now); err == nil {
+		t.Fatal("client issuer restricted to server authentication was accepted")
+	}
+
+	criticalExtension := pkix.Extension{
+		Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 55555, 2},
+		Critical: true,
+		Value:    []byte{5, 0},
+	}
+	criticalRoot := customMaterialWithUsages(
+		t,
+		now.Add(-time.Hour),
+		now.Add(time.Hour),
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		nil,
+		nil,
+		false,
+		true,
+		testEndpointID,
+		nil,
+		nil,
+		[]pkix.Extension{criticalExtension},
+	)
+	if err := Install(filepath.Join(t.TempDir(), "identity"), criticalRoot, now); err == nil {
+		t.Fatal("server root with an unhandled critical extension was accepted")
 	}
 }
 
@@ -467,9 +515,11 @@ func customMaterialWithBinding(
 		notAfter,
 		clientUsage,
 		nil,
+		nil,
 		clientCA,
 		rootCA,
 		binding,
+		nil,
 		nil,
 		nil,
 	)
@@ -481,11 +531,13 @@ func customMaterialWithUsages(
 	notAfter time.Time,
 	clientUsage []x509.ExtKeyUsage,
 	clientUnknownUsage []asn1.ObjectIdentifier,
+	clientIssuerUsage []x509.ExtKeyUsage,
 	clientCA bool,
 	rootCA bool,
 	binding string,
 	rootUsage []x509.ExtKeyUsage,
 	rootUnknownUsage []asn1.ObjectIdentifier,
+	rootExtraExtensions []pkix.Extension,
 ) Material {
 	t.Helper()
 	clientCAPublic, clientCAPrivate, err := ed25519.GenerateKey(rand.Reader)
@@ -493,6 +545,7 @@ func customMaterialWithUsages(
 		t.Fatal(err)
 	}
 	clientCATemplate := certificateTemplate("synthetic-client-ca", notBefore.Add(-time.Hour), notAfter.Add(time.Hour), true)
+	clientCATemplate.ExtKeyUsage = clientIssuerUsage
 	clientCADER := createCertificate(t, clientCATemplate, clientCATemplate, clientCAPublic, clientCAPrivate)
 
 	clientPublic, clientPrivate, err := ed25519.GenerateKey(rand.Reader)
@@ -520,6 +573,7 @@ func customMaterialWithUsages(
 	rootTemplate := certificateTemplate("synthetic-server-root", notBefore.Add(-time.Hour), notAfter.Add(time.Hour), rootCA)
 	rootTemplate.ExtKeyUsage = rootUsage
 	rootTemplate.UnknownExtKeyUsage = rootUnknownUsage
+	rootTemplate.ExtraExtensions = rootExtraExtensions
 	rootDER := createCertificate(t, rootTemplate, rootTemplate, rootPublic, rootPrivate)
 
 	return Material{

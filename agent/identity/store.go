@@ -389,13 +389,15 @@ func validateMaterial(material Material, now time.Time) (tls.Certificate, *x509.
 	}
 	leaf, err := x509.ParseCertificate(certificate.Certificate[0])
 	if err != nil || leaf.IsCA || now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) ||
-		!allowsClientAuthentication(leaf) || !matchesEndpointID(leaf, material.EndpointID) {
+		len(leaf.UnhandledCriticalExtensions) != 0 || !allowsClientAuthentication(leaf) ||
+		!matchesEndpointID(leaf, material.EndpointID) {
 		return tls.Certificate{}, nil, errors.New("endpoint client certificate is invalid or not currently usable")
 	}
 	for index := 1; index < len(clientCertificates); index++ {
 		issuer := clientCertificates[index]
 		if !issuer.IsCA || issuer.KeyUsage&x509.KeyUsageCertSign == 0 ||
 			now.Before(issuer.NotBefore) || !now.Before(issuer.NotAfter) ||
+			len(issuer.UnhandledCriticalExtensions) != 0 || !allowsClientAuthentication(issuer) ||
 			clientCertificates[index-1].CheckSignatureFrom(issuer) != nil {
 			return tls.Certificate{}, nil, errors.New("endpoint client certificate chain is invalid")
 		}
@@ -408,7 +410,8 @@ func validateMaterial(material Material, now time.Time) (tls.Certificate, *x509.
 	}
 	roots := x509.NewCertPool()
 	for _, root := range rootCertificates {
-		if !root.IsCA || root.KeyUsage&x509.KeyUsageCertSign == 0 || now.Before(root.NotBefore) || !now.Before(root.NotAfter) {
+		if !root.IsCA || root.KeyUsage&x509.KeyUsageCertSign == 0 || now.Before(root.NotBefore) ||
+			!now.Before(root.NotAfter) || len(root.UnhandledCriticalExtensions) != 0 {
 			return tls.Certificate{}, nil, errors.New("server trust root is not a certificate authority")
 		}
 		if !allowsServerAuthentication(root) {

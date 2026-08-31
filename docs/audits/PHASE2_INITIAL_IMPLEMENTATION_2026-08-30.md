@@ -194,6 +194,12 @@ EKU extension contains only unknown purposes and rejects an explicit server
 trust root restricted away from server authentication. Synthetic regression
 certificates cover both cases.
 
+The eighteenth exact-head review extended those checks across the complete
+chain. The follow-up change rejects a client issuer restricted away from client
+authentication and rejects leaf, issuer, or server-root certificates containing
+an unhandled critical extension. Synthetic regression certificates cover the
+restricted issuer and critical-root cases.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment, identity

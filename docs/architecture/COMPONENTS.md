@@ -51,7 +51,8 @@ references. Application logs do not replace audit records.
 
 Runs without administrative privilege, maintains identity and connection state,
 dispatches only compiled typed handlers, enforces local policy, and limits spool,
-CPU, memory, output, retries, and concurrency.
+CPU, memory, output, retries, and concurrency. It reserves each outbound message
+sequence durably under a single-writer lock before constructing the message.
 
 ## Collectors
 

@@ -121,10 +121,11 @@ observable rejection. Endpoint spool and result output have hard quotas.
   authorized, installed, or qualified;
 - the current spool checksum detects accidental corruption but does not provide
   keyed integrity, encryption, or rollback resistance;
-- a permission-restricted create-once identity bundle now exists, but enrollment,
-  encrypted or hardware-backed identity protection, rotation, online status,
-  protected sequence persistence, encrypted spool, and secure package/service
-  lifecycle remain unimplemented;
+- a permission-restricted create-once identity bundle and crash-durable per-boot
+  message sequence store now exist, but enrollment, encrypted or hardware-backed
+  identity protection, rotation, online status, externally rollback-protected
+  sequence state, encrypted spool, and secure package/service lifecycle remain
+  unimplemented;
 - the mTLS sender and retry policy are source-tested only; endpoint certificate
   status, operational PKI, redacted logging, and live revocation remain G2
   blockers;

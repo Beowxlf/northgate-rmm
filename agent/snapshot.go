@@ -20,9 +20,14 @@ type Queue interface {
 	Enqueue(context.Context, string, []byte) error
 }
 
+type SequenceStore interface {
+	Reserve(context.Context, string) (int64, error)
+}
+
 type Snapshotter struct {
 	runner     *collector.Runner
 	queue      Queue
+	sequences  SequenceStore
 	clock      func() time.Time
 	newID      func() (string, error)
 	messageTTL time.Duration
@@ -30,18 +35,20 @@ type Snapshotter struct {
 
 type SnapshotResult struct {
 	MessageID string
+	Sequence  int64
 	Complete  bool
 	Issues    []collector.Issue
 	Bytes     int
 }
 
-func NewSnapshotter(runner *collector.Runner, queue Queue) (*Snapshotter, error) {
-	if runner == nil || queue == nil {
+func NewSnapshotter(runner *collector.Runner, queue Queue, sequences SequenceStore) (*Snapshotter, error) {
+	if runner == nil || queue == nil || sequences == nil {
 		return nil, errors.New("snapshotter dependencies are required")
 	}
 	return &Snapshotter{
 		runner:     runner,
 		queue:      queue,
+		sequences:  sequences,
 		clock:      time.Now,
 		newID:      newUUID,
 		messageTTL: DefaultMessageTTL,
@@ -53,7 +60,6 @@ func NewSnapshotter(runner *collector.Runner, queue Queue) (*Snapshotter, error)
 func (snapshotter *Snapshotter) Snapshot(
 	ctx context.Context,
 	endpointID string,
-	sequence int64,
 	source collector.Source,
 ) (SnapshotResult, error) {
 	result, err := snapshotter.runner.Run(ctx, source)
@@ -63,6 +69,10 @@ func (snapshotter *Snapshotter) Snapshot(
 	bootID := result.Fields["boot.id"]
 	if bootID == "" {
 		return SnapshotResult{}, errors.New("boot identity is unavailable")
+	}
+	sequence, err := snapshotter.sequences.Reserve(ctx, bootID)
+	if err != nil {
+		return SnapshotResult{}, err
 	}
 	messageID, err := snapshotter.newID()
 	if err != nil {
@@ -97,6 +107,7 @@ func (snapshotter *Snapshotter) Snapshot(
 	}
 	snapshotResult := SnapshotResult{
 		MessageID: messageID,
+		Sequence:  sequence,
 		Complete:  result.Complete,
 		Issues:    append([]collector.Issue(nil), result.Issues...),
 		Bytes:     len(raw),

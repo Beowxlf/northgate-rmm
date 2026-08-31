@@ -70,6 +70,16 @@ the heartbeat invalid.
 Server receipt time defines communication freshness. Agent time is retained as an
 observation and evaluated for skew.
 
+For the read-only Linux agent, one exclusively locked private local store reserves
+the next sequence before a message is created. The counter continues across agent
+restart for the same kernel boot ID and starts at one for a new kernel boot ID.
+Reservation gaps are valid after a later operation fails; reuse is not. A corrupt,
+ambiguous, permissive, or concurrently opened store fails closed. This local
+crash-durability control does not claim to resist VM or filesystem rollback. A
+restored lower counter is rejected by the control plane's identity/boot floor;
+the separate G6 update-status sequence requires the externally allocated and
+independently anchored rollback-resistant design.
+
 ## Job delivery
 
 No endpoint job exists before Phase 4. When enabled, a job includes exact target,

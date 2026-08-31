@@ -53,14 +53,16 @@ collector, job scheduler, or command-execution primitive is present.
 
 The in-progress Go agent source adds strict non-secret configuration, bounded
 allowlisted Linux collectors, the Phase 1-compatible inventory envelope, an
-checksum-validated quota spool, and an outbound-only transport interface. It
+checksum-validated quota spool, a crash-durable per-boot sequence allocator,
+and an outbound-only transport interface. It
 also includes a source-tested TLS 1.3 mutual-authentication sender with exact
 message acknowledgement and bounded jittered retry policy. A create-once local
 identity store now validates the endpoint-bound certificate, key, and explicit
 server roots before publishing one permission-restricted bundle. It has no
 listener, enrollment network flow, command runner, privileged helper, package,
-or service installation. Operational PKI, online certificate status, protected
-sequence persistence, encryption, and keyed spool integrity remain G2 blockers.
+or service installation. Operational PKI, online certificate status,
+externally rollback-protected state, encryption, and keyed spool integrity
+remain G2 blockers.
 
 ## Phase 1 developer checks
 

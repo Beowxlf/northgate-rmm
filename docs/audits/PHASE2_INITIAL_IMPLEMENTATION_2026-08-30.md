@@ -44,6 +44,10 @@ are invoked at exact module versions: Staticcheck v0.8.1 and govulncheck v1.7.0.
   corruption but is not yet the keyed-integrity or encryption control required
   for G2;
 - cryptographic version-4 message and correlation identifiers;
+- a private, exclusively locked per-boot sequence store that durably reserves
+  each message sequence before construction, continues across process restart,
+  resets only for a new canonical Linux boot ID, and exposes sync uncertainty
+  without permitting the candidate value to be emitted;
 - outbound-only TLS 1.3 mTLS sender accepting only injected endpoint identity
   and explicit roots, with environment proxies, redirects, connection reuse,
   compression, TLS resumption, and retry on permanent failures disabled;
@@ -68,6 +72,8 @@ are invoked at exact module versions: Staticcheck v0.8.1 and govulncheck v1.7.0.
 - five-second configuration fuzz campaign: passed with 88,882 executions;
 - five-second OS-release fuzz campaign: passed with 324,982 executions;
 - five-second identity-bundle fuzz campaign: passed locally with 430,577
+  executions;
+- five-second sequence-state fuzz campaign: passed locally with 371,132
   executions; and
 - local Windows race test: not evidenced because the available local C compiler
   cannot build 64-bit race instrumentation. The required Ubuntu CI race run is
@@ -211,7 +217,7 @@ complete chain and a signing-capable leaf key usage before publication.
 
 This is not a complete Phase 2 qualification. At minimum, enrollment, identity
 encryption or an approved OS-backed alternative, certificate status/revocation,
-rotation, protected sequence persistence, encrypted-spool policy,
+rotation, externally rollback-protected sequence state, encrypted-spool policy,
 logging/redaction, package and unprivileged `systemd` lifecycle, resource-limit
 evidence, revoke behavior, clean removal, Debian 12 qualification, and the exact
 canary/network/recovery authorization remain unresolved. The identity store,

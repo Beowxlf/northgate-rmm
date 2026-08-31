@@ -16,6 +16,19 @@ type memoryQueue struct {
 	err     error
 }
 
+type memorySequenceStore struct {
+	next int64
+	err  error
+}
+
+func (store *memorySequenceStore) Reserve(_ context.Context, _ string) (int64, error) {
+	if store.err != nil {
+		return 0, store.err
+	}
+	store.next++
+	return store.next, nil
+}
+
 func (queue *memoryQueue) Enqueue(_ context.Context, id string, payload []byte) error {
 	if queue.err != nil {
 		return queue.err
@@ -53,7 +66,7 @@ func TestSnapshotQueuesPhaseOneCompatibleInventory(t *testing.T) {
 		t.Fatalf("NewRunner() error = %v", err)
 	}
 	queue := &memoryQueue{}
-	snapshotter, err := NewSnapshotter(runner, queue)
+	snapshotter, err := NewSnapshotter(runner, queue, &memorySequenceStore{})
 	if err != nil {
 		t.Fatalf("NewSnapshotter() error = %v", err)
 	}
@@ -72,13 +85,12 @@ func TestSnapshotQueuesPhaseOneCompatibleInventory(t *testing.T) {
 	result, err := snapshotter.Snapshot(
 		context.Background(),
 		"123e4567-e89b-42d3-a456-426614174003",
-		1,
 		syntheticSource{},
 	)
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
-	if queue.id != result.MessageID || result.Bytes != len(queue.payload) || !result.Complete {
+	if queue.id != result.MessageID || result.Sequence != 1 || result.Bytes != len(queue.payload) || !result.Complete {
 		t.Fatalf("unexpected snapshot result: %#v", result)
 	}
 	var message map[string]any
@@ -88,6 +100,10 @@ func TestSnapshotQueuesPhaseOneCompatibleInventory(t *testing.T) {
 	if message["type"] != "inventory" {
 		t.Fatalf("unexpected queued message: %s", queue.payload)
 	}
+	envelope, ok := message["envelope"].(map[string]any)
+	if !ok || envelope["sequence"] != float64(result.Sequence) {
+		t.Fatalf("queued sequence does not match reservation: %s", queue.payload)
+	}
 }
 
 func TestSnapshotPreservesPartialCollectionState(t *testing.T) {
@@ -96,14 +112,13 @@ func TestSnapshotPreservesPartialCollectionState(t *testing.T) {
 		t.Fatalf("NewRunner() error = %v", err)
 	}
 	queue := &memoryQueue{}
-	snapshotter, err := NewSnapshotter(runner, queue)
+	snapshotter, err := NewSnapshotter(runner, queue, &memorySequenceStore{})
 	if err != nil {
 		t.Fatalf("NewSnapshotter() error = %v", err)
 	}
 	result, err := snapshotter.Snapshot(
 		context.Background(),
 		"123e4567-e89b-42d3-a456-426614174003",
-		1,
 		syntheticSource{diskError: errors.New("synthetic disk failure")},
 	)
 	if err != nil {
@@ -130,7 +145,7 @@ func TestSnapshotPreservesMessageIDOnQueueFailure(t *testing.T) {
 		t.Fatalf("NewRunner() error = %v", err)
 	}
 	queue := &memoryQueue{err: errors.New("synthetic queue failure")}
-	snapshotter, err := NewSnapshotter(runner, queue)
+	snapshotter, err := NewSnapshotter(runner, queue, &memorySequenceStore{})
 	if err != nil {
 		t.Fatalf("NewSnapshotter() error = %v", err)
 	}
@@ -144,10 +159,34 @@ func TestSnapshotPreservesMessageIDOnQueueFailure(t *testing.T) {
 	result, err := snapshotter.Snapshot(
 		context.Background(),
 		"123e4567-e89b-42d3-a456-426614174003",
-		1,
 		syntheticSource{},
 	)
 	if err == nil || result.MessageID != wantID {
+		t.Fatalf("Snapshot() result = %#v, error = %v", result, err)
+	}
+}
+
+func TestSnapshotFailsBeforeMessageCreationWhenSequenceReservationFails(t *testing.T) {
+	runner, err := collector.NewRunner("0.2.0")
+	if err != nil {
+		t.Fatalf("NewRunner() error = %v", err)
+	}
+	sequenceFailure := errors.New("synthetic sequence failure")
+	snapshotter, err := NewSnapshotter(
+		runner,
+		&memoryQueue{},
+		&memorySequenceStore{err: sequenceFailure},
+	)
+	if err != nil {
+		t.Fatalf("NewSnapshotter() error = %v", err)
+	}
+	result, err := snapshotter.Snapshot(
+		context.Background(),
+		"123e4567-e89b-42d3-a456-426614174003",
+		syntheticSource{},
+	)
+	if !errors.Is(err, sequenceFailure) || result.MessageID != "" || result.Sequence != 0 ||
+		result.Complete || len(result.Issues) != 0 || result.Bytes != 0 {
 		t.Fatalf("Snapshot() result = %#v, error = %v", result, err)
 	}
 }

@@ -44,7 +44,11 @@ are invoked at exact module versions: Staticcheck v0.8.1 and govulncheck v1.7.0.
   corruption but is not yet the keyed-integrity or encryption control required
   for G2;
 - cryptographic version-4 message and correlation identifiers;
-- outbound-only transport interface with no implementation; and
+- outbound-only TLS 1.3 mTLS sender accepting only injected endpoint identity
+  and explicit roots, with environment proxies, redirects, connection reuse,
+  compression, TLS resumption, and retry on permanent failures disabled;
+- exact message-ID acknowledgement, bounded response parsing, sanitized error
+  classes, and bounded exponential retry with cryptographic jitter; and
 - no executable service, listener, command runner, privileged helper, package,
   or endpoint installation path.
 
@@ -65,6 +69,14 @@ are invoked at exact module versions: Staticcheck v0.8.1 and govulncheck v1.7.0.
 The repository security workflow also runs gofmt, module verification, vet, race
 tests, Staticcheck, govulncheck, and Semgrep for Go. A passing exact-head CI run
 is required before merge.
+
+The mTLS transport slice uses only ephemeral synthetic certificates and a local
+loopback test server. Tests prove TLS 1.2 rejection, mutual client
+authentication, explicit-root server validation, disabled proxy/redirect/reuse
+and TLS-resumption behavior, exact acknowledgement binding, response bounds,
+permanent/transient classification, retry limits, jitter, entropy failure, and
+context cancellation. No live endpoint identity or NorthGate control plane was
+used.
 
 The first exact-head review identified and blocked five boundary defects. The
 follow-up change enforces file and disk source allowlists in the native adapter,
@@ -171,8 +183,10 @@ order, and payload so order changes cannot pass integrity validation.
 
 ## Remaining before G2
 
-This is not a complete Phase 2 qualification. At minimum, enrollment and mTLS
-identity, protected sequence persistence, encrypted-spool policy, retry/backoff,
-logging/redaction, package and unprivileged `systemd` lifecycle, resource-limit
-evidence, revoke behavior, clean removal, Debian 12 qualification, and the exact
-canary/network/recovery authorization remain unresolved.
+This is not a complete Phase 2 qualification. At minimum, enrollment and
+protected identity storage, certificate status/revocation, protected sequence
+persistence, encrypted-spool policy, logging/redaction, package and unprivileged
+`systemd` lifecycle, resource-limit evidence, revoke behavior, clean removal,
+Debian 12 qualification, and the exact canary/network/recovery authorization
+remain unresolved. The mTLS sender and retry behavior are source-tested only and
+have not contacted a live control plane.

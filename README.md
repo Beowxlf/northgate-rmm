@@ -39,6 +39,7 @@ The first executable lesson is
 - [Security requirements](docs/security/SECURITY_REQUIREMENTS.md)
 - [Incident response](docs/operations/INCIDENT_RESPONSE.md)
 - [Backup and restore](docs/operations/BACKUP_RESTORE.md)
+- [Linux package lifecycle](docs/operations/LINUX_PACKAGE_LIFECYCLE.md)
 
 The Phase 1 trustworthy vertical-slice simulation is complete. A separate,
 bounded authorization now permits **Phase 2 Linux-agent source development**.
@@ -58,9 +59,13 @@ and an outbound-only transport interface. It
 also includes a source-tested TLS 1.3 mutual-authentication sender with exact
 message acknowledgement and bounded jittered retry policy. A create-once local
 identity store now validates the endpoint-bound certificate, key, and explicit
-server roots before publishing one permission-restricted bundle. It has no
-listener, enrollment network flow, command runner, privileged helper, package,
-or service installation. Operational PKI, online certificate status,
+server roots before publishing one permission-restricted bundle. A closed-schema
+JSON event logger rejects arbitrary fields and raw error text. A source-only
+Debian 12 amd64 lifecycle contract and hardened, resource-bounded `systemd` unit
+draft are validated without installing or invoking anything. The repository
+still has no executable agent entrypoint, installable package, service activation,
+listener, enrollment network flow, command runner, or privileged helper.
+Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.
 

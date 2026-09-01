@@ -32,11 +32,18 @@
 ## Agent tests
 
 - service runs unprivileged;
+- structured agent logs reject arbitrary fields, raw errors, secret-shaped
+  values, malformed identifiers, and control-character injection;
+- package and service drafts reject root execution, shell wrappers, added
+  environment fields, unbounded resources, and weakened sandbox directives;
 - key/config/spool permission enforcement;
 - resource exhaustion and crash-loop limits;
 - collector timeout/failure isolation;
 - no shell metacharacter or path traversal construction;
 - uninstall removes executable/secrets and revokes identity;
+- source-only lifecycle simulation preserves evidence-bearing state on ordinary
+  uninstall and requires approval, prior revocation, and evidence export for
+  purge;
 - supported OS/architecture matrix and upgrade compatibility.
 
 ## Remote-access tests

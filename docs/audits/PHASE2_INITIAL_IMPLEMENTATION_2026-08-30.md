@@ -246,6 +246,11 @@ combined with another sanitized failure class. The corrected schema binds
 `uncertain` and `state_uncertain` in both directions so downstream consumers do
 not receive contradictory event semantics.
 
+The third review of this slice found that a writer can persist a partial JSON
+record before returning an error. The logger now permanently rejects subsequent
+writes after any write failure, preventing a later record from being appended to
+an ambiguous fragment, and tests this fail-closed behavior.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment, identity

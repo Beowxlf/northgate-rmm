@@ -166,6 +166,24 @@ func TestEmitReturnsSanitizedWriteSentinel(t *testing.T) {
 	}
 }
 
+func TestEmitFailsClosedAfterPartialWrite(t *testing.T) {
+	writer := &partialFailWriter{}
+	logger, _ := NewWithClock(writer, func() time.Time { return fixedTime })
+	if err := logger.Emit(validEventFixture()); !errors.Is(err, ErrWriteEvent) {
+		t.Fatalf("first Emit() error = %v, want ErrWriteEvent", err)
+	}
+	persisted := writer.output.String()
+	if persisted == "" || strings.HasSuffix(persisted, "\n") {
+		t.Fatalf("test writer did not create a partial record: %q", persisted)
+	}
+	if err := logger.Emit(validEventFixture()); !errors.Is(err, ErrWriteEvent) {
+		t.Fatalf("second Emit() error = %v, want ErrWriteEvent", err)
+	}
+	if writer.output.String() != persisted || writer.calls != 1 {
+		t.Fatalf("failed logger wrote again: calls=%d output=%q", writer.calls, writer.output.String())
+	}
+}
+
 func FuzzEmit(f *testing.F) {
 	f.Add("agent", "123e4567-e89b-42d3-a456-426614174000")
 	f.Add("api_key=not-a-log-field", "line-one\nline-two")
@@ -186,4 +204,18 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {
 	return 0, fmt.Errorf("private-detail: %w", io.ErrClosedPipe)
+}
+
+type partialFailWriter struct {
+	output bytes.Buffer
+	calls  int
+}
+
+func (writer *partialFailWriter) Write(value []byte) (int, error) {
+	writer.calls++
+	if writer.calls == 1 {
+		written, _ := writer.output.Write(value[:len(value)/2])
+		return written, io.ErrShortWrite
+	}
+	return writer.output.Write(value)
 }

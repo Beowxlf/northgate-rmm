@@ -106,6 +106,7 @@ type Logger struct {
 	mu     sync.Mutex
 	writer io.Writer
 	now    func() time.Time
+	failed bool
 }
 
 func New(writer io.Writer) (*Logger, error) {
@@ -128,6 +129,9 @@ func (logger *Logger) Emit(event Event) error {
 	}
 	logger.mu.Lock()
 	defer logger.mu.Unlock()
+	if logger.failed {
+		return ErrWriteEvent
+	}
 
 	timestamp := logger.now().UTC()
 	if timestamp.Year() < 1 || timestamp.Year() > 9999 {
@@ -151,6 +155,7 @@ func (logger *Logger) Emit(event Event) error {
 	encoded = append(encoded, '\n')
 
 	if err := writeAll(logger.writer, encoded); err != nil {
+		logger.failed = true
 		return ErrWriteEvent
 	}
 	return nil

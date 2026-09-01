@@ -235,6 +235,12 @@ ordinary removal cannot precede revocation and purge cannot proceed without
 approval and evidence export. Exact-head CI and review remain required before
 this paragraph becomes merge evidence.
 
+The first review of this slice found that delivery permitted success, failure,
+and rejection but not an uncertain result. Because a request can reach the
+server while its acknowledgement is lost, the corrected schema permits a
+sanitized uncertain delivery event and includes a regression test for that
+honest-state path.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment, identity

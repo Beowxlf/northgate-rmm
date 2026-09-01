@@ -98,6 +98,22 @@ func TestEmitEnforcesOutcomeAndFailureConsistency(t *testing.T) {
 	}
 }
 
+func TestEmitAllowsUncertainDeliveryWithoutRawError(t *testing.T) {
+	var output bytes.Buffer
+	logger, _ := NewWithClock(&output, func() time.Time { return fixedTime })
+	event := validEventFixture()
+	event.Level = LevelWarn
+	event.Outcome = OutcomeUncertain
+	event.FailureClass = FailureStateUncertain
+	if err := logger.Emit(event); err != nil {
+		t.Fatalf("Emit() error = %v", err)
+	}
+	if !strings.Contains(output.String(), `"outcome":"uncertain"`) ||
+		strings.Contains(output.String(), "private-detail") {
+		t.Fatalf("unexpected uncertain-delivery record: %q", output.String())
+	}
+}
+
 func TestEmitSerializesConcurrentRecords(t *testing.T) {
 	var output bytes.Buffer
 	logger, _ := NewWithClock(&output, func() time.Time { return fixedTime })

@@ -201,7 +201,7 @@ func validCodeComponentOutcome(event Event) bool {
 			oneOf(event.Outcome, OutcomeSucceeded, OutcomePartial, OutcomeFailed)
 	case CodeDelivery:
 		return event.Component == ComponentTransport &&
-			oneOf(event.Outcome, OutcomeSucceeded, OutcomeFailed, OutcomeRejected)
+			oneOf(event.Outcome, OutcomeSucceeded, OutcomeFailed, OutcomeRejected, OutcomeUncertain)
 	case CodeLocalState:
 		return oneOf(event.Component, ComponentIdentity, ComponentSequence, ComponentSpool) &&
 			oneOf(event.Outcome, OutcomeSucceeded, OutcomeFailed, OutcomeRejected, OutcomeUncertain)

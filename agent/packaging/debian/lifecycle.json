@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "status": "source-draft-not-installable",
+  "target": {
+    "distribution": "debian",
+    "release": "12",
+    "architecture": "amd64"
+  },
+  "paths": {
+    "executable": "/usr/libexec/northgate-rmm/northgate-rmm-agent",
+    "unit": "/usr/lib/systemd/system/northgate-rmm-agent.service",
+    "config": "/etc/northgate-rmm/agent.json",
+    "state": "/var/lib/northgate-rmm",
+    "identity": "/var/lib/northgate-rmm/identity"
+  },
+  "ownership": {
+    "executable": "root:root:0755",
+    "unit": "root:root:0644",
+    "config_directory": "root:root:0755",
+    "config": "root:northgate-rmm:0640",
+    "state": "northgate-rmm:northgate-rmm:0700",
+    "identity_directory": "northgate-rmm:northgate-rmm:0700",
+    "identity_bundle": "northgate-rmm:northgate-rmm:0600"
+  },
+  "lifecycle": {
+    "install": [
+      "create_locked_system_identity",
+      "create_root_owned_config_directory",
+      "create_private_state_directory",
+      "install_root_owned_executable",
+      "install_root_owned_unit",
+      "daemon_reload",
+      "leave_service_disabled"
+    ],
+    "upgrade": [
+      "stop_if_running",
+      "replace_verified_executable",
+      "replace_verified_unit",
+      "daemon_reload",
+      "preserve_config",
+      "preserve_state",
+      "preserve_identity",
+      "restart_only_if_previously_running"
+    ],
+    "revoke": [
+      "revoke_control_plane_identity",
+      "stop_service",
+      "disable_service",
+      "remove_local_identity"
+    ],
+    "uninstall": [
+      "require_identity_revoked",
+      "stop_service",
+      "disable_service",
+      "remove_unit",
+      "remove_executable",
+      "daemon_reload",
+      "preserve_config",
+      "preserve_state"
+    ],
+    "purge": [
+      "require_explicit_approval",
+      "require_identity_revoked",
+      "require_evidence_export",
+      "remove_config",
+      "remove_state",
+      "remove_system_identity"
+    ]
+  }
+}

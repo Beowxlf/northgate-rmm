@@ -60,9 +60,19 @@ are invoked at exact module versions: Staticcheck v0.8.1 and govulncheck v1.7.0.
   certificate lifetime and client purpose, key match and strength, certificate
   chain, and explicit server roots before durable permission-restricted
   publication; partial, unknown, permissive, malformed, expired, and mismatched
-  stores fail closed without automatic reenrollment; and
-- no executable service, listener, command runner, privileged helper, package,
-  or endpoint installation path.
+  stores fail closed without automatic reenrollment;
+- a bounded newline-delimited JSON event logger with a closed field/value schema,
+  canonical optional identifiers, UTC timestamps, serialized writes, and no
+  arbitrary message, raw error, URL, hostname, or endpoint-data fields;
+- a validated source-only Debian 12 amd64 lifecycle contract that keeps install
+  disabled, preserves state across upgrade/uninstall, requires identity
+  revocation before uninstall, and requires approval plus evidence export before
+  purge;
+- a hardened unprivileged `systemd` unit draft with empty capability sets,
+  filesystem/process/kernel protections, bounded restart behavior, and explicit
+  memory, CPU, task, and file-descriptor limits; and
+- no executable service, listener, command runner, privileged helper, installable
+  package, service activation, or endpoint installation path.
 
 ## Validation
 
@@ -216,13 +226,45 @@ an explicit client-authentication purpose, the supplied chain's final CA as the
 explicit trust anchor, and the supplied intermediates. The store also requires a
 complete chain and a signing-capable leaf key usage before publication.
 
+The next source slice adds closed-schema structured event logging and a
+non-installing Debian lifecycle/service draft. Its tests reject arbitrary or
+secret-shaped log fields, raw writer errors, root service execution, shell
+wrappers, environment injection, weakened sandboxing, unbounded resources, and
+unsafe lifecycle reordering. A filesystemless lifecycle model verifies that
+ordinary removal cannot precede revocation and purge cannot proceed without
+approval and evidence export. Exact-head CI and review remain required before
+this paragraph becomes merge evidence.
+
+The first review of this slice found that delivery permitted success, failure,
+and rejection but not an uncertain result. Because a request can reach the
+server while its acknowledgement is lost, the corrected schema permits a
+sanitized uncertain delivery event and includes a regression test for that
+honest-state path.
+
+The second review of this slice found that the uncertain outcome could still be
+combined with another sanitized failure class. The corrected schema binds
+`uncertain` and `state_uncertain` in both directions so downstream consumers do
+not receive contradictory event semantics.
+
+The third review of this slice found that a writer can persist a partial JSON
+record before returning an error. The logger now permanently rejects subsequent
+writes after any write failure, preventing a later record from being appended to
+an ambiguous fragment, and tests this fail-closed behavior.
+
+The fourth review of this slice found that `ProcSubset=pid` would hide the
+kernel boot UUID required by the boot collector. The unit keeps
+`ProtectProc=invisible` for process isolation but removes the incompatible
+subset restriction, with a regression test that rejects its return.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment, identity
 encryption or an approved OS-backed alternative, certificate status/revocation,
 rotation, externally rollback-protected sequence state, encrypted-spool policy,
-logging/redaction, package and unprivileged `systemd` lifecycle, resource-limit
-evidence, revoke behavior, clean removal, Debian 12 qualification, and the exact
-canary/network/recovery authorization remain unresolved. The identity store,
-mTLS sender, and retry behavior are source-tested only and have not used a live
-credential or contacted a live control plane.
+runtime logging integration, an actually built and signed package, hermetic
+package-manager/systemd compatibility tests, live resource-limit evidence,
+control-plane revoke behavior, clean removal, Debian 12 qualification, and the
+exact canary/network/recovery authorization remain unresolved. The identity
+store, mTLS sender, logging API, package lifecycle, and retry behavior are
+source-tested only and have not used a live credential, contacted a live control
+plane, or installed a service.

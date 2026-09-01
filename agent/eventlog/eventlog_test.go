@@ -114,6 +114,24 @@ func TestEmitAllowsUncertainDeliveryWithoutRawError(t *testing.T) {
 	}
 }
 
+func TestEmitBindsUncertainOutcomeAndFailureClass(t *testing.T) {
+	for _, event := range []Event{
+		{
+			Level: LevelWarn, Code: CodeDelivery, Component: ComponentTransport,
+			Outcome: OutcomeUncertain, FailureClass: FailureInternal,
+		},
+		{
+			Level: LevelError, Code: CodeDelivery, Component: ComponentTransport,
+			Outcome: OutcomeFailed, FailureClass: FailureStateUncertain,
+		},
+	} {
+		logger, _ := NewWithClock(io.Discard, func() time.Time { return fixedTime })
+		if err := logger.Emit(event); !errors.Is(err, ErrInvalidEvent) {
+			t.Fatalf("Emit() error = %v, want ErrInvalidEvent for %#v", err, event)
+		}
+	}
+}
+
 func TestEmitSerializesConcurrentRecords(t *testing.T) {
 	var output bytes.Buffer
 	logger, _ := NewWithClock(&output, func() time.Time { return fixedTime })

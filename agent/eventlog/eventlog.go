@@ -172,6 +172,9 @@ func validEvent(event Event) bool {
 		event.Outcome == OutcomeSucceeded) != (event.FailureClass == FailureNone) {
 		return false
 	}
+	if (event.Outcome == OutcomeUncertain) != (event.FailureClass == FailureStateUncertain) {
+		return false
+	}
 	if !validLevelOutcome(event.Level, event.Outcome) || !validCodeComponentOutcome(event) {
 		return false
 	}

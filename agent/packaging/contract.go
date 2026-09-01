@@ -250,7 +250,7 @@ func validateUnit(raw []byte) error {
 			"PrivateTmp": "true", "PrivateDevices": "true", "ProtectSystem": "strict",
 			"ProtectHome": "true", "ProtectKernelTunables": "true", "ProtectKernelModules": "true",
 			"ProtectKernelLogs": "true", "ProtectControlGroups": "true", "ProtectProc": "invisible",
-			"ProcSubset": "pid", "RestrictNamespaces": "true", "RestrictSUIDSGID": "true",
+			"RestrictNamespaces": "true", "RestrictSUIDSGID": "true",
 			"LockPersonality": "true", "MemoryDenyWriteExecute": "true", "RestrictRealtime": "true",
 			"SystemCallArchitectures": "native", "RestrictAddressFamilies": "AF_UNIX AF_INET AF_INET6",
 			"CapabilityBoundingSet": "", "AmbientCapabilities": "", "StateDirectory": "northgate-rmm",

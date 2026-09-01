@@ -51,6 +51,16 @@ func TestUnitRejectsAdditionalEnvironmentAndDirectives(t *testing.T) {
 	}
 }
 
+func TestUnitKeepsBootIdentityPathVisible(t *testing.T) {
+	if bytes.Contains(serviceDraft, []byte("ProcSubset=pid")) {
+		t.Fatal("systemd draft hides /proc/sys/kernel/random/boot_id")
+	}
+	modified := strings.Replace(string(serviceDraft), "ProtectProc=invisible", "ProtectProc=invisible\nProcSubset=pid", 1)
+	if err := validateUnit([]byte(modified)); err == nil {
+		t.Fatal("systemd draft accepted a hidden boot identity path")
+	}
+}
+
 func TestHermeticLifecycleModelRequiresRevokeAndApproval(t *testing.T) {
 	state := packageState{}
 	state.install()

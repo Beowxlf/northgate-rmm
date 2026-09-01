@@ -25,7 +25,6 @@ ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
 ProtectProc=invisible
-ProcSubset=pid
 RestrictNamespaces=true
 RestrictSUIDSGID=true
 LockPersonality=true

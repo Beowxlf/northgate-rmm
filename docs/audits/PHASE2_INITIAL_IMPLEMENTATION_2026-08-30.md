@@ -251,6 +251,11 @@ record before returning an error. The logger now permanently rejects subsequent
 writes after any write failure, preventing a later record from being appended to
 an ambiguous fragment, and tests this fail-closed behavior.
 
+The fourth review of this slice found that `ProcSubset=pid` would hide the
+kernel boot UUID required by the boot collector. The unit keeps
+`ProtectProc=invisible` for process isolation but removes the incompatible
+subset restriction, with a regression test that rejects its return.
+
 ## Remaining before G2
 
 This is not a complete Phase 2 qualification. At minimum, enrollment, identity

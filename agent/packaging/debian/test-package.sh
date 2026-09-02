@@ -215,6 +215,26 @@ test -e /etc/northgate-rmm/.evidence-exported
 test -e /etc/northgate-rmm/.purge-approved
 mv /usr/bin/systemctl.real /usr/bin/systemctl
 rm -rf -- /run/systemd/system
+
+: > /run/northgate-rmm-agent.was-active
+mv /usr/bin/rm /usr/bin/rm.real
+printf '%s\n' '#!/bin/sh' \
+  'for target in "$@"; do' \
+  '  case "$target" in' \
+  '    /run/northgate-rmm-agent.*) exit 75 ;;' \
+  '  esac' \
+  'done' \
+  'exec /usr/bin/rm.real "$@"' > /usr/bin/rm
+chmod 0755 /usr/bin/rm
+if dpkg --purge northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package purge unexpectedly ignored runtime-marker cleanup failure" >&2
+  exit 1
+fi
+test -d /etc/northgate-rmm
+test -e /etc/northgate-rmm/.identity-revoked
+test -e /etc/northgate-rmm/.evidence-exported
+test -e /etc/northgate-rmm/.purge-approved
+mv /usr/bin/rm.real /usr/bin/rm
 dpkg --purge northgate-rmm-agent >/dev/null
 test ! -e /etc/northgate-rmm
 test ! -e /var/lib/northgate-rmm

@@ -63,9 +63,9 @@
 - purge authorization is root-owned outside service-writable state, and an
   approved purge removes non-empty retained state before deleting the service
   identity;
-- account or group deletion failure, or a later systemd manager reload failure,
-  keeps purge failed and preserves protected gate receipts for a retry after
-  service-owned state has been removed;
+- account or group deletion failure, a later systemd manager reload failure, or
+  runtime-marker cleanup failure keeps purge failed and preserves protected gate
+  receipts for a retry after service-owned state has been removed;
 - configure invalidates revocation, evidence-export, and purge-approval receipts
   from every older lifecycle generation;
 - installation rejects a pre-existing service account with a non-system UID,

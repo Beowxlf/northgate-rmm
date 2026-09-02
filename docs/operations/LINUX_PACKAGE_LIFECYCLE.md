@@ -65,7 +65,8 @@ cannot reuse an earlier spool position.
    is removed and verified before account deletion. Account and group deletion
    are then verified; failure preserves the protected receipts so purge can be
    retried without fabricating new gates. The systemd manager reload also
-   completes before the receipts are removed.
+   completes and temporary runtime markers are removed before the receipts are
+   deleted.
 
 A temporary restart marker is valid only for the upgrade generation that created
 it. Repeated upgrade preparation preserves an existing marker. Fresh

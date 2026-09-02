@@ -114,6 +114,7 @@ var expectedActions = lifecycle{
 		"remove_state",
 		"remove_system_identity",
 		"daemon_reload_before_receipt_removal",
+		"clear_runtime_state_before_receipt_removal",
 		"remove_config",
 	},
 }

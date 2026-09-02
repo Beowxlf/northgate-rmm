@@ -43,10 +43,11 @@ supplementary service-account access, root-receipt-gated uninstall, state
 preservation, purge failure on account-removal error, and approval/evidence-gated
 purge. It also injects service-stop and service-disable failures and proves
 aborted removal restores prior activation and enablement while leaving the
-installed executable in place. A failed purge manager reload retains its authorization
-receipts for retry. The test proves an enabled-but-inactive upgrade does not
-disable boot activation and a stale interrupted-upgrade marker cannot start a
-fresh installation. A container is not a full systemd boot; the test uses a
+installed executable in place. A failed purge manager reload retains its
+authorization receipts for retry, as does failed runtime-marker cleanup. The
+test proves an enabled-but-inactive upgrade does not disable boot activation and
+a stale interrupted-upgrade marker cannot start a fresh installation. A
+container is not a full systemd boot; the test uses a
 bounded mock to prove failed upgrade restart retains retry intent across repeated
 upgrade preparation, an aborted upgrade restores a previously active service,
 and verified recovery clears the marker. Live resource enforcement still

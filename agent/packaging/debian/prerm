@@ -32,8 +32,8 @@ if [ -d /run/systemd/system ]; then
       echo "refusing removal because the agent service could not be disabled" >&2
       exit 52
     fi
-    if systemctl is-enabled --quiet northgate-rmm-agent.service; then
-      echo "refusing removal while the agent service remains enabled" >&2
+    if [ "$(systemctl is-enabled northgate-rmm-agent.service 2>/dev/null || true)" != "disabled" ]; then
+      echo "refusing removal because the agent service is not verifiably disabled" >&2
       exit 53
     fi
   fi

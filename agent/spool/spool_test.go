@@ -196,6 +196,41 @@ func TestPendingRolloverAuditSurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestOpenRecoversPersistedRolloverLinkBeforeSourceRemoval(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(context.Background(), testID, []byte("rejected")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queue.Quarantine(context.Background(), testID); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(
+		filepath.Join(directory, "rejected", testID+".json"),
+		filepath.Join(directory, "rollover", testID+".json"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = Open(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("Open() recovery error = %v", err)
+	}
+	defer queue.Close()
+	if _, err := os.Stat(filepath.Join(directory, "rejected", testID+".json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("recovered rejected source remains: %v", err)
+	}
+	pending, err := queue.ListRolloverIDs(context.Background())
+	if err != nil || len(pending) != 1 || pending[0] != testID {
+		t.Fatalf("recovered rollover audit = %v, %v", pending, err)
+	}
+}
+
 func TestRejectedRetentionEnforcesEntryLimit(t *testing.T) {
 	directory := t.TempDir()
 	queue, err := Open(directory, 1<<20)

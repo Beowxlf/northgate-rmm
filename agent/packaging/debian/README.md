@@ -30,9 +30,11 @@ configure lifecycle.
 Rejected messages use a separate bounded retention quota equal to the active
 spool byte quota and at most 128 records. Before admitting a rejection that would
 cross either limit, the oldest exact-payload rejected records move into a
-separate durable rollover area. The runtime replays pending rollover audits after
-restart and deletes each payload only after its audit is acknowledged. The active
-spool therefore remains available after prolonged expiry or rejection.
+separate durable rollover area using destination-first synchronization. Startup
+recovers the valid dual-link intermediate state. The runtime replays pending
+rollover audits after restart and deletes each payload only after its audit is
+acknowledged. The active spool therefore remains available after prolonged
+expiry or rejection.
 
 The unit runs under a locked `northgate-rmm` system identity with no Linux
 capabilities, a read-only host filesystem except for systemd-managed private

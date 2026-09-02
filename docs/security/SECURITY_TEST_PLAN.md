@@ -52,8 +52,8 @@
 - resource exhaustion and crash-loop limits;
 - expired and explicitly rejected queue heads are quarantined without losing
   later delivery order; rejected evidence has independent byte/entry bounds,
-  durable oldest-first audit recovery across restart, and cannot exhaust the
-  active queue;
+  destination-first durable oldest-first audit recovery across restart, recovers
+  a persisted dual-link transaction, and cannot exhaust the active queue;
 - collector timeout/failure isolation;
 - no shell metacharacter or path traversal construction;
 - uninstall requires a fresh protected revocation receipt even when local

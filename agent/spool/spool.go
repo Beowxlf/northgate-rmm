@@ -200,6 +200,13 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 		root.Close()
 		return nil, fmt.Errorf("sync spool directory: %w", err)
 	}
+	if err := queue.recoverRolloverLinksLocked(); err != nil {
+		rollover.Close()
+		rejected.Close()
+		lock.Close()
+		root.Close()
+		return nil, err
+	}
 	if _, _, err := queue.usageLocked(); err != nil {
 		rollover.Close()
 		rejected.Close()
@@ -286,6 +293,49 @@ func openRollover(root *os.Root) (*os.Root, error) {
 		return nil, fmt.Errorf("protect rollover spool directory: %w", err)
 	}
 	return rollover, nil
+}
+
+// recoverRolloverLinksLocked completes the only valid interrupted rollover
+// state: the destination hard link was persisted before its rejected source was
+// removed. Any two different files with the same ID remain an integrity error.
+func (queue *Queue) recoverRolloverLinksLocked() error {
+	records, _, _, err := queue.rolloverUsageLocked()
+	if err != nil {
+		return err
+	}
+	removeSource := make([]string, 0, len(records))
+	for _, item := range records {
+		filename := item.ID + ".json"
+		source, err := queue.rejected.Stat(filename)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return ErrCorrupt
+		}
+		destination, err := queue.rollover.Stat(filename)
+		if err != nil || !os.SameFile(source, destination) {
+			return ErrCorrupt
+		}
+		removeSource = append(removeSource, filename)
+	}
+	if len(removeSource) == 0 {
+		return nil
+	}
+	if err := queue.sync(queue.rollover); err != nil {
+		return &QuarantineUncertainError{ID: records[0].ID, Cause: err}
+	}
+	for _, filename := range removeSource {
+		if err := queue.rejected.Remove(filename); err != nil {
+			return &QuarantineUncertainError{ID: strings.TrimSuffix(filename, ".json"), Cause: err}
+		}
+	}
+	if err := queue.sync(queue.rejected); err != nil {
+		return &QuarantineUncertainError{
+			ID: strings.TrimSuffix(removeSource[len(removeSource)-1], ".json"), Cause: err,
+		}
+	}
+	return nil
 }
 
 // Enqueue durably writes a new item without overwriting an existing ID. Queue
@@ -611,7 +661,7 @@ func (queue *Queue) makeRejectedRoomLocked(incomingBytes int64) (QuarantineResul
 		return QuarantineResult{}, ErrQuotaExceeded
 	}
 	sort.Slice(records, func(left, right int) bool { return records[left].Order < records[right].Order })
-	result := QuarantineResult{}
+	toRollover := make([]recordMetadata, 0, MaxRejectedEntries)
 	for len(records) >= MaxRejectedEntries || total > queue.maxBytes-incomingBytes {
 		oldest := records[0]
 		filename := oldest.ID + ".json"
@@ -620,23 +670,36 @@ func (queue *Queue) makeRejectedRoomLocked(incomingBytes int64) (QuarantineResul
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return QuarantineResult{}, ErrCorrupt
 		}
-		if err := queue.root.Rename("rejected/"+filename, "rollover/"+filename); err != nil {
-			return QuarantineResult{}, &QuarantineUncertainError{ID: oldest.ID, Cause: err}
-		}
-		result.EvictedIDs = append(result.EvictedIDs, oldest.ID)
+		toRollover = append(toRollover, oldest)
 		total -= oldest.Size
 		records = records[1:]
 	}
-	if len(result.EvictedIDs) > 0 {
-		if err := queue.sync(queue.rejected); err != nil {
+	if len(toRollover) == 0 {
+		return QuarantineResult{}, nil
+	}
+	for _, item := range toRollover {
+		filename := item.ID + ".json"
+		if err := queue.root.Link("rejected/"+filename, "rollover/"+filename); err != nil {
+			return QuarantineResult{}, &QuarantineUncertainError{ID: item.ID, Cause: err}
+		}
+	}
+	if err := queue.sync(queue.rollover); err != nil {
+		return QuarantineResult{}, &QuarantineUncertainError{
+			ID: toRollover[len(toRollover)-1].ID, Cause: err,
+		}
+	}
+	result := QuarantineResult{EvictedIDs: make([]string, 0, len(toRollover))}
+	for _, item := range toRollover {
+		if err := queue.rejected.Remove(item.ID + ".json"); err != nil {
 			return QuarantineResult{}, &QuarantineUncertainError{
-				ID: result.EvictedIDs[len(result.EvictedIDs)-1], Cause: err,
+				ID: item.ID, Cause: err,
 			}
 		}
-		if err := queue.sync(queue.rollover); err != nil {
-			return QuarantineResult{}, &QuarantineUncertainError{
-				ID: result.EvictedIDs[len(result.EvictedIDs)-1], Cause: err,
-			}
+		result.EvictedIDs = append(result.EvictedIDs, item.ID)
+	}
+	if err := queue.sync(queue.rejected); err != nil {
+		return QuarantineResult{}, &QuarantineUncertainError{
+			ID: result.EvictedIDs[len(result.EvictedIDs)-1], Cause: err,
 		}
 	}
 	return result, nil

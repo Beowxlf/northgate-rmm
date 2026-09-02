@@ -189,6 +189,19 @@ func (runtime *Runtime) deliver(ctx context.Context) (bool, error) {
 		if err != nil || message.Envelope.MessageID != id {
 			return false, ErrRuntimeFailed
 		}
+		if message.Envelope.EndpointID != runtime.options.EndpointID {
+			if err := runtime.quarantine(ctx, id); err != nil {
+				return false, err
+			}
+			if err := runtime.emit(eventlog.Event{
+				Level: eventlog.LevelWarn, Code: eventlog.CodeLocalState,
+				Component: eventlog.ComponentSpool, Outcome: eventlog.OutcomeRejected,
+				FailureClass: eventlog.FailureTrust, MessageID: id,
+			}); err != nil {
+				return false, err
+			}
+			continue
+		}
 		if !runtime.options.Now().UTC().Before(message.Envelope.ExpiresAt) {
 			if err := runtime.quarantine(ctx, id); err != nil {
 				return false, err

@@ -55,6 +55,8 @@
   destination-first durable oldest-first audit recovery across restart, recovers
   persisted dual-link transactions for active quarantine and rejected rollover,
   and cannot exhaust the active queue;
+- preserved inventory bound to a different endpoint enrollment is quarantined
+  locally as a trust rejection and is never presented to transport;
 - collector timeout/failure isolation;
 - no shell metacharacter or path traversal construction;
 - uninstall requires a fresh protected revocation receipt even when local

@@ -135,9 +135,15 @@ func (syntheticSource) DiskUsage(context.Context, string) (collector.DiskUsage, 
 }
 
 func inventoryPayload(t *testing.T, id string, expires time.Time) []byte {
+	return inventoryPayloadForEndpoint(
+		t, id, "123e4567-e89b-42d3-a456-426614174001", expires,
+	)
+}
+
+func inventoryPayloadForEndpoint(t *testing.T, id, endpointID string, expires time.Time) []byte {
 	t.Helper()
 	raw, err := protocol.EncodeInventory(protocol.Envelope{
-		MessageID: id, EndpointID: "123e4567-e89b-42d3-a456-426614174001",
+		MessageID: id, EndpointID: endpointID,
 		BootID: "123e4567-e89b-42d3-a456-426614174002", Sequence: 1,
 		CreatedAt: expires.Add(-time.Minute), ExpiresAt: expires,
 		CorrelationID: "123e4567-e89b-42d3-a456-426614174003", ProtocolVersion: protocol.Version,
@@ -149,6 +155,45 @@ func inventoryPayload(t *testing.T, id string, expires time.Time) []byte {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+func TestMismatchedEndpointInventoryIsQuarantinedWithoutDelivery(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	oldEndpoint := "123e4567-e89b-42d3-a456-426614174009"
+	queue := &memoryQueue{
+		ids: []string{testMessageID},
+		payload: map[string][]byte{
+			testMessageID: inventoryPayloadForEndpoint(
+				t, testMessageID, oldEndpoint, testNow.Add(time.Minute),
+			),
+		},
+	}
+	sender := &fixedSender{}
+	var output bytes.Buffer
+	logger, _ := eventlog.New(&output)
+	runtime, err := New(Options{
+		EndpointID: "123e4567-e89b-42d3-a456-426614174001", CollectionInterval: time.Minute,
+		RequestTimeout: time.Second, Snapshotter: fixedSnapshotter{
+			result: agentcore.SnapshotResult{MessageID: testMessageID, Complete: true}, cancel: cancel,
+		}, Queue: queue, Sender: sender, Source: syntheticSource{}, Logger: logger,
+		RetryPolicy: transport.RetryPolicy{MaxAttempts: 1, InitialDelay: time.Second, MaximumDelay: time.Second},
+		Now:         func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.deliver) != 0 {
+		t.Fatalf("mismatched endpoint inventory was sent: %v", sender.deliver)
+	}
+	if len(queue.rejected) != 1 || queue.rejected[0] != testMessageID {
+		t.Fatalf("mismatched endpoint inventory was not quarantined: %v", queue.rejected)
+	}
+	if !strings.Contains(output.String(), `"failure_class":"trust_failed"`) {
+		t.Fatalf("endpoint mismatch trust rejection was not audited: %s", output.String())
+	}
 }
 
 func TestRunDrainsQueueAndStopsCleanly(t *testing.T) {

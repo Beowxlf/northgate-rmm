@@ -62,10 +62,12 @@ cannot reuse an earlier spool position.
    confirmed revocation receipt, and evidence export before it removes retained
    state and the service identity. All three markers are root-owned `0600` files
    under `/etc/northgate-rmm`, outside service-writable state. Service-owned state
-   is removed and verified before account deletion. Account and group deletion
-   are then verified; failure preserves the protected receipts so purge can be
-   retried without fabricating new gates. The systemd manager reload also
-   completes and temporary runtime markers are removed before the receipts are
+   is removed and verified before account deletion. Before cleanup begins,
+   validated authority is synced to a root-only purge transaction outside the
+   configuration tree. Failures can be retried from that record even after
+   partial config deletion. The transaction remains as recovery evidence until
+   the next configure lifecycle invalidates it. The systemd manager reload and
+   temporary runtime-marker cleanup complete before the original receipts are
    deleted.
 
 A temporary restart marker is valid only for the upgrade generation that created

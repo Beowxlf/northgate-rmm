@@ -12,7 +12,8 @@
     "config": "/etc/northgate-rmm/agent.json",
     "state": "/var/lib/northgate-rmm",
     "identity": "/var/lib/northgate-rmm/identity",
-    "revocation_receipt": "/etc/northgate-rmm/.identity-revoked"
+    "revocation_receipt": "/etc/northgate-rmm/.identity-revoked",
+    "purge_transaction": "/var/lib/northgate-rmm-purge-transaction"
   },
   "ownership": {
     "executable": "root:root:0755",
@@ -22,7 +23,8 @@
     "state": "northgate-rmm:northgate-rmm:0700",
     "identity_directory": "northgate-rmm:northgate-rmm:0700",
     "identity_bundle": "northgate-rmm:northgate-rmm:0600",
-    "revocation_receipt": "root:root:0600"
+    "revocation_receipt": "root:root:0600",
+    "purge_transaction": "root:root:0600"
   },
   "lifecycle": {
     "install": [
@@ -32,7 +34,8 @@
       "install_root_owned_executable",
       "install_root_owned_unit",
       "daemon_reload",
-      "leave_service_disabled"
+      "leave_service_disabled",
+      "invalidate_old_purge_transaction"
     ],
     "upgrade": [
       "stop_if_running",
@@ -44,7 +47,8 @@
       "preserve_identity",
       "preserve_enablement",
       "restart_only_if_previously_running",
-      "restart_previous_if_upgrade_aborts"
+      "restart_previous_if_upgrade_aborts",
+      "invalidate_old_purge_transaction"
     ],
     "revoke": [
       "revoke_control_plane_identity",
@@ -68,11 +72,13 @@
       "require_explicit_approval",
       "require_root_revocation_receipt",
       "require_evidence_export",
+      "persist_purge_transaction_before_cleanup",
       "remove_state",
       "remove_system_identity",
       "daemon_reload_before_receipt_removal",
       "clear_runtime_state_before_receipt_removal",
-      "remove_config"
+      "remove_config",
+      "retain_purge_transaction_for_retry"
     ]
   }
 }

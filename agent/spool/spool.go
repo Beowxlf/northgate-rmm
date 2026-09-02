@@ -57,8 +57,8 @@ type recordMetadata struct {
 	Size  int64
 }
 
-// QuarantineResult identifies rejected evidence removed by the documented
-// bounded-retention rollover. Callers must emit one audit event per ID.
+// QuarantineResult identifies rejected evidence moved into durable rollover
+// recovery. Callers must emit one audit event and acknowledge each ID.
 type QuarantineResult struct {
 	EvictedIDs []string
 }
@@ -108,6 +108,7 @@ type Queue struct {
 	mu       sync.Mutex
 	root     *os.Root
 	rejected *os.Root
+	rollover *os.Root
 	lock     directoryLock
 	sync     func(*os.Root) error
 	maxBytes int64
@@ -181,14 +182,26 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 		root.Close()
 		return nil, err
 	}
-	queue := &Queue{root: root, rejected: rejected, lock: lock, sync: syncDirectory, maxBytes: maxBytes}
+	rollover, err := openRollover(root)
+	if err != nil {
+		rejected.Close()
+		lock.Close()
+		root.Close()
+		return nil, err
+	}
+	queue := &Queue{
+		root: root, rejected: rejected, rollover: rollover,
+		lock: lock, sync: syncDirectory, maxBytes: maxBytes,
+	}
 	if err := syncDirectory(root); err != nil {
+		rollover.Close()
 		rejected.Close()
 		lock.Close()
 		root.Close()
 		return nil, fmt.Errorf("sync spool directory: %w", err)
 	}
 	if _, _, err := queue.usageLocked(); err != nil {
+		rollover.Close()
 		rejected.Close()
 		lock.Close()
 		root.Close()
@@ -204,7 +217,9 @@ func (queue *Queue) Close() error {
 		return nil
 	}
 	queue.closed = true
-	return errors.Join(queue.lock.Close(), queue.rejected.Close(), queue.root.Close())
+	return errors.Join(
+		queue.lock.Close(), queue.rollover.Close(), queue.rejected.Close(), queue.root.Close(),
+	)
 }
 
 func openRejected(root *os.Root) (*os.Root, error) {
@@ -238,6 +253,39 @@ func openRejected(root *os.Root) (*os.Root, error) {
 		return nil, fmt.Errorf("protect rejected spool directory: %w", err)
 	}
 	return rejected, nil
+}
+
+func openRollover(root *os.Root) (*os.Root, error) {
+	const name = "rollover"
+	info, err := root.Lstat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		if err := root.Mkdir(name, 0o700); err != nil {
+			return nil, fmt.Errorf("create rollover spool directory: %w", err)
+		}
+		if err := syncDirectory(root); err != nil {
+			return nil, fmt.Errorf("sync spool after rollover directory creation: %w", err)
+		}
+		info, err = root.Lstat(name)
+	} else if err != nil {
+		return nil, fmt.Errorf("inspect rollover spool directory: %w", err)
+	}
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, ErrCorrupt
+	}
+	rollover, err := root.OpenRoot(name)
+	if err != nil {
+		return nil, fmt.Errorf("open rollover spool directory: %w", err)
+	}
+	opened, err := rollover.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		rollover.Close()
+		return nil, ErrCorrupt
+	}
+	if err := rollover.Chmod(".", 0o700); err != nil {
+		rollover.Close()
+		return nil, fmt.Errorf("protect rollover spool directory: %w", err)
+	}
+	return rollover, nil
 }
 
 // Enqueue durably writes a new item without overwriting an existing ID. Queue
@@ -394,6 +442,52 @@ func (queue *Queue) ListIDs(ctx context.Context) ([]string, error) {
 	return ids, nil
 }
 
+// ListRolloverIDs returns rejected records awaiting an at-least-once rollover
+// audit. The exact record remains durable until AcknowledgeRollover succeeds.
+func (queue *Queue) ListRolloverIDs(ctx context.Context) ([]string, error) {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	if err := queue.ready(ctx); err != nil {
+		return nil, err
+	}
+	records, _, _, err := queue.rolloverUsageLocked()
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(records, func(left, right int) bool { return records[left].Order < records[right].Order })
+	ids := make([]string, len(records))
+	for index, item := range records {
+		ids[index] = item.ID
+	}
+	return ids, nil
+}
+
+// AcknowledgeRollover removes one exact rejected record only after its audit
+// event was emitted. A sync failure is uncertain and must be reconciled after
+// restart, which can cause an intentional duplicate audit rather than data loss.
+func (queue *Queue) AcknowledgeRollover(ctx context.Context, id string) error {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	if err := queue.ready(ctx); err != nil {
+		return err
+	}
+	if !uuidPattern.MatchString(id) {
+		return errors.New("rollover ID must be a canonical lowercase UUID")
+	}
+	if _, err := readRecordItem(queue.rollover, id); err != nil {
+		return err
+	}
+	if err := queue.rollover.Remove(id + ".json"); err != nil {
+		return fmt.Errorf("remove audited rollover record: %w", err)
+	}
+	if err := queue.sync(queue.rollover); err != nil {
+		return &AcknowledgeUncertainError{
+			ID: id, Cause: fmt.Errorf("sync rollover directory after acknowledgement: %w", err),
+		}
+	}
+	return nil
+}
+
 func (queue *Queue) readRecordLocked(id string) ([]byte, error) {
 	item, err := queue.readRecordItemLocked(id)
 	if err != nil {
@@ -467,9 +561,9 @@ func (queue *Queue) Acknowledge(ctx context.Context, id string) error {
 
 // Quarantine moves one validated record out of delivery order and retains its
 // exact bytes. Rejected evidence has a separate quota equal to the active byte
-// quota and MaxRejectedEntries; the oldest records are durably rolled over
-// before the new rejection is admitted so rejected evidence cannot poison the
-// active queue forever.
+// quota and MaxRejectedEntries; the oldest records move to durable rollover
+// recovery before the new rejection is admitted. They remain there until their
+// at-least-once audit is acknowledged.
 func (queue *Queue) Quarantine(ctx context.Context, id string) (QuarantineResult, error) {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
@@ -520,8 +614,14 @@ func (queue *Queue) makeRejectedRoomLocked(incomingBytes int64) (QuarantineResul
 	result := QuarantineResult{}
 	for len(records) >= MaxRejectedEntries || total > queue.maxBytes-incomingBytes {
 		oldest := records[0]
-		if err := queue.rejected.Remove(oldest.ID + ".json"); err != nil {
-			return result, &QuarantineUncertainError{ID: oldest.ID, Cause: err}
+		filename := oldest.ID + ".json"
+		if _, err := queue.rollover.Stat(filename); err == nil {
+			return QuarantineResult{}, ErrCorrupt
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return QuarantineResult{}, ErrCorrupt
+		}
+		if err := queue.root.Rename("rejected/"+filename, "rollover/"+filename); err != nil {
+			return QuarantineResult{}, &QuarantineUncertainError{ID: oldest.ID, Cause: err}
 		}
 		result.EvictedIDs = append(result.EvictedIDs, oldest.ID)
 		total -= oldest.Size
@@ -529,7 +629,14 @@ func (queue *Queue) makeRejectedRoomLocked(incomingBytes int64) (QuarantineResul
 	}
 	if len(result.EvictedIDs) > 0 {
 		if err := queue.sync(queue.rejected); err != nil {
-			return result, &QuarantineUncertainError{ID: result.EvictedIDs[len(result.EvictedIDs)-1], Cause: err}
+			return QuarantineResult{}, &QuarantineUncertainError{
+				ID: result.EvictedIDs[len(result.EvictedIDs)-1], Cause: err,
+			}
+		}
+		if err := queue.sync(queue.rollover); err != nil {
+			return QuarantineResult{}, &QuarantineUncertainError{
+				ID: result.EvictedIDs[len(result.EvictedIDs)-1], Cause: err,
+			}
 		}
 	}
 	return result, nil
@@ -553,11 +660,11 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 		return 0, nil, 0, 0, fmt.Errorf("list spool: %w", err)
 	}
 	defer directory.Close()
-	entries := make([]fs.DirEntry, 0, MaxEntries+3)
-	for len(entries) <= MaxEntries+2 {
-		batch, readErr := directory.ReadDir(MaxEntries + 3 - len(entries))
+	entries := make([]fs.DirEntry, 0, MaxEntries+4)
+	for len(entries) <= MaxEntries+3 {
+		batch, readErr := directory.ReadDir(MaxEntries + 4 - len(entries))
 		entries = append(entries, batch...)
-		if len(entries) > MaxEntries+2 {
+		if len(entries) > MaxEntries+3 {
 			return 0, nil, 0, 0, ErrQuotaExceeded
 		}
 		if errors.Is(readErr, io.EOF) {
@@ -580,7 +687,7 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 			}
 			continue
 		}
-		if name == "rejected" {
+		if name == "rejected" || name == "rollover" {
 			info, err := queue.root.Lstat(name)
 			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 				return 0, nil, 0, 0, ErrCorrupt
@@ -592,6 +699,15 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 	_, _, rejectedOrders, rejectedMaxOrder, err := queue.rejectedUsageLocked()
 	if err != nil {
 		return 0, nil, 0, 0, err
+	}
+	_, rolloverOrders, rolloverMaxOrder, err := queue.rolloverUsageLocked()
+	if err != nil {
+		return 0, nil, 0, 0, err
+	}
+	for order := range rejectedOrders {
+		if _, exists := rolloverOrders[order]; exists {
+			return 0, nil, 0, 0, ErrCorrupt
+		}
 	}
 	if len(dataEntries) > MaxEntries {
 		return 0, nil, 0, 0, ErrQuotaExceeded
@@ -618,6 +734,9 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 		if _, exists := rejectedOrders[item.Order]; exists {
 			return 0, nil, 0, 0, ErrCorrupt
 		}
+		if _, exists := rolloverOrders[item.Order]; exists {
+			return 0, nil, 0, 0, ErrCorrupt
+		}
 		total += info.Size()
 		records = append(records, recordMetadata{ID: id, Order: item.Order, Size: info.Size()})
 	}
@@ -630,10 +749,56 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 		}
 	}
 	lastOrder := rejectedMaxOrder
+	if rolloverMaxOrder > lastOrder {
+		lastOrder = rolloverMaxOrder
+	}
 	if len(records) > 0 && records[len(records)-1].Order > lastOrder {
 		lastOrder = records[len(records)-1].Order
 	}
 	return total, records, lastOrder, len(dataEntries), nil
+}
+
+func (queue *Queue) rolloverUsageLocked() ([]recordMetadata, map[uint64]struct{}, uint64, error) {
+	directory, err := queue.rollover.Open(".")
+	if err != nil {
+		return nil, nil, 0, ErrCorrupt
+	}
+	defer directory.Close()
+	entries, err := directory.ReadDir(MaxRejectedEntries + 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, nil, 0, ErrCorrupt
+	}
+	if len(entries) > MaxRejectedEntries {
+		return nil, nil, 0, ErrQuotaExceeded
+	}
+	records := make([]recordMetadata, 0, len(entries))
+	orders := make(map[uint64]struct{}, len(entries))
+	var maxOrder uint64
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".json") || !uuidPattern.MatchString(strings.TrimSuffix(name, ".json")) {
+			return nil, nil, 0, ErrCorrupt
+		}
+		info, err := queue.rollover.Lstat(name)
+		if err != nil || !info.Mode().IsRegular() || !privateRecord(info) ||
+			info.Size() < 1 || info.Size() > maxRecordBytes {
+			return nil, nil, 0, ErrCorrupt
+		}
+		id := strings.TrimSuffix(name, ".json")
+		item, err := readRecordItem(queue.rollover, id)
+		if err != nil {
+			return nil, nil, 0, ErrCorrupt
+		}
+		if _, exists := orders[item.Order]; exists {
+			return nil, nil, 0, ErrCorrupt
+		}
+		orders[item.Order] = struct{}{}
+		if item.Order > maxOrder {
+			maxOrder = item.Order
+		}
+		records = append(records, recordMetadata{ID: id, Order: item.Order, Size: info.Size()})
+	}
+	return records, orders, maxOrder, nil
 }
 
 func (queue *Queue) rejectedUsageLocked() (int64, []recordMetadata, map[uint64]struct{}, uint64, error) {

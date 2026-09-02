@@ -27,8 +27,10 @@ type Snapshotter interface {
 
 type Queue interface {
 	ListIDs(context.Context) ([]string, error)
+	ListRolloverIDs(context.Context) ([]string, error)
 	Read(context.Context, string) ([]byte, error)
 	Acknowledge(context.Context, string) error
+	AcknowledgeRollover(context.Context, string) error
 	Quarantine(context.Context, string) (spool.QuarantineResult, error)
 }
 
@@ -86,6 +88,9 @@ func (runtime *Runtime) Run(ctx context.Context) error {
 		Component: eventlog.ComponentAgent, Outcome: eventlog.OutcomeStarted,
 		FailureClass: eventlog.FailureNone,
 	}); err != nil {
+		return err
+	}
+	if err := runtime.auditPendingRollovers(ctx); err != nil {
 		return err
 	}
 
@@ -249,15 +254,35 @@ func (runtime *Runtime) deliver(ctx context.Context) (bool, error) {
 func (runtime *Runtime) quarantine(ctx context.Context, id string) error {
 	result, err := runtime.options.Queue.Quarantine(ctx, id)
 	for _, evictedID := range result.EvictedIDs {
-		if emitErr := runtime.emit(eventlog.Event{
-			Level: eventlog.LevelWarn, Code: eventlog.CodeLocalState,
-			Component: eventlog.ComponentSpool, Outcome: eventlog.OutcomeRejected,
-			FailureClass: eventlog.FailureLimitExceeded, MessageID: evictedID,
-		}); emitErr != nil {
-			return emitErr
+		if auditErr := runtime.auditRollover(ctx, evictedID); auditErr != nil {
+			return auditErr
 		}
 	}
 	return err
+}
+
+func (runtime *Runtime) auditPendingRollovers(ctx context.Context) error {
+	ids, err := runtime.options.Queue.ListRolloverIDs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := runtime.auditRollover(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (runtime *Runtime) auditRollover(ctx context.Context, id string) error {
+	if err := runtime.emit(eventlog.Event{
+		Level: eventlog.LevelWarn, Code: eventlog.CodeLocalState,
+		Component: eventlog.ComponentSpool, Outcome: eventlog.OutcomeRejected,
+		FailureClass: eventlog.FailureLimitExceeded, MessageID: id,
+	}); err != nil {
+		return err
+	}
+	return runtime.options.Queue.AcknowledgeRollover(ctx, id)
 }
 
 func (runtime *Runtime) stop() error {

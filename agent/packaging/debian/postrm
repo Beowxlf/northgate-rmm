@@ -10,13 +10,31 @@ if [ "$action" = "purge" ]; then
   approval=/etc/northgate-rmm/.purge-approved
   evidence=/etc/northgate-rmm/.evidence-exported
   revocation=/etc/northgate-rmm/.identity-revoked
-  if [ ! -f "$approval" ] || [ ! -f "$evidence" ] || \
-     [ ! -f "$revocation" ] || [ -L "$revocation" ] || [ ! -s "$revocation" ] || \
-     [ "$(stat -c '%U:%G:%a' "$approval")" != "root:root:600" ] || \
-     [ "$(stat -c '%U:%G:%a' "$evidence")" != "root:root:600" ] || \
-     [ "$(stat -c '%U:%G:%a' "$revocation")" != "root:root:600" ]; then
-    echo "refusing purge without revocation, approval, and evidence-export receipts" >&2
-    exit 43
+  transaction=/var/lib/northgate-rmm-purge-transaction
+  expected_transaction=northgate-rmm-purge-transaction-v1:authorized
+  if [ -e "$transaction" ]; then
+    if [ ! -f "$transaction" ] || [ -L "$transaction" ] || \
+       [ "$(stat -c '%U:%G:%a' "$transaction")" != "root:root:600" ] || \
+       [ "$(cat "$transaction")" != "$expected_transaction" ]; then
+      echo "refusing purge with an invalid recovery transaction" >&2
+      exit 63
+    fi
+  else
+    if [ ! -f "$approval" ] || [ ! -f "$evidence" ] || \
+       [ ! -f "$revocation" ] || [ -L "$revocation" ] || [ ! -s "$revocation" ] || \
+       [ "$(stat -c '%U:%G:%a' "$approval")" != "root:root:600" ] || \
+       [ "$(stat -c '%U:%G:%a' "$evidence")" != "root:root:600" ] || \
+       [ "$(stat -c '%U:%G:%a' "$revocation")" != "root:root:600" ]; then
+      echo "refusing purge without revocation, approval, and evidence-export receipts" >&2
+      exit 43
+    fi
+    transaction_temp="${transaction}.tmp"
+    rm -f -- "$transaction_temp"
+    install -o root -g root -m 0600 /dev/null "$transaction_temp"
+    printf '%s\n' "$expected_transaction" > "$transaction_temp"
+    sync -f "$transaction_temp"
+    mv -f -- "$transaction_temp" "$transaction"
+    sync -f /var/lib
   fi
   rm -rf -- /var/lib/northgate-rmm
   test ! -e /var/lib/northgate-rmm

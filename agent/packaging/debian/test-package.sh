@@ -37,6 +37,7 @@ test ! -e /tmp/unexpected-disable
 install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.identity-revoked
 install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.evidence-exported
 install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.purge-approved
+install -o root -g root -m 0600 /dev/null /var/lib/northgate-rmm-purge-transaction
 : > /run/northgate-rmm-agent.was-active
 printf '%s\n' '#!/bin/sh' 'case "$1" in' \
   '  disable) touch /tmp/fresh-disable; exit 0 ;;' \
@@ -51,6 +52,7 @@ test ! -e /run/northgate-rmm-agent.was-active
 test ! -e /etc/northgate-rmm/.identity-revoked
 test ! -e /etc/northgate-rmm/.evidence-exported
 test ! -e /etc/northgate-rmm/.purge-approved
+test ! -e /var/lib/northgate-rmm-purge-transaction
 
 printf '%s\n' '#!/bin/sh' 'case "$1" in' \
   '  is-active) test -e /tmp/upgrade-active ;;' \
@@ -235,9 +237,34 @@ test -e /etc/northgate-rmm/.identity-revoked
 test -e /etc/northgate-rmm/.evidence-exported
 test -e /etc/northgate-rmm/.purge-approved
 mv /usr/bin/rm.real /usr/bin/rm
+
+mv /usr/bin/rm /usr/bin/rm.real
+printf '%s\n' '#!/bin/sh' \
+  'for target in "$@"; do' \
+  '  if [ "$target" = /etc/northgate-rmm ]; then' \
+  '    /usr/bin/rm.real -f -- /etc/northgate-rmm/.identity-revoked /etc/northgate-rmm/.evidence-exported /etc/northgate-rmm/.purge-approved' \
+  '    exit 75' \
+  '  fi' \
+  'done' \
+  'exec /usr/bin/rm.real "$@"' > /usr/bin/rm
+chmod 0755 /usr/bin/rm
+if dpkg --purge northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package purge unexpectedly ignored partial config-removal failure" >&2
+  exit 1
+fi
+test -d /etc/northgate-rmm
+test ! -e /etc/northgate-rmm/.identity-revoked
+test ! -e /etc/northgate-rmm/.evidence-exported
+test ! -e /etc/northgate-rmm/.purge-approved
+test "$(cat /var/lib/northgate-rmm-purge-transaction)" = \
+  "northgate-rmm-purge-transaction-v1:authorized"
+test "$(stat -c '%U:%G:%a' /var/lib/northgate-rmm-purge-transaction)" = "root:root:600"
+mv /usr/bin/rm.real /usr/bin/rm
 dpkg --purge northgate-rmm-agent >/dev/null
 test ! -e /etc/northgate-rmm
 test ! -e /var/lib/northgate-rmm
+test "$(cat /var/lib/northgate-rmm-purge-transaction)" = \
+  "northgate-rmm-purge-transaction-v1:authorized"
 if getent passwd northgate-rmm >/dev/null; then
   echo "service account remains after approved purge" >&2
   exit 1

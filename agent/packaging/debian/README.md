@@ -22,13 +22,17 @@ receipts. Ordinary uninstall preserves configuration and state for investigation
 or recovery; purge additionally requires root-owned approval and evidence-export
 markers and fails unless all retained state is removed. Every configure or
 upgrade invalidates all three receipts so approval cannot cross lifecycle
-generations.
+generations. Before destructive purge work, the package durably records the
+validated authorization in a root-only transaction outside the configuration
+tree. It retains that record for recovery and invalidates it on the next
+configure lifecycle.
 
 Rejected messages use a separate bounded retention quota equal to the active
 spool byte quota and at most 128 records. Before admitting a rejection that would
-cross either limit, the oldest exact-payload rejected records are durably rolled
-over and each removed message ID is emitted through the closed audit schema. The
-active spool therefore remains available after prolonged expiry or rejection.
+cross either limit, the oldest exact-payload rejected records move into a
+separate durable rollover area. The runtime replays pending rollover audits after
+restart and deletes each payload only after its audit is acknowledged. The active
+spool therefore remains available after prolonged expiry or rejection.
 
 The unit runs under a locked `northgate-rmm` system identity with no Linux
 capabilities, a read-only host filesystem except for systemd-managed private
@@ -44,10 +48,11 @@ preservation, purge failure on account-removal error, and approval/evidence-gate
 purge. It also injects service-stop and service-disable failures and proves
 aborted removal restores prior activation and enablement while leaving the
 installed executable in place. A failed purge manager reload retains its
-authorization receipts for retry, as does failed runtime-marker cleanup. The
-test proves an enabled-but-inactive upgrade does not disable boot activation and
-a stale interrupted-upgrade marker cannot start a fresh installation. A
-container is not a full systemd boot; the test uses a
+authorization receipts for retry, as does failed runtime-marker cleanup. A
+root-only purge transaction preserves retry authority through partial config
+deletion. The test proves an enabled-but-inactive upgrade does not disable boot
+activation and a stale interrupted-upgrade marker cannot start a fresh
+installation. A container is not a full systemd boot; the test uses a
 bounded mock to prove failed upgrade restart retains retry intent across repeated
 upgrade preparation, an aborted upgrade restores a previously active service,
 and verified recovery clears the marker. Live resource enforcement still

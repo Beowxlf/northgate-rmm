@@ -35,6 +35,12 @@ func (queue *memoryQueue) ListIDs(context.Context) ([]string, error) {
 	return append([]string(nil), queue.ids...), nil
 }
 
+func (queue *memoryQueue) ListRolloverIDs(context.Context) ([]string, error) {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return append([]string(nil), queue.evicted...), nil
+}
+
 func (queue *memoryQueue) Read(_ context.Context, id string) ([]byte, error) {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
@@ -52,6 +58,18 @@ func (queue *memoryQueue) Acknowledge(_ context.Context, id string) error {
 		}
 	}
 	return nil
+}
+
+func (queue *memoryQueue) AcknowledgeRollover(_ context.Context, id string) error {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	for index, candidate := range queue.evicted {
+		if candidate == id {
+			queue.evicted = append(queue.evicted[:index], queue.evicted[index+1:]...)
+			return nil
+		}
+	}
+	return errors.New("rollover record is missing")
 }
 
 func (queue *memoryQueue) Quarantine(ctx context.Context, id string) (spool.QuarantineResult, error) {
@@ -229,6 +247,9 @@ func TestExpiredHeadIsQuarantinedAndDoesNotBlockNewerRecord(t *testing.T) {
 	}
 	if len(queue.rejected) != 1 || queue.rejected[0] != testMessageID {
 		t.Fatalf("expired record was not quarantined: %v", queue.rejected)
+	}
+	if len(queue.evicted) != 0 {
+		t.Fatalf("audited rollover remains pending: %v", queue.evicted)
 	}
 	if len(sender.deliver) != 1 || sender.deliver[0] != secondID {
 		t.Fatalf("newer record was blocked: %v", sender.deliver)

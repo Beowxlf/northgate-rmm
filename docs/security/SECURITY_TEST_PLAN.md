@@ -52,7 +52,8 @@
 - resource exhaustion and crash-loop limits;
 - expired and explicitly rejected queue heads are quarantined without losing
   later delivery order; rejected evidence has independent byte/entry bounds,
-  audited oldest-first rollover, and cannot exhaust the active queue;
+  durable oldest-first audit recovery across restart, and cannot exhaust the
+  active queue;
 - collector timeout/failure isolation;
 - no shell metacharacter or path traversal construction;
 - uninstall requires a fresh protected revocation receipt even when local
@@ -66,6 +67,9 @@
 - account or group deletion failure, a later systemd manager reload failure, or
   runtime-marker cleanup failure keeps purge failed and preserves protected gate
   receipts for a retry after service-owned state has been removed;
+- partial config deletion can remove original receipts without stranding purge
+  because a synced root-only transaction outside that tree preserves retry
+  authority until the next configure lifecycle;
 - configure invalidates revocation, evidence-export, and purge-approval receipts
   from every older lifecycle generation;
 - installation rejects a pre-existing service account with a non-system UID,

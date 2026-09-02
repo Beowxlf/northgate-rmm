@@ -136,6 +136,19 @@ func TestRejectedRetentionRollsOverWithoutExhaustingActiveSpool(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(directory, "rejected", testID+".json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("oldest rejected record was not rolled over: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(directory, "rollover", testID+".json")); err != nil {
+		t.Fatalf("rolled-over record is not durable pending audit: %v", err)
+	}
+	pending, err := queue.ListRolloverIDs(context.Background())
+	if err != nil || len(pending) != 1 || pending[0] != testID {
+		t.Fatalf("pending rollover audits = %v, %v", pending, err)
+	}
+	if err := queue.AcknowledgeRollover(context.Background(), testID); err != nil {
+		t.Fatalf("AcknowledgeRollover() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(directory, "rollover", testID+".json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("audited rollover record remains: %v", err)
+	}
 	thirdID := "123e4567-e89b-42d3-a456-426614174002"
 	if err := queue.Enqueue(context.Background(), thirdID, []byte("third")); err != nil {
 		t.Fatalf("enqueue after rejected rollover: %v", err)
@@ -147,6 +160,39 @@ func TestRejectedRetentionRollsOverWithoutExhaustingActiveSpool(t *testing.T) {
 	var third record
 	if err := json.Unmarshal(raw, &third); err != nil || third.Order != 3 {
 		t.Fatalf("order after rejected rollover = %d, %v", third.Order, err)
+	}
+}
+
+func TestPendingRolloverAuditSurvivesRestart(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, maxRecordBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(context.Background(), testID, make([]byte, 60_000)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queue.Quarantine(context.Background(), testID); err != nil {
+		t.Fatal(err)
+	}
+	secondID := "123e4567-e89b-42d3-a456-426614174001"
+	if err := queue.Enqueue(context.Background(), secondID, make([]byte, 60_000)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queue.Quarantine(context.Background(), secondID); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = Open(directory, maxRecordBytes)
+	if err != nil {
+		t.Fatalf("restart Open() error = %v", err)
+	}
+	defer queue.Close()
+	pending, err := queue.ListRolloverIDs(context.Background())
+	if err != nil || len(pending) != 1 || pending[0] != testID {
+		t.Fatalf("recovered rollover audits = %v, %v", pending, err)
 	}
 }
 

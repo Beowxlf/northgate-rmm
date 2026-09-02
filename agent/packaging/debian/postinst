@@ -112,7 +112,9 @@ rm -f -- /etc/northgate-rmm/.identity-revoked \
   /etc/northgate-rmm/.purge-approved \
   /run/northgate-rmm-agent.remove-state-recorded \
   /run/northgate-rmm-agent.was-active-remove \
-  /run/northgate-rmm-agent.was-enabled-remove
+  /run/northgate-rmm-agent.was-enabled-remove \
+  /var/lib/northgate-rmm-purge-transaction \
+  /var/lib/northgate-rmm-purge-transaction.tmp
 if [ -f /etc/northgate-rmm/agent.json ]; then
   chown root:northgate-rmm /etc/northgate-rmm/agent.json
   chmod 0640 /etc/northgate-rmm/agent.json

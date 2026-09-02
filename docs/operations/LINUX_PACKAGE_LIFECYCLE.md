@@ -54,7 +54,7 @@ cannot reuse an earlier spool position.
 3. Revoke invalidates the exact control-plane identity first, then stops and
    disables the service, removes local identity material, and writes a fresh,
    non-empty root-owned `0600` receipt. Enrollment, configure, and upgrade must
-   invalidate older receipts.
+   invalidate older revocation, evidence-export, and purge-approval receipts.
 4. Uninstall requires both absent local identity material and that protected
    receipt; absence alone is not proof. It removes the executable and unit while
    preserving configuration and state for recovery or investigation.
@@ -65,6 +65,10 @@ cannot reuse an earlier spool position.
    is removed and verified before account deletion. Account and group deletion
    are then verified; failure preserves the protected receipts so purge can be
    retried without fabricating new gates.
+
+A temporary restart marker is valid only for the upgrade generation that created
+it. Fresh installation and removal clear stale markers, and an upgrade marker is
+removed only after the replacement service is verified active.
 
 ## Service containment
 

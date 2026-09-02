@@ -58,9 +58,11 @@ fi
 
 install -d -o root -g root -m 0755 /etc/northgate-rmm
 install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm
-# Any configure/upgrade invalidates an older removal receipt. The separately
-# authorized revocation workflow must create a fresh receipt afterward.
-rm -f -- /etc/northgate-rmm/.identity-revoked
+# Any configure/upgrade starts a new lifecycle generation. Revocation,
+# evidence-export, and purge approval must all be established again afterward.
+rm -f -- /etc/northgate-rmm/.identity-revoked \
+  /etc/northgate-rmm/.evidence-exported \
+  /etc/northgate-rmm/.purge-approved
 if [ -f /etc/northgate-rmm/agent.json ]; then
   chown root:northgate-rmm /etc/northgate-rmm/agent.json
   chmod 0640 /etc/northgate-rmm/agent.json
@@ -68,10 +70,15 @@ fi
 
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload
-  if [ -f /run/northgate-rmm-agent.was-active ]; then
-    rm -f /run/northgate-rmm-agent.was-active
+  if [ -n "$previous_version" ] && [ -f /run/northgate-rmm-agent.was-active ]; then
     systemctl start northgate-rmm-agent.service
+    if ! systemctl is-active --quiet northgate-rmm-agent.service; then
+      echo "agent service did not become active after upgrade" >&2
+      exit 56
+    fi
+    rm -f /run/northgate-rmm-agent.was-active
   elif [ -z "$previous_version" ]; then
+    rm -f -- /run/northgate-rmm-agent.was-active
     if ! systemctl disable northgate-rmm-agent.service >/dev/null; then
       echo "agent service could not be left disabled" >&2
       exit 54

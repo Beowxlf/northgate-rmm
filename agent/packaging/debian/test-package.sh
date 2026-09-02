@@ -33,6 +33,42 @@ chmod 0755 /usr/bin/systemctl
 /var/lib/dpkg/info/northgate-rmm-agent.prerm upgrade 0.2.1
 /var/lib/dpkg/info/northgate-rmm-agent.postinst configure 0.1.0
 test ! -e /tmp/unexpected-disable
+
+install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.identity-revoked
+install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.evidence-exported
+install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.purge-approved
+: > /run/northgate-rmm-agent.was-active
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  disable) touch /tmp/fresh-disable; exit 0 ;;' \
+  '  is-enabled) echo disabled; exit 1 ;;' \
+  '  start) touch /tmp/unexpected-start; exit 0 ;;' \
+  '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+/var/lib/dpkg/info/northgate-rmm-agent.postinst configure
+test -e /tmp/fresh-disable
+test ! -e /tmp/unexpected-start
+test ! -e /run/northgate-rmm-agent.was-active
+test ! -e /etc/northgate-rmm/.identity-revoked
+test ! -e /etc/northgate-rmm/.evidence-exported
+test ! -e /etc/northgate-rmm/.purge-approved
+
+: > /run/northgate-rmm-agent.was-active
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  start) exit 75 ;;' '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+if /var/lib/dpkg/info/northgate-rmm-agent.postinst configure 0.1.0 >/dev/null 2>&1; then
+  echo "upgrade configure unexpectedly ignored restart failure" >&2
+  exit 1
+fi
+test -e /run/northgate-rmm-agent.was-active
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  start) touch /tmp/upgrade-started; exit 0 ;;' \
+  '  is-active) test -e /tmp/upgrade-started ;;' \
+  '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+/var/lib/dpkg/info/northgate-rmm-agent.postinst configure 0.1.0
+test -e /tmp/upgrade-started
+test ! -e /run/northgate-rmm-agent.was-active
 mv /usr/bin/systemctl.real /usr/bin/systemctl
 rm -rf -- /run/systemd/system
 

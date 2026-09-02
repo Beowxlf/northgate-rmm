@@ -40,6 +40,8 @@
   stop or inactive state cannot be verified;
 - upgrade preserves enabled/disabled state independently from whether the
   service was running;
+- fresh installation cannot consume a stale upgrade restart marker, and upgrade
+  restart intent remains until the replacement service is verified active;
 - key/config/spool permission enforcement;
 - resource exhaustion and crash-loop limits;
 - expired and explicitly rejected queue heads are quarantined without losing
@@ -57,6 +59,8 @@
   identity;
 - account or group deletion failure keeps purge failed and preserves protected
   gate receipts for a retry after service-owned state has been removed;
+- configure invalidates revocation, evidence-export, and purge-approval receipts
+  from every older lifecycle generation;
 - installation rejects a pre-existing service account with a non-system UID,
   mismatched primary group, or any supplementary group access;
 - supported OS/architecture matrix and upgrade compatibility.

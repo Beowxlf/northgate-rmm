@@ -20,7 +20,9 @@ fresh non-empty root-owned `0600` receipt before uninstall is accepted; a missin
 identity file is not revocation proof. Configure and upgrade invalidate older
 receipts. Ordinary uninstall preserves configuration and state for investigation
 or recovery; purge additionally requires root-owned approval and evidence-export
-markers and fails unless all retained state is removed.
+markers and fails unless all retained state is removed. Every configure or
+upgrade invalidates all three receipts so approval cannot cross lifecycle
+generations.
 
 Rejected messages use a separate bounded retention quota equal to the active
 spool byte quota and at most 128 records. Before admitting a rejection that would
@@ -41,6 +43,8 @@ supplementary service-account access, root-receipt-gated uninstall, state
 preservation, purge failure on account-removal error, and approval/evidence-gated
 purge. It also injects a service-stop failure and proves package removal leaves
 the installed executable in place, and proves an enabled-but-inactive upgrade
-does not disable boot activation. A container is not a full systemd boot, so
-successful restart behavior and live resource enforcement still require the
-separately authorized disposable G2 canary.
+does not disable boot activation. It also proves a stale interrupted-upgrade
+marker cannot start a fresh installation. A container is not a full systemd
+boot; the test uses a bounded mock to prove failed upgrade restart retains retry
+intent and a verified retry clears it. Live resource enforcement still requires
+the separately authorized disposable G2 canary.

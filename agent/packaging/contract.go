@@ -87,6 +87,7 @@ var expectedActions = lifecycle{
 		"preserve_identity",
 		"preserve_enablement",
 		"restart_only_if_previously_running",
+		"restart_previous_if_upgrade_aborts",
 	},
 	Revoke: []string{
 		"revoke_control_plane_identity",

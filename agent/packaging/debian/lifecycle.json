@@ -43,7 +43,8 @@
       "preserve_state",
       "preserve_identity",
       "preserve_enablement",
-      "restart_only_if_previously_running"
+      "restart_only_if_previously_running",
+      "restart_previous_if_upgrade_aborts"
     ],
     "revoke": [
       "revoke_control_plane_identity",

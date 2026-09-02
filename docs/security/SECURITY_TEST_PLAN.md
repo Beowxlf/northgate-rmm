@@ -43,6 +43,9 @@
 - fresh installation cannot consume a stale upgrade restart marker, and upgrade
   restart intent survives repeated preparation until the replacement service is
   verified active;
+- an aborted upgrade restarts a previously active restored service, retains
+  restart intent on recovery failure, and clears it only after active-state
+  verification;
 - key/config/spool permission enforcement;
 - resource exhaustion and crash-loop limits;
 - expired and explicitly rejected queue heads are quarantined without losing

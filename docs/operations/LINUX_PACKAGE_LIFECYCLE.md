@@ -69,7 +69,7 @@ cannot reuse an earlier spool position.
 A temporary restart marker is valid only for the upgrade generation that created
 it. Repeated upgrade preparation preserves an existing marker. Fresh
 installation and removal clear stale markers, and an upgrade marker is removed
-only after the replacement service is verified active.
+only after the replacement or rollback-restored service is verified active.
 
 ## Service containment
 

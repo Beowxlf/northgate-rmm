@@ -64,6 +64,31 @@ test -e /run/northgate-rmm-agent.was-active
 printf '%s\n' '#!/bin/sh' 'case "$1" in' \
   '  start) exit 75 ;;' '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
 chmod 0755 /usr/bin/systemctl
+if /var/lib/dpkg/info/northgate-rmm-agent.postinst abort-upgrade 0.2.1 >/dev/null 2>&1; then
+  echo "aborted upgrade unexpectedly ignored restored-service restart failure" >&2
+  exit 1
+fi
+test -e /run/northgate-rmm-agent.was-active
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  start) touch /tmp/rollback-started; exit 0 ;;' \
+  '  is-active) test -e /tmp/rollback-started ;;' \
+  '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+/var/lib/dpkg/info/northgate-rmm-agent.postinst abort-upgrade 0.2.1
+test -e /tmp/rollback-started
+test ! -e /run/northgate-rmm-agent.was-active
+
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  is-active) test -e /tmp/upgrade-active ;;' \
+  '  stop) rm -f /tmp/upgrade-active; exit 0 ;;' \
+  '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+: > /tmp/upgrade-active
+/var/lib/dpkg/info/northgate-rmm-agent.prerm upgrade 0.2.1
+test -e /run/northgate-rmm-agent.was-active
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  start) exit 75 ;;' '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
 if /var/lib/dpkg/info/northgate-rmm-agent.postinst configure 0.1.0 >/dev/null 2>&1; then
   echo "upgrade configure unexpectedly ignored restart failure" >&2
   exit 1

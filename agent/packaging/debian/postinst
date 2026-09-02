@@ -1,8 +1,25 @@
 #!/bin/sh
 set -eu
 
-case "${1:-}" in
+action="${1:-}"
+case "$action" in
   configure)
+    ;;
+  abort-upgrade)
+    if [ -d /run/systemd/system ] && \
+       [ -f /run/northgate-rmm-agent.was-active ]; then
+      systemctl daemon-reload
+      if ! systemctl start northgate-rmm-agent.service; then
+        echo "restored agent service could not be restarted after aborted upgrade" >&2
+        exit 57
+      fi
+      if ! systemctl is-active --quiet northgate-rmm-agent.service; then
+        echo "restored agent service is not active after aborted upgrade" >&2
+        exit 58
+      fi
+      rm -f -- /run/northgate-rmm-agent.was-active
+    fi
+    exit 0
     ;;
   *)
     exit 0

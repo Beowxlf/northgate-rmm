@@ -46,6 +46,6 @@ the installed executable in place, and proves an enabled-but-inactive upgrade
 does not disable boot activation. It also proves a stale interrupted-upgrade
 marker cannot start a fresh installation. A container is not a full systemd
 boot; the test uses a bounded mock to prove failed upgrade restart retains retry
-intent across repeated upgrade preparation and a verified retry clears it. Live
-resource enforcement still requires the separately authorized disposable G2
-canary.
+intent across repeated upgrade preparation, an aborted upgrade restores a
+previously active service, and verified recovery clears the marker. Live resource
+enforcement still requires the separately authorized disposable G2 canary.

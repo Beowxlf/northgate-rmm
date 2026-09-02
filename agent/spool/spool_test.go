@@ -231,6 +231,41 @@ func TestOpenRecoversPersistedRolloverLinkBeforeSourceRemoval(t *testing.T) {
 	}
 }
 
+func TestOpenRecoversPersistedQuarantineLinkBeforeSourceRemoval(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(context.Background(), testID, []byte("rejected")); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(
+		filepath.Join(directory, testID+".json"),
+		filepath.Join(directory, "rejected", testID+".json"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = Open(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("Open() recovery error = %v", err)
+	}
+	defer queue.Close()
+	if _, err := os.Stat(filepath.Join(directory, testID+".json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("recovered active source remains: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(directory, "rejected", testID+".json")); err != nil {
+		t.Fatalf("recovered rejected destination is missing: %v", err)
+	}
+	ids, err := queue.ListIDs(context.Background())
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("recovered active queue = %v, %v", ids, err)
+	}
+}
+
 func TestRejectedRetentionEnforcesEntryLimit(t *testing.T) {
 	directory := t.TempDir()
 	queue, err := Open(directory, 1<<20)

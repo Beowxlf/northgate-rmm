@@ -207,6 +207,13 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 		root.Close()
 		return nil, err
 	}
+	if err := queue.recoverQuarantineLinksLocked(); err != nil {
+		rollover.Close()
+		rejected.Close()
+		lock.Close()
+		root.Close()
+		return nil, err
+	}
 	if _, _, err := queue.usageLocked(); err != nil {
 		rollover.Close()
 		rejected.Close()
@@ -331,6 +338,51 @@ func (queue *Queue) recoverRolloverLinksLocked() error {
 		}
 	}
 	if err := queue.sync(queue.rejected); err != nil {
+		return &QuarantineUncertainError{
+			ID: strings.TrimSuffix(removeSource[len(removeSource)-1], ".json"), Cause: err,
+		}
+	}
+	return nil
+}
+
+// recoverQuarantineLinksLocked completes the valid interrupted quarantine
+// state where the rejected destination was persisted before its active source
+// was removed.
+func (queue *Queue) recoverQuarantineLinksLocked() error {
+	_, records, _, _, err := queue.rejectedUsageLocked()
+	if err != nil {
+		return err
+	}
+	removeSource := make([]string, 0, len(records))
+	for _, item := range records {
+		filename := item.ID + ".json"
+		source, err := queue.root.Stat(filename)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return ErrCorrupt
+		}
+		destination, err := queue.rejected.Stat(filename)
+		if err != nil || !os.SameFile(source, destination) {
+			return ErrCorrupt
+		}
+		removeSource = append(removeSource, filename)
+	}
+	if len(removeSource) == 0 {
+		return nil
+	}
+	if err := queue.sync(queue.rejected); err != nil {
+		return &QuarantineUncertainError{
+			ID: strings.TrimSuffix(removeSource[0], ".json"), Cause: err,
+		}
+	}
+	for _, filename := range removeSource {
+		if err := queue.root.Remove(filename); err != nil {
+			return &QuarantineUncertainError{ID: strings.TrimSuffix(filename, ".json"), Cause: err}
+		}
+	}
+	if err := queue.sync(queue.root); err != nil {
 		return &QuarantineUncertainError{
 			ID: strings.TrimSuffix(removeSource[len(removeSource)-1], ".json"), Cause: err,
 		}
@@ -640,10 +692,13 @@ func (queue *Queue) Quarantine(ctx context.Context, id string) (QuarantineResult
 	if err != nil {
 		return result, err
 	}
-	if err := queue.root.Rename(filename, "rejected/"+filename); err != nil {
+	if err := queue.root.Link(filename, "rejected/"+filename); err != nil {
 		return result, fmt.Errorf("quarantine spool item: %w", err)
 	}
 	if err := queue.sync(queue.rejected); err != nil {
+		return result, &QuarantineUncertainError{ID: id, Cause: err}
+	}
+	if err := queue.root.Remove(filename); err != nil {
 		return result, &QuarantineUncertainError{ID: id, Cause: err}
 	}
 	if err := queue.sync(queue.root); err != nil {

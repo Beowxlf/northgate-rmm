@@ -41,7 +41,8 @@
 - upgrade preserves enabled/disabled state independently from whether the
   service was running;
 - fresh installation cannot consume a stale upgrade restart marker, and upgrade
-  restart intent remains until the replacement service is verified active;
+  restart intent survives repeated preparation until the replacement service is
+  verified active;
 - key/config/spool permission enforcement;
 - resource exhaustion and crash-loop limits;
 - expired and explicitly rejected queue heads are quarantined without losing

@@ -17,8 +17,8 @@ fi
 
 if [ -d /run/systemd/system ]; then
   if [ "$action" = "upgrade" ]; then
-    rm -f -- /run/northgate-rmm-agent.was-active
-    if systemctl is-active --quiet northgate-rmm-agent.service; then
+    if [ ! -f /run/northgate-rmm-agent.was-active ] && \
+       systemctl is-active --quiet northgate-rmm-agent.service; then
       : > /run/northgate-rmm-agent.was-active
     fi
   elif [ "$action" = "remove" ]; then

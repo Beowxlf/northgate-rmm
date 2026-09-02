@@ -52,7 +52,15 @@ test ! -e /etc/northgate-rmm/.identity-revoked
 test ! -e /etc/northgate-rmm/.evidence-exported
 test ! -e /etc/northgate-rmm/.purge-approved
 
-: > /run/northgate-rmm-agent.was-active
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  is-active) test -e /tmp/upgrade-active ;;' \
+  '  stop) rm -f /tmp/upgrade-active; exit 0 ;;' \
+  '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+: > /tmp/upgrade-active
+/var/lib/dpkg/info/northgate-rmm-agent.prerm upgrade 0.2.1
+/var/lib/dpkg/info/northgate-rmm-agent.prerm upgrade 0.2.1
+test -e /run/northgate-rmm-agent.was-active
 printf '%s\n' '#!/bin/sh' 'case "$1" in' \
   '  start) exit 75 ;;' '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
 chmod 0755 /usr/bin/systemctl

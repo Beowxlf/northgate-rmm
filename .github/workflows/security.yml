@@ -100,7 +100,8 @@ jobs:
       - name: Build and test the Phase 2 Debian package in isolation
         working-directory: agent
         run: |
-          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
           chmod 0755 packaging/build-deb.sh packaging/debian/test-package.sh
           mkdir -p build/package-a build/package-b
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \

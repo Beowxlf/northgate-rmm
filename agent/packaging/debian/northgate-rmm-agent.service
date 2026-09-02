@@ -1,5 +1,5 @@
 [Unit]
-Description=NorthGate RMM read-only agent (source draft)
+Description=NorthGate RMM read-only agent (G2 closed)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300

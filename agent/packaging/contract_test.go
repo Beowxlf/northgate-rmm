@@ -15,8 +15,8 @@ func TestEmbeddedDraftPassesReviewContract(t *testing.T) {
 func TestLifecycleRejectsUnknownOrReorderedActions(t *testing.T) {
 	for _, raw := range [][]byte{
 		bytes.Replace(lifecycleDraft, []byte(`"leave_service_disabled"`), []byte(`"enable_service"`), 1),
-		bytes.Replace(lifecycleDraft, []byte("\"require_identity_revoked\",\n      \"stop_service\""), []byte("\"stop_service\",\n      \"require_identity_revoked\""), 1),
-		bytes.Replace(lifecycleDraft, []byte(`"status": "source-draft-not-installable"`), []byte(`"status": "installable"`), 1),
+		bytes.Replace(lifecycleDraft, []byte("\"require_root_revocation_receipt\",\n      \"stop_service\""), []byte("\"stop_service\",\n      \"require_root_revocation_receipt\""), 1),
+		bytes.Replace(lifecycleDraft, []byte(`"status": "sandbox-package-test-only"`), []byte(`"status": "endpoint-installable"`), 1),
 		append(append([]byte{}, lifecycleDraft...), []byte(` {}`)...),
 	} {
 		contract, err := decodeContract(raw)

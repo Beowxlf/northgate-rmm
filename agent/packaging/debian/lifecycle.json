@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "source-draft-not-installable",
+  "status": "sandbox-package-test-only",
   "target": {
     "distribution": "debian",
     "release": "12",
@@ -11,7 +11,9 @@
     "unit": "/usr/lib/systemd/system/northgate-rmm-agent.service",
     "config": "/etc/northgate-rmm/agent.json",
     "state": "/var/lib/northgate-rmm",
-    "identity": "/var/lib/northgate-rmm/identity"
+    "identity": "/var/lib/northgate-rmm/identity",
+    "revocation_receipt": "/etc/northgate-rmm/.identity-revoked",
+    "purge_transaction": "/var/lib/northgate-rmm-purge-transaction"
   },
   "ownership": {
     "executable": "root:root:0755",
@@ -20,7 +22,9 @@
     "config": "root:northgate-rmm:0640",
     "state": "northgate-rmm:northgate-rmm:0700",
     "identity_directory": "northgate-rmm:northgate-rmm:0700",
-    "identity_bundle": "northgate-rmm:northgate-rmm:0600"
+    "identity_bundle": "northgate-rmm:northgate-rmm:0600",
+    "revocation_receipt": "root:root:0600",
+    "purge_transaction": "root:root:0600"
   },
   "lifecycle": {
     "install": [
@@ -30,7 +34,8 @@
       "install_root_owned_executable",
       "install_root_owned_unit",
       "daemon_reload",
-      "leave_service_disabled"
+      "leave_service_disabled",
+      "invalidate_old_purge_transaction"
     ],
     "upgrade": [
       "stop_if_running",
@@ -40,31 +45,40 @@
       "preserve_config",
       "preserve_state",
       "preserve_identity",
-      "restart_only_if_previously_running"
+      "preserve_enablement",
+      "restart_only_if_previously_running",
+      "restart_previous_if_upgrade_aborts",
+      "invalidate_old_purge_transaction"
     ],
     "revoke": [
       "revoke_control_plane_identity",
       "stop_service",
       "disable_service",
-      "remove_local_identity"
+      "remove_local_identity",
+      "record_root_revocation_receipt"
     ],
     "uninstall": [
-      "require_identity_revoked",
+      "require_root_revocation_receipt",
       "stop_service",
       "disable_service",
       "remove_unit",
       "remove_executable",
       "daemon_reload",
       "preserve_config",
-      "preserve_state"
+      "preserve_state",
+      "restart_if_remove_aborts"
     ],
     "purge": [
       "require_explicit_approval",
-      "require_identity_revoked",
+      "require_root_revocation_receipt",
       "require_evidence_export",
-      "remove_config",
+      "persist_purge_transaction_before_cleanup",
       "remove_state",
-      "remove_system_identity"
+      "remove_system_identity",
+      "daemon_reload_before_receipt_removal",
+      "clear_runtime_state_before_receipt_removal",
+      "remove_config",
+      "retain_purge_transaction_for_retry"
     ]
   }
 }

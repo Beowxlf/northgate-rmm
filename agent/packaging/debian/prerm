@@ -1,0 +1,57 @@
+#!/bin/sh
+set -eu
+
+action="${1:-}"
+if [ "$action" = "remove" ]; then
+  if [ -e /var/lib/northgate-rmm/identity/identity.json ]; then
+    echo "refusing removal while endpoint identity remains" >&2
+    exit 40
+  fi
+  revocation=/etc/northgate-rmm/.identity-revoked
+  if [ ! -f "$revocation" ] || [ -L "$revocation" ] || [ ! -s "$revocation" ] || \
+     [ "$(stat -c '%U:%G:%a' "$revocation")" != "root:root:600" ]; then
+    echo "refusing removal without a root-controlled revocation receipt" >&2
+    exit 44
+  fi
+fi
+
+if [ -d /run/systemd/system ]; then
+  if [ "$action" = "upgrade" ]; then
+    if [ ! -f /run/northgate-rmm-agent.was-active ] && \
+       systemctl is-active --quiet northgate-rmm-agent.service; then
+      : > /run/northgate-rmm-agent.was-active
+    fi
+  elif [ "$action" = "remove" ]; then
+    if [ ! -f /run/northgate-rmm-agent.remove-state-recorded ]; then
+      rm -f -- /run/northgate-rmm-agent.was-active-remove \
+        /run/northgate-rmm-agent.was-enabled-remove
+      if systemctl is-active --quiet northgate-rmm-agent.service; then
+        : > /run/northgate-rmm-agent.was-active-remove
+      fi
+      if systemctl is-enabled --quiet northgate-rmm-agent.service; then
+        : > /run/northgate-rmm-agent.was-enabled-remove
+      fi
+      : > /run/northgate-rmm-agent.remove-state-recorded
+    fi
+  fi
+  if ! systemctl stop northgate-rmm-agent.service >/dev/null; then
+    echo "refusing package operation because the agent service could not be stopped" >&2
+    exit 50
+  fi
+  if systemctl is-active --quiet northgate-rmm-agent.service; then
+    echo "refusing package operation while the agent service remains active" >&2
+    exit 51
+  fi
+  if [ "$action" = "remove" ]; then
+    if ! systemctl disable northgate-rmm-agent.service >/dev/null; then
+      echo "refusing removal because the agent service could not be disabled" >&2
+      exit 52
+    fi
+    if [ "$(systemctl is-enabled northgate-rmm-agent.service 2>/dev/null || true)" != "disabled" ]; then
+      echo "refusing removal because the agent service is not verifiably disabled" >&2
+      exit 53
+    fi
+  fi
+fi
+
+exit 0

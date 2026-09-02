@@ -36,14 +36,47 @@
   values, malformed identifiers, and control-character injection;
 - package and service drafts reject root execution, shell wrappers, added
   environment fields, unbounded resources, and weakened sandbox directives;
+- package removal and upgrade fail before artifact replacement when service
+  stop or inactive state cannot be verified;
+- an aborted removal restores and verifies prior service activation and
+  enablement before clearing the recorded state;
+- upgrade preserves enabled/disabled state independently from whether the
+  service was running;
+- fresh installation cannot consume a stale upgrade restart marker, and upgrade
+  restart intent survives repeated preparation until the replacement service is
+  verified active;
+- an aborted upgrade restarts a previously active restored service, retains
+  restart intent on recovery failure, and clears it only after active-state
+  verification;
 - key/config/spool permission enforcement;
 - resource exhaustion and crash-loop limits;
+- expired and explicitly rejected queue heads are quarantined without losing
+  later delivery order; rejected evidence has independent byte/entry bounds,
+  destination-first durable oldest-first audit recovery across restart, recovers
+  persisted dual-link transactions for active quarantine and rejected rollover,
+  and cannot exhaust the active queue;
+- preserved inventory bound to a different endpoint enrollment is quarantined
+  locally as a trust rejection and is never presented to transport;
 - collector timeout/failure isolation;
 - no shell metacharacter or path traversal construction;
-- uninstall removes executable/secrets and revokes identity;
+- uninstall requires a fresh protected revocation receipt even when local
+  identity material is already absent;
 - source-only lifecycle simulation preserves evidence-bearing state on ordinary
   uninstall and requires approval, prior revocation, and evidence export for
   purge;
+- purge authorization is root-owned outside service-writable state, and an
+  approved purge removes non-empty retained state before deleting the service
+  identity;
+- account or group deletion failure, a later systemd manager reload failure, or
+  runtime-marker cleanup failure keeps purge failed and preserves protected gate
+  receipts for a retry after service-owned state has been removed;
+- partial config deletion can remove original receipts without stranding purge
+  because a synced root-only transaction outside that tree preserves retry
+  authority until the next configure lifecycle;
+- configure invalidates revocation, evidence-export, and purge-approval receipts
+  from every older lifecycle generation;
+- installation rejects a pre-existing service account with a non-system UID,
+  mismatched primary group, or any supplementary group access;
 - supported OS/architecture matrix and upgrade compatibility.
 
 ## Remote-access tests

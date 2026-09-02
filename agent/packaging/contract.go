@@ -1,5 +1,5 @@
-// Package packaging validates the source-only Debian service and lifecycle
-// draft. It does not install files, invoke a package manager, or call systemd.
+// Package packaging validates the Debian sandbox package and service contract.
+// It does not itself install files, invoke a package manager, or call systemd.
 package packaging
 
 import (
@@ -40,11 +40,13 @@ type target struct {
 }
 
 type paths struct {
-	Executable string `json:"executable"`
-	Unit       string `json:"unit"`
-	Config     string `json:"config"`
-	State      string `json:"state"`
-	Identity   string `json:"identity"`
+	Executable        string `json:"executable"`
+	Unit              string `json:"unit"`
+	Config            string `json:"config"`
+	State             string `json:"state"`
+	Identity          string `json:"identity"`
+	RevocationReceipt string `json:"revocation_receipt"`
+	PurgeTransaction  string `json:"purge_transaction"`
 }
 
 type ownership struct {
@@ -55,6 +57,8 @@ type ownership struct {
 	State             string `json:"state"`
 	IdentityDirectory string `json:"identity_directory"`
 	IdentityBundle    string `json:"identity_bundle"`
+	RevocationReceipt string `json:"revocation_receipt"`
+	PurgeTransaction  string `json:"purge_transaction"`
 }
 
 type lifecycle struct {
@@ -74,6 +78,7 @@ var expectedActions = lifecycle{
 		"install_root_owned_unit",
 		"daemon_reload",
 		"leave_service_disabled",
+		"invalidate_old_purge_transaction",
 	},
 	Upgrade: []string{
 		"stop_if_running",
@@ -83,16 +88,20 @@ var expectedActions = lifecycle{
 		"preserve_config",
 		"preserve_state",
 		"preserve_identity",
+		"preserve_enablement",
 		"restart_only_if_previously_running",
+		"restart_previous_if_upgrade_aborts",
+		"invalidate_old_purge_transaction",
 	},
 	Revoke: []string{
 		"revoke_control_plane_identity",
 		"stop_service",
 		"disable_service",
 		"remove_local_identity",
+		"record_root_revocation_receipt",
 	},
 	Uninstall: []string{
-		"require_identity_revoked",
+		"require_root_revocation_receipt",
 		"stop_service",
 		"disable_service",
 		"remove_unit",
@@ -100,14 +109,19 @@ var expectedActions = lifecycle{
 		"daemon_reload",
 		"preserve_config",
 		"preserve_state",
+		"restart_if_remove_aborts",
 	},
 	Purge: []string{
 		"require_explicit_approval",
-		"require_identity_revoked",
+		"require_root_revocation_receipt",
 		"require_evidence_export",
-		"remove_config",
+		"persist_purge_transaction_before_cleanup",
 		"remove_state",
 		"remove_system_identity",
+		"daemon_reload_before_receipt_removal",
+		"clear_runtime_state_before_receipt_removal",
+		"remove_config",
+		"retain_purge_transaction_for_retry",
 	},
 }
 
@@ -147,16 +161,18 @@ func decodeContract(raw []byte) (lifecycleContract, error) {
 }
 
 func validateContract(contract lifecycleContract) error {
-	if contract.SchemaVersion != 1 || contract.Status != "source-draft-not-installable" ||
+	if contract.SchemaVersion != 1 || contract.Status != "sandbox-package-test-only" ||
 		contract.Target != (target{Distribution: "debian", Release: "12", Architecture: "amd64"}) {
 		return errors.New("lifecycle metadata is outside the approved source draft")
 	}
 	wantPaths := paths{
-		Executable: "/usr/libexec/northgate-rmm/northgate-rmm-agent",
-		Unit:       "/usr/lib/systemd/system/northgate-rmm-agent.service",
-		Config:     "/etc/northgate-rmm/agent.json",
-		State:      "/var/lib/northgate-rmm",
-		Identity:   "/var/lib/northgate-rmm/identity",
+		Executable:        "/usr/libexec/northgate-rmm/northgate-rmm-agent",
+		Unit:              "/usr/lib/systemd/system/northgate-rmm-agent.service",
+		Config:            "/etc/northgate-rmm/agent.json",
+		State:             "/var/lib/northgate-rmm",
+		Identity:          "/var/lib/northgate-rmm/identity",
+		RevocationReceipt: "/etc/northgate-rmm/.identity-revoked",
+		PurgeTransaction:  "/var/lib/northgate-rmm-purge-transaction",
 	}
 	if contract.Paths != wantPaths {
 		return errors.New("lifecycle paths differ from the reviewed filesystem contract")
@@ -167,6 +183,8 @@ func validateContract(contract lifecycleContract) error {
 		State:             "northgate-rmm:northgate-rmm:0700",
 		IdentityDirectory: "northgate-rmm:northgate-rmm:0700",
 		IdentityBundle:    "northgate-rmm:northgate-rmm:0600",
+		RevocationReceipt: "root:root:0600",
+		PurgeTransaction:  "root:root:0600",
 	}
 	if contract.Ownership != wantOwnership {
 		return errors.New("lifecycle ownership or modes differ from the reviewed contract")
@@ -236,7 +254,7 @@ func validateUnit(raw []byte) error {
 
 	required := map[string]map[string]string{
 		"Unit": {
-			"Description":           "NorthGate RMM read-only agent (source draft)",
+			"Description":           "NorthGate RMM read-only agent (G2 closed)",
 			"After":                 "network-online.target",
 			"Wants":                 "network-online.target",
 			"StartLimitIntervalSec": "300",

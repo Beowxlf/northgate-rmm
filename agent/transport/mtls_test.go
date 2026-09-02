@@ -116,7 +116,7 @@ func newTestSender(t *testing.T, server *httptest.Server, pki testPKI) *MTLSSend
 func writeAck(t *testing.T, writer http.ResponseWriter, messageID string, accepted bool) {
 	t.Helper()
 	writer.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(writer).Encode(acknowledgement{MessageID: messageID, Accepted: accepted}); err != nil {
+	if err := json.NewEncoder(writer).Encode(acknowledgement{MessageID: messageID, Accepted: &accepted}); err != nil {
 		t.Fatalf("encode acknowledgement: %v", err)
 	}
 }
@@ -165,12 +165,15 @@ func TestMTLSSenderRejectsInvalidAcknowledgements(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
+		code string
 	}{
-		{name: "wrong ID", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174002","accepted":true}`},
-		{name: "not accepted", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":false}`},
-		{name: "unknown field", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":true,"extra":1}`},
-		{name: "duplicate field", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":true,"accepted":true}`},
-		{name: "trailing value", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":true} {}`},
+		{name: "wrong ID", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174002","accepted":true}`, code: "acknowledgement_mismatch"},
+		{name: "not accepted", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":false}`, code: "acknowledgement_rejected"},
+		{name: "missing accepted", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001"}`, code: "invalid_acknowledgement"},
+		{name: "null accepted", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":null}`, code: "invalid_acknowledgement"},
+		{name: "unknown field", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":true,"extra":1}`, code: "invalid_acknowledgement"},
+		{name: "duplicate field", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":true,"accepted":true}`, code: "invalid_acknowledgement"},
+		{name: "trailing value", body: `{"message_id":"123e4567-e89b-42d3-a456-426614174001","accepted":true} {}`, code: "invalid_acknowledgement"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -182,6 +185,10 @@ func TestMTLSSenderRejectsInvalidAcknowledgements(t *testing.T) {
 			err := newTestSender(t, server, pki).Send(context.Background(), testMessageID, []byte(`{}`))
 			if err == nil || IsRetryable(err) {
 				t.Fatalf("Send() error = %v, want permanent acknowledgement failure", err)
+			}
+			var deliveryError *DeliveryError
+			if !errors.As(err, &deliveryError) || deliveryError.Code != test.code {
+				t.Fatalf("Send() code = %v, want %s", err, test.code)
 			}
 		})
 	}

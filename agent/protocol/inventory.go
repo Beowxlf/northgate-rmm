@@ -3,12 +3,16 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"regexp"
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
 )
 
 const (
@@ -67,6 +71,38 @@ func EncodeInventory(envelope Envelope, payload InventoryPayload) ([]byte, error
 		return nil, errors.New("encoded inventory exceeds message size limit")
 	}
 	return raw, nil
+}
+
+// DecodeInventory validates one persisted inventory message before the runtime
+// uses its expiry or sends it. This prevents locally corrupted or structurally
+// ambiguous queue data from influencing delivery decisions.
+func DecodeInventory(raw []byte) (InventoryMessage, error) {
+	if len(raw) == 0 || len(raw) > MaxEncodedMessage {
+		return InventoryMessage{}, errors.New("inventory message is outside the size limit")
+	}
+	if err := strictjson.Validate(raw); err != nil {
+		return InventoryMessage{}, errors.New("inventory message JSON is invalid")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var message InventoryMessage
+	if err := decoder.Decode(&message); err != nil {
+		return InventoryMessage{}, errors.New("inventory message schema is invalid")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return InventoryMessage{}, errors.New("inventory message contains trailing data")
+	}
+	if message.Type != "inventory" {
+		return InventoryMessage{}, errors.New("inventory message type is invalid")
+	}
+	if err := validateEnvelope(message.Envelope); err != nil {
+		return InventoryMessage{}, err
+	}
+	if err := validatePayload(message.Payload); err != nil {
+		return InventoryMessage{}, err
+	}
+	return message, nil
 }
 
 func validateEnvelope(envelope Envelope) error {

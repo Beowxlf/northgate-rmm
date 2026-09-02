@@ -19,6 +19,10 @@ if su --shell /bin/sh --command 'touch /etc/northgate-rmm/.purge-approved' north
   echo "service account created a purge approval marker" >&2
   exit 1
 fi
+if su --shell /bin/sh --command 'touch /etc/northgate-rmm/.identity-revoked' northgate-rmm 2>/dev/null; then
+  echo "service account created a revocation receipt" >&2
+  exit 1
+fi
 
 install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm/identity
 install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/identity/identity.json
@@ -27,6 +31,20 @@ if dpkg -r northgate-rmm-agent >/dev/null 2>&1; then
   exit 1
 fi
 rm -f /var/lib/northgate-rmm/identity/identity.json
+if dpkg -r northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package removal unexpectedly accepted missing identity as revocation proof" >&2
+  exit 1
+fi
+: > /etc/northgate-rmm/.identity-revoked
+chown root:root /etc/northgate-rmm/.identity-revoked
+chmod 0600 /etc/northgate-rmm/.identity-revoked
+if dpkg -r northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package removal unexpectedly accepted an empty revocation receipt" >&2
+  exit 1
+fi
+printf '%s\n' 'synthetic sandbox revocation receipt' > /etc/northgate-rmm/.identity-revoked
+chown root:root /etc/northgate-rmm/.identity-revoked
+chmod 0600 /etc/northgate-rmm/.identity-revoked
 dpkg -r northgate-rmm-agent >/dev/null
 test ! -e /usr/libexec/northgate-rmm/northgate-rmm-agent
 test ! -e /usr/lib/systemd/system/northgate-rmm-agent.service
@@ -52,6 +70,15 @@ test ! -e /etc/northgate-rmm
 test ! -e /var/lib/northgate-rmm
 if getent passwd northgate-rmm >/dev/null; then
   echo "service account remains after approved purge" >&2
+  exit 1
+fi
+
+addgroup --system --quiet northgate-rmm
+adduser --system --quiet --ingroup northgate-rmm --home /var/lib/northgate-rmm \
+  --no-create-home --shell /usr/sbin/nologin --disabled-password northgate-rmm
+adduser northgate-rmm daemon >/dev/null
+if dpkg -i "$package" >/dev/null 2>&1; then
+  echo "package accepted a pre-existing service account with supplementary access" >&2
   exit 1
 fi
 

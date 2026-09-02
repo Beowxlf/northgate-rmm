@@ -51,7 +51,7 @@ func TestQuarantinePreservesRecordAndAdvancesDurableOrder(t *testing.T) {
 	if err := queue.Enqueue(context.Background(), testID, firstPayload); err != nil {
 		t.Fatal(err)
 	}
-	if err := queue.Quarantine(context.Background(), testID); err != nil {
+	if _, err := queue.Quarantine(context.Background(), testID); err != nil {
 		t.Fatalf("Quarantine() error = %v", err)
 	}
 	ids, err := queue.ListIDs(context.Background())
@@ -109,8 +109,9 @@ func TestOpenRejectsCorruptQuarantine(t *testing.T) {
 	}
 }
 
-func TestQuarantineRemainsInsideSpoolQuota(t *testing.T) {
-	queue, err := Open(t.TempDir(), maxRecordBytes)
+func TestRejectedRetentionRollsOverWithoutExhaustingActiveSpool(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, maxRecordBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,12 +119,62 @@ func TestQuarantineRemainsInsideSpoolQuota(t *testing.T) {
 	if err := queue.Enqueue(context.Background(), testID, make([]byte, 60_000)); err != nil {
 		t.Fatal(err)
 	}
-	if err := queue.Quarantine(context.Background(), testID); err != nil {
+	if _, err := queue.Quarantine(context.Background(), testID); err != nil {
 		t.Fatal(err)
 	}
 	secondID := "123e4567-e89b-42d3-a456-426614174001"
-	if err := queue.Enqueue(context.Background(), secondID, make([]byte, 60_000)); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("Enqueue() error = %v, want ErrQuotaExceeded", err)
+	if err := queue.Enqueue(context.Background(), secondID, make([]byte, 60_000)); err != nil {
+		t.Fatalf("active enqueue was blocked by rejected evidence: %v", err)
+	}
+	result, err := queue.Quarantine(context.Background(), secondID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.EvictedIDs) != 1 || result.EvictedIDs[0] != testID {
+		t.Fatalf("retention rollover = %v, want oldest rejected ID", result.EvictedIDs)
+	}
+	if _, err := os.Stat(filepath.Join(directory, "rejected", testID+".json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("oldest rejected record was not rolled over: %v", err)
+	}
+	thirdID := "123e4567-e89b-42d3-a456-426614174002"
+	if err := queue.Enqueue(context.Background(), thirdID, []byte("third")); err != nil {
+		t.Fatalf("enqueue after rejected rollover: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(directory, thirdID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var third record
+	if err := json.Unmarshal(raw, &third); err != nil || third.Order != 3 {
+		t.Fatalf("order after rejected rollover = %d, %v", third.Order, err)
+	}
+}
+
+func TestRejectedRetentionEnforcesEntryLimit(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+	var rollover QuarantineResult
+	for index := 0; index <= MaxRejectedEntries; index++ {
+		id := fmt.Sprintf("123e4567-e89b-42d3-a456-%012x", index)
+		if err := queue.Enqueue(context.Background(), id, []byte("rejected")); err != nil {
+			t.Fatalf("Enqueue(%d): %v", index, err)
+		}
+		rollover, err = queue.Quarantine(context.Background(), id)
+		if err != nil {
+			t.Fatalf("Quarantine(%d): %v", index, err)
+		}
+	}
+	if len(rollover.EvictedIDs) != 1 || rollover.EvictedIDs[0] !=
+		"123e4567-e89b-42d3-a456-000000000000" {
+		t.Fatalf("entry rollover = %v", rollover.EvictedIDs)
+	}
+	entries, err := os.ReadDir(filepath.Join(directory, "rejected"))
+	if err != nil || len(entries) != MaxRejectedEntries {
+		t.Fatalf("rejected entry count = %d, %v", len(entries), err)
 	}
 }
 

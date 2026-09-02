@@ -39,16 +39,20 @@
 - key/config/spool permission enforcement;
 - resource exhaustion and crash-loop limits;
 - expired and explicitly rejected queue heads are quarantined without losing
-  evidence, reusing durable order, or blocking newer records;
+  later delivery order; rejected evidence has independent byte/entry bounds,
+  audited oldest-first rollover, and cannot exhaust the active queue;
 - collector timeout/failure isolation;
 - no shell metacharacter or path traversal construction;
-- uninstall removes executable/secrets and revokes identity;
+- uninstall requires a fresh protected revocation receipt even when local
+  identity material is already absent;
 - source-only lifecycle simulation preserves evidence-bearing state on ordinary
   uninstall and requires approval, prior revocation, and evidence export for
   purge;
 - purge authorization is root-owned outside service-writable state, and an
   approved purge removes non-empty retained state before deleting the service
   identity;
+- installation rejects a pre-existing service account with a non-system UID,
+  mismatched primary group, or any supplementary group access;
 - supported OS/architecture matrix and upgrade compatibility.
 
 ## Remote-access tests

@@ -2,9 +2,17 @@
 set -eu
 
 action="${1:-}"
-if [ "$action" = "remove" ] && [ -e /var/lib/northgate-rmm/identity/identity.json ]; then
-  echo "refusing removal while endpoint identity remains" >&2
-  exit 40
+if [ "$action" = "remove" ]; then
+  if [ -e /var/lib/northgate-rmm/identity/identity.json ]; then
+    echo "refusing removal while endpoint identity remains" >&2
+    exit 40
+  fi
+  revocation=/etc/northgate-rmm/.identity-revoked
+  if [ ! -f "$revocation" ] || [ -L "$revocation" ] || [ ! -s "$revocation" ] || \
+     [ "$(stat -c '%U:%G:%a' "$revocation")" != "root:root:600" ]; then
+    echo "refusing removal without a root-controlled revocation receipt" >&2
+    exit 44
+  fi
 fi
 
 if [ -d /run/systemd/system ]; then

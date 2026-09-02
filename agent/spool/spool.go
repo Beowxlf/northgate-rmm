@@ -27,7 +27,10 @@ const (
 	SchemaVersion   = 2
 	MaxPayloadBytes = 65_536
 	MaxEntries      = 1024
-	maxRecordBytes  = 100_000
+	// MaxRejectedEntries bounds exact-payload quarantine retention separately
+	// from the active delivery queue. Oldest rejected records roll over first.
+	MaxRejectedEntries = 128
+	maxRecordBytes     = 100_000
 )
 
 var (
@@ -51,6 +54,13 @@ type record struct {
 type recordMetadata struct {
 	ID    string
 	Order uint64
+	Size  int64
+}
+
+// QuarantineResult identifies rejected evidence removed by the documented
+// bounded-retention rollover. Callers must emit one audit event per ID.
+type QuarantineResult struct {
+	EvictedIDs []string
 }
 
 // CommitUncertainError exposes the exact item ID when durable rollback cannot
@@ -455,36 +465,74 @@ func (queue *Queue) Acknowledge(ctx context.Context, id string) error {
 	return nil
 }
 
-// Quarantine atomically moves one validated record out of delivery order while
-// preserving its exact bytes in the quota-bounded rejected directory.
-func (queue *Queue) Quarantine(ctx context.Context, id string) error {
+// Quarantine moves one validated record out of delivery order and retains its
+// exact bytes. Rejected evidence has a separate quota equal to the active byte
+// quota and MaxRejectedEntries; the oldest records are durably rolled over
+// before the new rejection is admitted so rejected evidence cannot poison the
+// active queue forever.
+func (queue *Queue) Quarantine(ctx context.Context, id string) (QuarantineResult, error) {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
 	if err := queue.ready(ctx); err != nil {
-		return err
+		return QuarantineResult{}, err
 	}
 	if !uuidPattern.MatchString(id) {
-		return errors.New("spool ID must be a canonical lowercase UUID")
+		return QuarantineResult{}, errors.New("spool ID must be a canonical lowercase UUID")
 	}
 	if _, err := queue.readRecordItemLocked(id); err != nil {
-		return err
+		return QuarantineResult{}, err
 	}
 	filename := id + ".json"
 	if _, err := queue.rejected.Stat(filename); err == nil {
-		return ErrDuplicate
+		return QuarantineResult{}, ErrDuplicate
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("inspect rejected spool item: %w", err)
+		return QuarantineResult{}, fmt.Errorf("inspect rejected spool item: %w", err)
+	}
+	info, err := queue.root.Lstat(filename)
+	if err != nil || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > maxRecordBytes {
+		return QuarantineResult{}, ErrCorrupt
+	}
+	result, err := queue.makeRejectedRoomLocked(info.Size())
+	if err != nil {
+		return result, err
 	}
 	if err := queue.root.Rename(filename, "rejected/"+filename); err != nil {
-		return fmt.Errorf("quarantine spool item: %w", err)
+		return result, fmt.Errorf("quarantine spool item: %w", err)
 	}
 	if err := queue.sync(queue.rejected); err != nil {
-		return &QuarantineUncertainError{ID: id, Cause: err}
+		return result, &QuarantineUncertainError{ID: id, Cause: err}
 	}
 	if err := queue.sync(queue.root); err != nil {
-		return &QuarantineUncertainError{ID: id, Cause: err}
+		return result, &QuarantineUncertainError{ID: id, Cause: err}
 	}
-	return nil
+	return result, nil
+}
+
+func (queue *Queue) makeRejectedRoomLocked(incomingBytes int64) (QuarantineResult, error) {
+	total, records, _, _, err := queue.rejectedUsageLocked()
+	if err != nil {
+		return QuarantineResult{}, err
+	}
+	if incomingBytes > queue.maxBytes {
+		return QuarantineResult{}, ErrQuotaExceeded
+	}
+	sort.Slice(records, func(left, right int) bool { return records[left].Order < records[right].Order })
+	result := QuarantineResult{}
+	for len(records) >= MaxRejectedEntries || total > queue.maxBytes-incomingBytes {
+		oldest := records[0]
+		if err := queue.rejected.Remove(oldest.ID + ".json"); err != nil {
+			return result, &QuarantineUncertainError{ID: oldest.ID, Cause: err}
+		}
+		result.EvictedIDs = append(result.EvictedIDs, oldest.ID)
+		total -= oldest.Size
+		records = records[1:]
+	}
+	if len(result.EvictedIDs) > 0 {
+		if err := queue.sync(queue.rejected); err != nil {
+			return result, &QuarantineUncertainError{ID: result.EvictedIDs[len(result.EvictedIDs)-1], Cause: err}
+		}
+	}
+	return result, nil
 }
 
 func (queue *Queue) ready(ctx context.Context) error {
@@ -541,14 +589,14 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 		}
 		dataEntries = append(dataEntries, name)
 	}
-	rejectedBytes, rejectedCount, rejectedOrders, rejectedMaxOrder, err := queue.rejectedUsageLocked()
+	_, _, rejectedOrders, rejectedMaxOrder, err := queue.rejectedUsageLocked()
 	if err != nil {
 		return 0, nil, 0, 0, err
 	}
-	if len(dataEntries)+rejectedCount > MaxEntries {
+	if len(dataEntries) > MaxEntries {
 		return 0, nil, 0, 0, ErrQuotaExceeded
 	}
-	total := rejectedBytes
+	var total int64
 	records := make([]recordMetadata, 0, len(dataEntries))
 	for _, name := range dataEntries {
 		if !strings.HasSuffix(name, ".json") || !uuidPattern.MatchString(strings.TrimSuffix(name, ".json")) {
@@ -571,7 +619,7 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 			return 0, nil, 0, 0, ErrCorrupt
 		}
 		total += info.Size()
-		records = append(records, recordMetadata{ID: id, Order: item.Order})
+		records = append(records, recordMetadata{ID: id, Order: item.Order, Size: info.Size()})
 	}
 	sort.Slice(records, func(left, right int) bool {
 		return records[left].Order < records[right].Order
@@ -585,53 +633,55 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 	if len(records) > 0 && records[len(records)-1].Order > lastOrder {
 		lastOrder = records[len(records)-1].Order
 	}
-	return total, records, lastOrder, len(dataEntries) + rejectedCount, nil
+	return total, records, lastOrder, len(dataEntries), nil
 }
 
-func (queue *Queue) rejectedUsageLocked() (int64, int, map[uint64]struct{}, uint64, error) {
+func (queue *Queue) rejectedUsageLocked() (int64, []recordMetadata, map[uint64]struct{}, uint64, error) {
 	directory, err := queue.rejected.Open(".")
 	if err != nil {
-		return 0, 0, nil, 0, ErrCorrupt
+		return 0, nil, nil, 0, ErrCorrupt
 	}
 	defer directory.Close()
-	entries, err := directory.ReadDir(MaxEntries + 1)
+	entries, err := directory.ReadDir(MaxRejectedEntries + 1)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return 0, 0, nil, 0, ErrCorrupt
+		return 0, nil, nil, 0, ErrCorrupt
 	}
-	if len(entries) > MaxEntries {
-		return 0, 0, nil, 0, ErrQuotaExceeded
+	if len(entries) > MaxRejectedEntries {
+		return 0, nil, nil, 0, ErrQuotaExceeded
 	}
 	var total int64
+	records := make([]recordMetadata, 0, len(entries))
 	orders := make(map[uint64]struct{}, len(entries))
 	var maxOrder uint64
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasSuffix(name, ".json") || !uuidPattern.MatchString(strings.TrimSuffix(name, ".json")) {
-			return 0, 0, nil, 0, ErrCorrupt
+			return 0, nil, nil, 0, ErrCorrupt
 		}
 		info, err := queue.rejected.Lstat(name)
 		if err != nil || !info.Mode().IsRegular() || !privateRecord(info) ||
 			info.Size() < 1 || info.Size() > maxRecordBytes {
-			return 0, 0, nil, 0, ErrCorrupt
+			return 0, nil, nil, 0, ErrCorrupt
 		}
 		id := strings.TrimSuffix(name, ".json")
 		item, err := readRecordItem(queue.rejected, id)
 		if err != nil {
-			return 0, 0, nil, 0, ErrCorrupt
+			return 0, nil, nil, 0, ErrCorrupt
 		}
 		if _, exists := orders[item.Order]; exists {
-			return 0, 0, nil, 0, ErrCorrupt
+			return 0, nil, nil, 0, ErrCorrupt
 		}
 		orders[item.Order] = struct{}{}
 		if item.Order > maxOrder {
 			maxOrder = item.Order
 		}
 		if total > queue.maxBytes-info.Size() {
-			return 0, 0, nil, 0, ErrQuotaExceeded
+			return 0, nil, nil, 0, ErrQuotaExceeded
 		}
 		total += info.Size()
+		records = append(records, recordMetadata{ID: id, Order: item.Order, Size: info.Size()})
 	}
-	return total, len(entries), orders, maxOrder, nil
+	return total, records, orders, maxOrder, nil
 }
 
 func decodeRecord(raw []byte) (record, error) {

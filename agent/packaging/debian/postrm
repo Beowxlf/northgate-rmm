@@ -9,10 +9,13 @@ if [ "$action" = "purge" ]; then
   fi
   approval=/etc/northgate-rmm/.purge-approved
   evidence=/etc/northgate-rmm/.evidence-exported
+  revocation=/etc/northgate-rmm/.identity-revoked
   if [ ! -f "$approval" ] || [ ! -f "$evidence" ] || \
+     [ ! -f "$revocation" ] || [ -L "$revocation" ] || [ ! -s "$revocation" ] || \
      [ "$(stat -c '%U:%G:%a' "$approval")" != "root:root:600" ] || \
-     [ "$(stat -c '%U:%G:%a' "$evidence")" != "root:root:600" ]; then
-    echo "refusing purge without approval and evidence-export markers" >&2
+     [ "$(stat -c '%U:%G:%a' "$evidence")" != "root:root:600" ] || \
+     [ "$(stat -c '%U:%G:%a' "$revocation")" != "root:root:600" ]; then
+    echo "refusing purge without revocation, approval, and evidence-export receipts" >&2
     exit 43
   fi
   rm -rf -- /var/lib/northgate-rmm

@@ -11,7 +11,8 @@
     "unit": "/usr/lib/systemd/system/northgate-rmm-agent.service",
     "config": "/etc/northgate-rmm/agent.json",
     "state": "/var/lib/northgate-rmm",
-    "identity": "/var/lib/northgate-rmm/identity"
+    "identity": "/var/lib/northgate-rmm/identity",
+    "revocation_receipt": "/etc/northgate-rmm/.identity-revoked"
   },
   "ownership": {
     "executable": "root:root:0755",
@@ -20,7 +21,8 @@
     "config": "root:northgate-rmm:0640",
     "state": "northgate-rmm:northgate-rmm:0700",
     "identity_directory": "northgate-rmm:northgate-rmm:0700",
-    "identity_bundle": "northgate-rmm:northgate-rmm:0600"
+    "identity_bundle": "northgate-rmm:northgate-rmm:0600",
+    "revocation_receipt": "root:root:0600"
   },
   "lifecycle": {
     "install": [
@@ -46,10 +48,11 @@
       "revoke_control_plane_identity",
       "stop_service",
       "disable_service",
-      "remove_local_identity"
+      "remove_local_identity",
+      "record_root_revocation_receipt"
     ],
     "uninstall": [
-      "require_identity_revoked",
+      "require_root_revocation_receipt",
       "stop_service",
       "disable_service",
       "remove_unit",
@@ -60,7 +63,7 @@
     ],
     "purge": [
       "require_explicit_approval",
-      "require_identity_revoked",
+      "require_root_revocation_receipt",
       "require_evidence_export",
       "remove_config",
       "remove_state",

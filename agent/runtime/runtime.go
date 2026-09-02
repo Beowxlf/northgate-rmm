@@ -29,7 +29,7 @@ type Queue interface {
 	ListIDs(context.Context) ([]string, error)
 	Read(context.Context, string) ([]byte, error)
 	Acknowledge(context.Context, string) error
-	Quarantine(context.Context, string) error
+	Quarantine(context.Context, string) (spool.QuarantineResult, error)
 }
 
 type Sender interface {
@@ -185,7 +185,7 @@ func (runtime *Runtime) deliver(ctx context.Context) (bool, error) {
 			return false, ErrRuntimeFailed
 		}
 		if !runtime.options.Now().UTC().Before(message.Envelope.ExpiresAt) {
-			if err := runtime.options.Queue.Quarantine(ctx, id); err != nil {
+			if err := runtime.quarantine(ctx, id); err != nil {
 				return false, err
 			}
 			if err := runtime.emit(eventlog.Event{
@@ -208,7 +208,7 @@ func (runtime *Runtime) deliver(ctx context.Context) (bool, error) {
 			}
 			outcome, failure, terminal := classifyDelivery(err)
 			if terminal {
-				if quarantineErr := runtime.options.Queue.Quarantine(ctx, id); quarantineErr != nil {
+				if quarantineErr := runtime.quarantine(ctx, id); quarantineErr != nil {
 					return false, quarantineErr
 				}
 			}
@@ -244,6 +244,20 @@ func (runtime *Runtime) deliver(ctx context.Context) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func (runtime *Runtime) quarantine(ctx context.Context, id string) error {
+	result, err := runtime.options.Queue.Quarantine(ctx, id)
+	for _, evictedID := range result.EvictedIDs {
+		if emitErr := runtime.emit(eventlog.Event{
+			Level: eventlog.LevelWarn, Code: eventlog.CodeLocalState,
+			Component: eventlog.ComponentSpool, Outcome: eventlog.OutcomeRejected,
+			FailureClass: eventlog.FailureLimitExceeded, MessageID: evictedID,
+		}); emitErr != nil {
+			return emitErr
+		}
+	}
+	return err
 }
 
 func (runtime *Runtime) stop() error {

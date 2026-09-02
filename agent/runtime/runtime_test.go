@@ -13,6 +13,7 @@ import (
 	"github.com/Beowxlf/northgate-rmm/agent/collector"
 	"github.com/Beowxlf/northgate-rmm/agent/eventlog"
 	"github.com/Beowxlf/northgate-rmm/agent/protocol"
+	"github.com/Beowxlf/northgate-rmm/agent/spool"
 	"github.com/Beowxlf/northgate-rmm/agent/transport"
 )
 
@@ -25,6 +26,7 @@ type memoryQueue struct {
 	ids      []string
 	payload  map[string][]byte
 	rejected []string
+	evicted  []string
 }
 
 func (queue *memoryQueue) ListIDs(context.Context) ([]string, error) {
@@ -52,14 +54,14 @@ func (queue *memoryQueue) Acknowledge(_ context.Context, id string) error {
 	return nil
 }
 
-func (queue *memoryQueue) Quarantine(ctx context.Context, id string) error {
+func (queue *memoryQueue) Quarantine(ctx context.Context, id string) (spool.QuarantineResult, error) {
 	if err := queue.Acknowledge(ctx, id); err != nil {
-		return err
+		return spool.QuarantineResult{}, err
 	}
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
 	queue.rejected = append(queue.rejected, id)
-	return nil
+	return spool.QuarantineResult{EvictedIDs: append([]string(nil), queue.evicted...)}, nil
 }
 
 type fixedSnapshotter struct {
@@ -200,12 +202,13 @@ func TestDeliveryFailurePreservesQueueAndRedactsCause(t *testing.T) {
 func TestExpiredHeadIsQuarantinedAndDoesNotBlockNewerRecord(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	secondID := "123e4567-e89b-42d3-a456-426614174004"
+	evictedID := "123e4567-e89b-42d3-a456-426614174005"
 	queue := &memoryQueue{
 		ids: []string{testMessageID, secondID},
 		payload: map[string][]byte{
 			testMessageID: inventoryPayload(t, testMessageID, testNow),
 			secondID:      inventoryPayload(t, secondID, testNow.Add(time.Minute)),
-		},
+		}, evicted: []string{evictedID},
 	}
 	sender := &fixedSender{}
 	var output bytes.Buffer
@@ -229,6 +232,11 @@ func TestExpiredHeadIsQuarantinedAndDoesNotBlockNewerRecord(t *testing.T) {
 	}
 	if len(sender.deliver) != 1 || sender.deliver[0] != secondID {
 		t.Fatalf("newer record was blocked: %v", sender.deliver)
+	}
+	logs := output.String()
+	if !strings.Contains(logs, `"message_id":"`+evictedID+`"`) ||
+		!strings.Contains(logs, `"failure_class":"limit_exceeded"`) {
+		t.Fatalf("rejected-evidence rollover was not audited: %s", logs)
 	}
 }
 

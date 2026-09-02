@@ -36,8 +36,30 @@ case "$group" in
     ;;
 esac
 
+account_uid="$(printf '%s\n' "$account" | cut -d: -f3)"
+account_gid="$(printf '%s\n' "$account" | cut -d: -f4)"
+group_gid="$(printf '%s\n' "$group" | cut -d: -f3)"
+case "$account_uid:$account_gid:$group_gid" in
+  *[!0-9:]*|*::*|:*)
+    echo "northgate-rmm account has invalid numeric identity fields" >&2
+    exit 45
+    ;;
+esac
+if [ "$account_uid" -eq 0 ] || [ "$account_uid" -ge 1000 ] || [ "$account_gid" -ne "$group_gid" ]; then
+  echo "northgate-rmm account is not the dedicated package system identity" >&2
+  exit 46
+fi
+set -- $(id -Gn northgate-rmm)
+if [ "$#" -ne 1 ] || [ "$1" != "northgate-rmm" ]; then
+  echo "northgate-rmm account has unexpected supplementary group access" >&2
+  exit 47
+fi
+
 install -d -o root -g root -m 0755 /etc/northgate-rmm
 install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm
+# Any configure/upgrade invalidates an older removal receipt. The separately
+# authorized revocation workflow must create a fresh receipt afterward.
+rm -f -- /etc/northgate-rmm/.identity-revoked
 if [ -f /etc/northgate-rmm/agent.json ]; then
   chown root:northgate-rmm /etc/northgate-rmm/agent.json
   chmod 0640 /etc/northgate-rmm/agent.json

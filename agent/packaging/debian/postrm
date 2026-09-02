@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+action="${1:-}"
+if [ "$action" = "purge" ]; then
+  if [ -e /var/lib/northgate-rmm/identity/identity.json ]; then
+    echo "refusing purge while endpoint identity remains" >&2
+    exit 40
+  fi
+  if [ ! -f /var/lib/northgate-rmm/.purge-approved ] || \
+     [ ! -f /var/lib/northgate-rmm/.evidence-exported ]; then
+    echo "refusing purge without approval and evidence-export markers" >&2
+    exit 43
+  fi
+  rm -f /var/lib/northgate-rmm/.purge-approved
+  rm -f /var/lib/northgate-rmm/.evidence-exported
+  rm -f /etc/northgate-rmm/agent.json /etc/northgate-rmm/agent.json.example
+  rmdir /etc/northgate-rmm 2>/dev/null || true
+  rmdir /var/lib/northgate-rmm/spool 2>/dev/null || true
+  rmdir /var/lib/northgate-rmm/sequence 2>/dev/null || true
+  rmdir /var/lib/northgate-rmm/identity 2>/dev/null || true
+  rmdir /var/lib/northgate-rmm 2>/dev/null || true
+  deluser --quiet northgate-rmm 2>/dev/null || true
+  delgroup --quiet northgate-rmm 2>/dev/null || true
+fi
+
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload
+fi
+
+exit 0

@@ -1,0 +1,10 @@
+Package: northgate-rmm-agent
+Version: @VERSION@
+Section: admin
+Priority: optional
+Architecture: amd64
+Maintainer: NorthGate RMM maintainers
+Depends: adduser, systemd
+Description: bounded read-only NorthGate RMM Linux agent
+ This source-built package is for network-isolated Debian 12 qualification only.
+ Endpoint or VM installation requires separate G2 authorization.

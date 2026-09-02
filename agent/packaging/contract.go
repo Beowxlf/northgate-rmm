@@ -1,5 +1,5 @@
-// Package packaging validates the source-only Debian service and lifecycle
-// draft. It does not install files, invoke a package manager, or call systemd.
+// Package packaging validates the Debian sandbox package and service contract.
+// It does not itself install files, invoke a package manager, or call systemd.
 package packaging
 
 import (
@@ -147,7 +147,7 @@ func decodeContract(raw []byte) (lifecycleContract, error) {
 }
 
 func validateContract(contract lifecycleContract) error {
-	if contract.SchemaVersion != 1 || contract.Status != "source-draft-not-installable" ||
+	if contract.SchemaVersion != 1 || contract.Status != "sandbox-package-test-only" ||
 		contract.Target != (target{Distribution: "debian", Release: "12", Architecture: "amd64"}) {
 		return errors.New("lifecycle metadata is outside the approved source draft")
 	}
@@ -236,7 +236,7 @@ func validateUnit(raw []byte) error {
 
 	required := map[string]map[string]string{
 		"Unit": {
-			"Description":           "NorthGate RMM read-only agent (source draft)",
+			"Description":           "NorthGate RMM read-only agent (G2 closed)",
 			"After":                 "network-online.target",
 			"Wants":                 "network-online.target",
 			"StartLimitIntervalSec": "300",

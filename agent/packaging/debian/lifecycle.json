@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "source-draft-not-installable",
+  "status": "sandbox-package-test-only",
   "target": {
     "distribution": "debian",
     "release": "12",

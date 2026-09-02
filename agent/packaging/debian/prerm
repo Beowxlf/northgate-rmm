@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+action="${1:-}"
+if [ "$action" = "remove" ] && [ -e /var/lib/northgate-rmm/identity/identity.json ]; then
+  echo "refusing removal while endpoint identity remains" >&2
+  exit 40
+fi
+
+if [ -d /run/systemd/system ]; then
+  if [ "$action" = "upgrade" ] && systemctl is-active --quiet northgate-rmm-agent.service; then
+    : > /run/northgate-rmm-agent.was-active
+  fi
+  systemctl stop northgate-rmm-agent.service >/dev/null 2>&1 || true
+  if [ "$action" = "remove" ]; then
+    systemctl disable northgate-rmm-agent.service >/dev/null 2>&1 || true
+  fi
+fi
+
+exit 0

@@ -1,0 +1,56 @@
+#!/bin/sh
+set -eu
+
+case "${1:-}" in
+  configure)
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+
+if ! getent group northgate-rmm >/dev/null; then
+  addgroup --system --quiet northgate-rmm
+fi
+if ! getent passwd northgate-rmm >/dev/null; then
+  adduser --system --quiet --ingroup northgate-rmm --home /var/lib/northgate-rmm \
+    --no-create-home --shell /usr/sbin/nologin --disabled-password northgate-rmm
+fi
+
+account="$(getent passwd northgate-rmm)"
+group="$(getent group northgate-rmm)"
+case "$account" in
+  northgate-rmm:*:/var/lib/northgate-rmm:/usr/sbin/nologin)
+    ;;
+  *)
+    echo "northgate-rmm account differs from package policy" >&2
+    exit 41
+    ;;
+esac
+case "$group" in
+  northgate-rmm:*)
+    ;;
+  *)
+    echo "northgate-rmm group differs from package policy" >&2
+    exit 42
+    ;;
+esac
+
+install -d -o root -g root -m 0755 /etc/northgate-rmm
+install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm
+if [ -f /etc/northgate-rmm/agent.json ]; then
+  chown root:northgate-rmm /etc/northgate-rmm/agent.json
+  chmod 0640 /etc/northgate-rmm/agent.json
+fi
+
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload
+  if [ -f /run/northgate-rmm-agent.was-active ]; then
+    rm -f /run/northgate-rmm-agent.was-active
+    systemctl start northgate-rmm-agent.service
+  else
+    systemctl disable northgate-rmm-agent.service >/dev/null 2>&1 || true
+  fi
+fi
+
+exit 0

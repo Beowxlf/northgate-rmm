@@ -1,0 +1,8 @@
+{
+  "endpoint_id": "00000000-0000-4000-8000-000000000000",
+  "control_plane_url": "https://rmm.invalid/",
+  "state_directory": "/var/lib/northgate-rmm",
+  "collection_interval": "5m",
+  "request_timeout": "10s",
+  "max_spool_bytes": 1048576
+}

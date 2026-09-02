@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+package="${1:?package path is required}"
+
+awk -F: 'NR > 2 {gsub(/[[:space:]]/, "", $1); if ($1 != "lo") exit 1}' /proc/net/dev
+dpkg-deb --info "$package" >/dev/null
+dpkg -i "$package" >/dev/null
+
+test "$(stat -c '%U:%G:%a' /usr/libexec/northgate-rmm/northgate-rmm-agent)" = "root:root:755"
+test "$(stat -c '%U:%G:%a' /usr/lib/systemd/system/northgate-rmm-agent.service)" = "root:root:644"
+test "$(stat -c '%U:%G:%a' /etc/northgate-rmm)" = "root:root:755"
+test "$(stat -c '%U:%G:%a' /var/lib/northgate-rmm)" = "northgate-rmm:northgate-rmm:700"
+test ! -e /etc/northgate-rmm/agent.json
+test "$(systemctl is-enabled northgate-rmm-agent.service 2>/dev/null || true)" = "disabled"
+systemd-analyze verify /usr/lib/systemd/system/northgate-rmm-agent.service
+test "$(su --shell /bin/sh --command '/usr/libexec/northgate-rmm/northgate-rmm-agent --version' northgate-rmm)" = "0.2.0"
+
+install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm/identity
+install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/identity/identity.json
+if dpkg -r northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package removal unexpectedly ignored retained identity" >&2
+  exit 1
+fi
+rm -f /var/lib/northgate-rmm/identity/identity.json
+dpkg -r northgate-rmm-agent >/dev/null
+test ! -e /usr/libexec/northgate-rmm/northgate-rmm-agent
+test ! -e /usr/lib/systemd/system/northgate-rmm-agent.service
+test -d /etc/northgate-rmm
+test -d /var/lib/northgate-rmm
+getent passwd northgate-rmm >/dev/null
+
+if dpkg --purge northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package purge unexpectedly ignored approval and evidence gates" >&2
+  exit 1
+fi
+install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/.purge-approved
+install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/.evidence-exported
+dpkg --purge northgate-rmm-agent >/dev/null
+test ! -e /etc/northgate-rmm
+test ! -e /var/lib/northgate-rmm
+if getent passwd northgate-rmm >/dev/null; then
+  echo "service account remains after approved purge" >&2
+  exit 1
+fi
+
+printf '%s\n' "isolated Debian package lifecycle passed"

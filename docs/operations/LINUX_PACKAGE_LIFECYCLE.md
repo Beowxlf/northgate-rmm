@@ -1,25 +1,27 @@
 # Linux Agent Package Lifecycle
 
-Status: Source draft; not approved for installation  
+Status: Sandbox package candidate; not approved for endpoint installation  
 Candidate: Debian 12 amd64  
 Gate: G2 closed
 
 ## Boundary
 
-The repository contains a machine-validated lifecycle contract and hardened
-`systemd` unit under `agent/packaging/debian/`. They are review artifacts, not
-an installable package. No package manager, service manager, endpoint, VM,
-control plane, identity, or network is contacted by the validation tests.
+The repository contains an executable runtime, deterministic package builder,
+machine-validated lifecycle contract, and hardened `systemd` unit under
+`agent/`. CI creates a real `.deb` and installs it only in a disposable Debian
+container whose network mode is `none`. No endpoint, VM, control plane, live
+identity, credential, or private infrastructure data is available to that test.
+The unsigned package is an ephemeral test artifact and is not published.
 
 ## Filesystem and identity contract
 
-| Purpose    | Path                                                  | Ownership and treatment                          |
-| ---------- | ----------------------------------------------------- | ------------------------------------------------ |
-| Executable | `/usr/libexec/northgate-rmm/northgate-rmm-agent`      | `root:root` mode `0755`; not yet built/installed |
-| Unit       | `/usr/lib/systemd/system/northgate-rmm-agent.service` | `root:root` mode `0644`; source draft            |
-| Config     | `/etc/northgate-rmm/agent.json`                       | `root:northgate-rmm` mode `0640`; non-secret     |
-| State      | `/var/lib/northgate-rmm`                              | `northgate-rmm:northgate-rmm` mode `0700`        |
-| Identity   | `/var/lib/northgate-rmm/identity`                     | service-owned directory `0700`; bundle `0600`    |
+| Purpose    | Path                                                  | Ownership and treatment                       |
+| ---------- | ----------------------------------------------------- | --------------------------------------------- |
+| Executable | `/usr/libexec/northgate-rmm/northgate-rmm-agent`      | `root:root` mode `0755`; sandbox-tested       |
+| Unit       | `/usr/lib/systemd/system/northgate-rmm-agent.service` | `root:root` mode `0644`; sandbox-tested       |
+| Config     | `/etc/northgate-rmm/agent.json`                       | `root:northgate-rmm` mode `0640`; non-secret  |
+| State      | `/var/lib/northgate-rmm`                              | `northgate-rmm:northgate-rmm` mode `0700`     |
+| Identity   | `/var/lib/northgate-rmm/identity`                     | service-owned directory `0700`; bundle `0600` |
 
 The service identity has no login shell, administrative membership, ambient
 capability, or capability bounding set. Installation must leave the service
@@ -43,7 +45,7 @@ disabled. Enrollment and activation require a separate authorized workflow.
 
 ## Service containment
 
-The draft unit runs unprivileged, exposes no listener, writes structured JSON to
+The unit runs unprivileged, exposes no listener, writes structured JSON to
 the journal, and limits memory, CPU, tasks, file descriptors, and restart rate.
 It makes the host filesystem read-only except for systemd-managed private state
 and runtime directories; denies privilege gain and Linux capabilities; hides
@@ -52,10 +54,11 @@ and temporary-file boundaries.
 
 ## Required evidence before G2
 
-- deterministic Debian package build bound to source, digest, SBOM, provenance,
-  and signing policy;
-- network-isolated Debian 12 package-manager and `systemd` tests covering install,
-  upgrade, failed upgrade, restart bounds, revoke, uninstall, purge, and recovery;
+- release signing, SBOM, provenance, and protected artifact publication policy
+  beyond the current deterministic ephemeral build;
+- full-system Debian 12 tests covering upgrade, failed upgrade, restart bounds,
+  live revoke, recovery, and systemd resource enforcement beyond the current
+  network-isolated install/uninstall/purge and unit-verification test;
 - verified file ownership/modes and proof the service runs as `northgate-rmm`;
 - observed memory, CPU, task, descriptor, spool, and retry behavior;
 - operational revocation and clean-removal evidence using synthetic canary

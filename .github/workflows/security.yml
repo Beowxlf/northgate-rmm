@@ -97,6 +97,30 @@ jobs:
           go test -run=^$ -fuzz=FuzzEmit -fuzztime=5s ./eventlog
           go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+      - name: Build and test the Phase 2 Debian package in isolation
+        working-directory: agent
+        run: |
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          chmod 0755 packaging/build-deb.sh packaging/debian/test-package.sh
+          mkdir -p build/package-a build/package-b
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -buildvcs=false -ldflags='-buildid= -X main.version=0.2.0' \
+            -o build/northgate-rmm-agent ./cmd/northgate-rmm-agent
+          packaging/build-deb.sh 0.2.0 build/northgate-rmm-agent build/package-a
+          packaging/build-deb.sh 0.2.0 build/northgate-rmm-agent build/package-b
+          cmp \
+            build/package-a/northgate-rmm-agent_0.2.0_amd64.deb \
+            build/package-b/northgate-rmm-agent_0.2.0_amd64.deb
+          sha256sum build/package-a/northgate-rmm-agent_0.2.0_amd64.deb
+          docker build --pull=false \
+            --file packaging/debian/Dockerfile.test \
+            --tag northgate-rmm-debian-package-test:12 .
+          docker run --rm --network none \
+            --security-opt no-new-privileges \
+            --volume "$PWD/build/package-a:/packages:ro" \
+            --volume "$PWD/packaging/debian/test-package.sh:/test-package.sh:ro" \
+            northgate-rmm-debian-package-test:12 \
+            sh /test-package.sh /packages/northgate-rmm-agent_0.2.0_amd64.deb
       - name: Run Semgrep Community Edition
         run: |
           semgrep scan --config p/javascript --error scripts

@@ -15,6 +15,10 @@ test ! -e /etc/northgate-rmm/agent.json
 test "$(systemctl is-enabled northgate-rmm-agent.service 2>/dev/null || true)" = "disabled"
 systemd-analyze verify /usr/lib/systemd/system/northgate-rmm-agent.service
 test "$(su --shell /bin/sh --command '/usr/libexec/northgate-rmm/northgate-rmm-agent --version' northgate-rmm)" = "0.2.0"
+if su --shell /bin/sh --command 'touch /etc/northgate-rmm/.purge-approved' northgate-rmm 2>/dev/null; then
+  echo "service account created a purge approval marker" >&2
+  exit 1
+fi
 
 install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm/identity
 install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/identity/identity.json
@@ -34,8 +38,15 @@ if dpkg --purge northgate-rmm-agent >/dev/null 2>&1; then
   echo "package purge unexpectedly ignored approval and evidence gates" >&2
   exit 1
 fi
-install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/.purge-approved
-install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/.evidence-exported
+install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm/spool
+install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm/spool/rejected
+install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm/sequence
+install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/spool/.lock
+install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/spool/queued.json
+install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/spool/rejected/expired.json
+install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/sequence/state.json
+install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.purge-approved
+install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.evidence-exported
 dpkg --purge northgate-rmm-agent >/dev/null
 test ! -e /etc/northgate-rmm
 test ! -e /var/lib/northgate-rmm

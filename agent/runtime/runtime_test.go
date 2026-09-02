@@ -12,15 +12,19 @@ import (
 	agentcore "github.com/Beowxlf/northgate-rmm/agent"
 	"github.com/Beowxlf/northgate-rmm/agent/collector"
 	"github.com/Beowxlf/northgate-rmm/agent/eventlog"
+	"github.com/Beowxlf/northgate-rmm/agent/protocol"
 	"github.com/Beowxlf/northgate-rmm/agent/transport"
 )
 
 const testMessageID = "123e4567-e89b-42d3-a456-426614174000"
 
+var testNow = time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+
 type memoryQueue struct {
-	mu      sync.Mutex
-	ids     []string
-	payload map[string][]byte
+	mu       sync.Mutex
+	ids      []string
+	payload  map[string][]byte
+	rejected []string
 }
 
 func (queue *memoryQueue) ListIDs(context.Context) ([]string, error) {
@@ -45,6 +49,16 @@ func (queue *memoryQueue) Acknowledge(_ context.Context, id string) error {
 			break
 		}
 	}
+	return nil
+}
+
+func (queue *memoryQueue) Quarantine(ctx context.Context, id string) error {
+	if err := queue.Acknowledge(ctx, id); err != nil {
+		return err
+	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	queue.rejected = append(queue.rejected, id)
 	return nil
 }
 
@@ -75,6 +89,19 @@ func (sender *fixedSender) Send(_ context.Context, id string, _ []byte) error {
 	return sender.err
 }
 
+type rejectingSender struct {
+	rejectID string
+	deliver  []string
+}
+
+func (sender *rejectingSender) Send(_ context.Context, id string, _ []byte) error {
+	sender.deliver = append(sender.deliver, id)
+	if id == sender.rejectID {
+		return &transport.DeliveryError{Code: "acknowledgement_rejected"}
+	}
+	return nil
+}
+
 type syntheticSource struct{}
 
 func (syntheticSource) ReadFile(context.Context, string, int64) ([]byte, error) {
@@ -87,9 +114,26 @@ func (syntheticSource) DiskUsage(context.Context, string) (collector.DiskUsage, 
 	return collector.DiskUsage{}, nil
 }
 
+func inventoryPayload(t *testing.T, id string, expires time.Time) []byte {
+	t.Helper()
+	raw, err := protocol.EncodeInventory(protocol.Envelope{
+		MessageID: id, EndpointID: "123e4567-e89b-42d3-a456-426614174001",
+		BootID: "123e4567-e89b-42d3-a456-426614174002", Sequence: 1,
+		CreatedAt: expires.Add(-time.Minute), ExpiresAt: expires,
+		CorrelationID: "123e4567-e89b-42d3-a456-426614174003", ProtocolVersion: protocol.Version,
+	}, protocol.InventoryPayload{
+		Platform: "linux", Architecture: "amd64", Fields: map[string]string{},
+		CollectorComplete: true, SchemaVersion: protocol.InventorySchema,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 func TestRunDrainsQueueAndStopsCleanly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	queue := &memoryQueue{ids: []string{testMessageID}, payload: map[string][]byte{testMessageID: []byte(`{"ok":true}`)}}
+	queue := &memoryQueue{ids: []string{testMessageID}, payload: map[string][]byte{testMessageID: inventoryPayload(t, testMessageID, testNow.Add(time.Minute))}}
 	sender := &fixedSender{}
 	var output bytes.Buffer
 	logger, err := eventlog.New(&output)
@@ -102,6 +146,7 @@ func TestRunDrainsQueueAndStopsCleanly(t *testing.T) {
 			result: agentcore.SnapshotResult{MessageID: testMessageID, Complete: true}, cancel: cancel,
 		}, Queue: queue, Sender: sender, Source: syntheticSource{}, Logger: logger,
 		RetryPolicy: transport.RetryPolicy{MaxAttempts: 1, InitialDelay: time.Second, MaximumDelay: time.Second},
+		Now:         func() time.Time { return testNow },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +170,7 @@ func TestRunDrainsQueueAndStopsCleanly(t *testing.T) {
 
 func TestDeliveryFailurePreservesQueueAndRedactsCause(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	queue := &memoryQueue{ids: []string{testMessageID}, payload: map[string][]byte{testMessageID: []byte(`{"ok":true}`)}}
+	queue := &memoryQueue{ids: []string{testMessageID}, payload: map[string][]byte{testMessageID: inventoryPayload(t, testMessageID, testNow.Add(time.Minute))}}
 	sender := &fixedSender{err: &transport.DeliveryError{Code: "tls_trust_failed"}}
 	var output bytes.Buffer
 	logger, _ := eventlog.New(&output)
@@ -135,6 +180,7 @@ func TestDeliveryFailurePreservesQueueAndRedactsCause(t *testing.T) {
 			result: agentcore.SnapshotResult{MessageID: testMessageID, Complete: true}, cancel: cancel,
 		}, Queue: queue, Sender: sender, Source: syntheticSource{}, Logger: logger,
 		RetryPolicy: transport.RetryPolicy{MaxAttempts: 1, InitialDelay: time.Second, MaximumDelay: time.Second},
+		Now:         func() time.Time { return testNow },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -148,6 +194,75 @@ func TestDeliveryFailurePreservesQueueAndRedactsCause(t *testing.T) {
 	logs := output.String()
 	if !strings.Contains(logs, `"failure_class":"trust_failed"`) || strings.Contains(logs, "tls_trust_failed") {
 		t.Fatalf("unexpected bounded log: %s", logs)
+	}
+}
+
+func TestExpiredHeadIsQuarantinedAndDoesNotBlockNewerRecord(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	secondID := "123e4567-e89b-42d3-a456-426614174004"
+	queue := &memoryQueue{
+		ids: []string{testMessageID, secondID},
+		payload: map[string][]byte{
+			testMessageID: inventoryPayload(t, testMessageID, testNow),
+			secondID:      inventoryPayload(t, secondID, testNow.Add(time.Minute)),
+		},
+	}
+	sender := &fixedSender{}
+	var output bytes.Buffer
+	logger, _ := eventlog.New(&output)
+	runtime, err := New(Options{
+		EndpointID: "123e4567-e89b-42d3-a456-426614174001", CollectionInterval: time.Minute,
+		RequestTimeout: time.Second, Snapshotter: fixedSnapshotter{
+			result: agentcore.SnapshotResult{MessageID: secondID, Complete: true}, cancel: cancel,
+		}, Queue: queue, Sender: sender, Source: syntheticSource{}, Logger: logger,
+		RetryPolicy: transport.RetryPolicy{MaxAttempts: 1, InitialDelay: time.Second, MaximumDelay: time.Second},
+		Now:         func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(queue.rejected) != 1 || queue.rejected[0] != testMessageID {
+		t.Fatalf("expired record was not quarantined: %v", queue.rejected)
+	}
+	if len(sender.deliver) != 1 || sender.deliver[0] != secondID {
+		t.Fatalf("newer record was blocked: %v", sender.deliver)
+	}
+}
+
+func TestExplicitlyRejectedHeadIsQuarantinedAndDeliveryContinues(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	secondID := "123e4567-e89b-42d3-a456-426614174004"
+	queue := &memoryQueue{
+		ids: []string{testMessageID, secondID},
+		payload: map[string][]byte{
+			testMessageID: inventoryPayload(t, testMessageID, testNow.Add(time.Minute)),
+			secondID:      inventoryPayload(t, secondID, testNow.Add(time.Minute)),
+		},
+	}
+	sender := &rejectingSender{rejectID: testMessageID}
+	logger, _ := eventlog.New(&bytes.Buffer{})
+	runtime, err := New(Options{
+		EndpointID: "123e4567-e89b-42d3-a456-426614174001", CollectionInterval: time.Minute,
+		RequestTimeout: time.Second, Snapshotter: fixedSnapshotter{
+			result: agentcore.SnapshotResult{MessageID: secondID, Complete: true}, cancel: cancel,
+		}, Queue: queue, Sender: sender, Source: syntheticSource{}, Logger: logger,
+		RetryPolicy: transport.RetryPolicy{MaxAttempts: 1, InitialDelay: time.Second, MaximumDelay: time.Second},
+		Now:         func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(queue.rejected) != 1 || queue.rejected[0] != testMessageID {
+		t.Fatalf("rejected record was not quarantined: %v", queue.rejected)
+	}
+	if len(sender.deliver) != 2 || sender.deliver[1] != secondID {
+		t.Fatalf("delivery did not continue: %v", sender.deliver)
 	}
 }
 

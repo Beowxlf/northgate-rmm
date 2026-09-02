@@ -38,12 +38,17 @@
   environment fields, unbounded resources, and weakened sandbox directives;
 - key/config/spool permission enforcement;
 - resource exhaustion and crash-loop limits;
+- expired and explicitly rejected queue heads are quarantined without losing
+  evidence, reusing durable order, or blocking newer records;
 - collector timeout/failure isolation;
 - no shell metacharacter or path traversal construction;
 - uninstall removes executable/secrets and revokes identity;
 - source-only lifecycle simulation preserves evidence-bearing state on ordinary
   uninstall and requires approval, prior revocation, and evidence export for
   purge;
+- purge authorization is root-owned outside service-writable state, and an
+  approved purge removes non-empty retained state before deleting the service
+  identity;
 - supported OS/architecture matrix and upgrade compatibility.
 
 ## Remote-access tests

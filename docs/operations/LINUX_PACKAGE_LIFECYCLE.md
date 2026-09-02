@@ -27,6 +27,12 @@ The service identity has no login shell, administrative membership, ambient
 capability, or capability bounding set. Installation must leave the service
 disabled. Enrollment and activation require a separate authorized workflow.
 
+Expired or explicitly rejected messages move atomically from the active spool
+to its private `rejected` directory. Quarantined records retain their exact
+payload and consume the same entry and byte quotas, but no longer block newer
+inventory. Their durable order remains reserved so later records cannot reuse
+an earlier spool position.
+
 ## Lifecycle invariants
 
 1. Install creates the locked service identity and private directories, places
@@ -41,7 +47,8 @@ disabled. Enrollment and activation require a separate authorized workflow.
    investigation.
 5. Purge is a separate destructive operation requiring explicit approval,
    confirmed revocation, and evidence export before it removes retained state and
-   the service identity.
+   the service identity. Approval and evidence markers are root-owned `0600`
+   files under `/etc/northgate-rmm`, outside service-writable state.
 
 ## Service containment
 

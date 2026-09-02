@@ -17,7 +17,9 @@ The package must remain disabled after installation. Enrollment and explicit
 operator authorization happen separately. Revocation must succeed before
 uninstall removes the local identity. Ordinary uninstall preserves configuration
 and state for investigation or recovery; purge requires separate approval,
-revocation, and evidence export.
+revocation, and evidence export. Purge accepts only root-owned `0600` approval
+and evidence markers in `/etc/northgate-rmm`, which the service cannot write,
+and fails unless all retained state is removed.
 
 The unit runs under a locked `northgate-rmm` system identity with no Linux
 capabilities, a read-only host filesystem except for systemd-managed private

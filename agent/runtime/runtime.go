@@ -10,6 +10,7 @@ import (
 	agentcore "github.com/Beowxlf/northgate-rmm/agent"
 	"github.com/Beowxlf/northgate-rmm/agent/collector"
 	"github.com/Beowxlf/northgate-rmm/agent/eventlog"
+	"github.com/Beowxlf/northgate-rmm/agent/protocol"
 	"github.com/Beowxlf/northgate-rmm/agent/spool"
 	"github.com/Beowxlf/northgate-rmm/agent/transport"
 )
@@ -28,6 +29,7 @@ type Queue interface {
 	ListIDs(context.Context) ([]string, error)
 	Read(context.Context, string) ([]byte, error)
 	Acknowledge(context.Context, string) error
+	Quarantine(context.Context, string) error
 }
 
 type Sender interface {
@@ -51,6 +53,7 @@ type Options struct {
 	Source             collector.Source
 	Logger             Logger
 	RetryPolicy        transport.RetryPolicy
+	Now                func() time.Time
 }
 
 type Runtime struct {
@@ -63,6 +66,9 @@ func New(options Options) (*Runtime, error) {
 		options.Snapshotter == nil || options.Queue == nil || options.Sender == nil ||
 		options.Source == nil || options.Logger == nil || options.RetryPolicy.Validate() != nil {
 		return nil, ErrInvalidRuntime
+	}
+	if options.Now == nil {
+		options.Now = time.Now
 	}
 	return &Runtime{options: options}, nil
 }
@@ -174,6 +180,23 @@ func (runtime *Runtime) deliver(ctx context.Context) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		message, err := protocol.DecodeInventory(payload)
+		if err != nil || message.Envelope.MessageID != id {
+			return false, ErrRuntimeFailed
+		}
+		if !runtime.options.Now().UTC().Before(message.Envelope.ExpiresAt) {
+			if err := runtime.options.Queue.Quarantine(ctx, id); err != nil {
+				return false, err
+			}
+			if err := runtime.emit(eventlog.Event{
+				Level: eventlog.LevelWarn, Code: eventlog.CodeLocalState,
+				Component: eventlog.ComponentSpool, Outcome: eventlog.OutcomeRejected,
+				FailureClass: eventlog.FailureInvalidInput, MessageID: id,
+			}); err != nil {
+				return false, err
+			}
+			continue
+		}
 		deliveryContext, cancel := context.WithTimeout(ctx, runtime.options.RequestTimeout)
 		err = transport.Retry(deliveryContext, runtime.options.RetryPolicy, func(attempt context.Context) error {
 			return runtime.options.Sender.Send(attempt, id, payload)
@@ -183,13 +206,21 @@ func (runtime *Runtime) deliver(ctx context.Context) (bool, error) {
 			if ctx.Err() != nil {
 				return false, ctx.Err()
 			}
-			outcome, failure := classifyDelivery(err)
+			outcome, failure, terminal := classifyDelivery(err)
+			if terminal {
+				if quarantineErr := runtime.options.Queue.Quarantine(ctx, id); quarantineErr != nil {
+					return false, quarantineErr
+				}
+			}
 			if emitErr := runtime.emit(eventlog.Event{
 				Level: levelFor(outcome), Code: eventlog.CodeDelivery,
 				Component: eventlog.ComponentTransport, Outcome: outcome,
 				FailureClass: failure, MessageID: id,
 			}); emitErr != nil {
 				return false, emitErr
+			}
+			if terminal {
+				continue
 			}
 			return true, nil
 		}
@@ -230,27 +261,31 @@ func (runtime *Runtime) emit(event eventlog.Event) error {
 	return nil
 }
 
-func classifyDelivery(err error) (eventlog.Outcome, eventlog.FailureClass) {
+func classifyDelivery(err error) (eventlog.Outcome, eventlog.FailureClass, bool) {
 	var deliveryError *transport.DeliveryError
 	if !errors.As(err, &deliveryError) {
-		return eventlog.OutcomeFailed, eventlog.FailureInternal
+		return eventlog.OutcomeFailed, eventlog.FailureInternal, false
 	}
 	switch deliveryError.Code {
 	case "tls_trust_failed":
-		return eventlog.OutcomeRejected, eventlog.FailureTrust
-	case "invalid_message_id", "invalid_payload_size", "request_build_failed", "ack_invalid":
-		return eventlog.OutcomeRejected, eventlog.FailureInvalidInput
-	case "ack_rejected":
-		return eventlog.OutcomeRejected, eventlog.FailureUnavailable
+		return eventlog.OutcomeRejected, eventlog.FailureTrust, false
+	case "invalid_message_id", "invalid_payload_size", "request_build_failed":
+		return eventlog.OutcomeRejected, eventlog.FailureInvalidInput, false
+	case "acknowledgement_rejected":
+		return eventlog.OutcomeRejected, eventlog.FailureUnavailable, true
+	case "acknowledgement_mismatch", "invalid_acknowledgement", "invalid_response_type", "invalid_response_size":
+		return eventlog.OutcomeRejected, eventlog.FailureTrust, false
 	default:
-		return eventlog.OutcomeFailed, eventlog.FailureUnavailable
+		return eventlog.OutcomeFailed, eventlog.FailureUnavailable, false
 	}
 }
 
 func classifyLocalState(err error) (eventlog.Outcome, eventlog.FailureClass, bool) {
 	var acknowledgeUncertain *spool.AcknowledgeUncertainError
 	var commitUncertain *spool.CommitUncertainError
-	if errors.As(err, &acknowledgeUncertain) || errors.As(err, &commitUncertain) {
+	var quarantineUncertain *spool.QuarantineUncertainError
+	if errors.As(err, &acknowledgeUncertain) || errors.As(err, &commitUncertain) ||
+		errors.As(err, &quarantineUncertain) {
 		return eventlog.OutcomeUncertain, eventlog.FailureStateUncertain, true
 	}
 	if errors.Is(err, spool.ErrQuotaExceeded) {

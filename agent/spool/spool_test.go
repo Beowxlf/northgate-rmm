@@ -41,6 +41,92 @@ func TestQueueRoundTripAndAcknowledge(t *testing.T) {
 	}
 }
 
+func TestQuarantinePreservesRecordAndAdvancesDurableOrder(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPayload := []byte(`{"type":"inventory","first":true}`)
+	if err := queue.Enqueue(context.Background(), testID, firstPayload); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Quarantine(context.Background(), testID); err != nil {
+		t.Fatalf("Quarantine() error = %v", err)
+	}
+	ids, err := queue.ListIDs(context.Background())
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("ListIDs() = %v, %v", ids, err)
+	}
+	quarantined, err := os.ReadFile(filepath.Join(directory, "rejected", testID+".json"))
+	if err != nil {
+		t.Fatalf("quarantined record is unavailable: %v", err)
+	}
+	var first record
+	if err := json.Unmarshal(quarantined, &first); err != nil || string(first.Payload) != string(firstPayload) {
+		t.Fatalf("quarantined record = %#v, %v", first, err)
+	}
+
+	secondID := "123e4567-e89b-42d3-a456-426614174001"
+	if err := queue.Enqueue(context.Background(), secondID, []byte("second")); err != nil {
+		t.Fatal(err)
+	}
+	secondRaw, err := os.ReadFile(filepath.Join(directory, secondID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var second record
+	if err := json.Unmarshal(secondRaw, &second); err != nil {
+		t.Fatal(err)
+	}
+	if first.Order != 1 || second.Order != 2 {
+		t.Fatalf("orders after quarantine = %d, %d", first.Order, second.Order)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = Open(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("Open() after quarantine error = %v", err)
+	}
+	defer queue.Close()
+}
+
+func TestOpenRejectsCorruptQuarantine(t *testing.T) {
+	directory := t.TempDir()
+	queue, err := Open(directory, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "rejected", "notes.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(directory, 1<<20); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Open() error = %v, want ErrCorrupt", err)
+	}
+}
+
+func TestQuarantineRemainsInsideSpoolQuota(t *testing.T) {
+	queue, err := Open(t.TempDir(), maxRecordBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+	if err := queue.Enqueue(context.Background(), testID, make([]byte, 60_000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Quarantine(context.Background(), testID); err != nil {
+		t.Fatal(err)
+	}
+	secondID := "123e4567-e89b-42d3-a456-426614174001"
+	if err := queue.Enqueue(context.Background(), secondID, make([]byte, 60_000)); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("Enqueue() error = %v, want ErrQuotaExceeded", err)
+	}
+}
+
 func TestListIDsRecoversValidatedRecordsAfterRestart(t *testing.T) {
 	directory := t.TempDir()
 	queue, err := Open(directory, 1<<20)

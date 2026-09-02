@@ -7,19 +7,18 @@ if [ "$action" = "purge" ]; then
     echo "refusing purge while endpoint identity remains" >&2
     exit 40
   fi
-  if [ ! -f /var/lib/northgate-rmm/.purge-approved ] || \
-     [ ! -f /var/lib/northgate-rmm/.evidence-exported ]; then
+  approval=/etc/northgate-rmm/.purge-approved
+  evidence=/etc/northgate-rmm/.evidence-exported
+  if [ ! -f "$approval" ] || [ ! -f "$evidence" ] || \
+     [ "$(stat -c '%U:%G:%a' "$approval")" != "root:root:600" ] || \
+     [ "$(stat -c '%U:%G:%a' "$evidence")" != "root:root:600" ]; then
     echo "refusing purge without approval and evidence-export markers" >&2
     exit 43
   fi
-  rm -f /var/lib/northgate-rmm/.purge-approved
-  rm -f /var/lib/northgate-rmm/.evidence-exported
-  rm -f /etc/northgate-rmm/agent.json /etc/northgate-rmm/agent.json.example
-  rmdir /etc/northgate-rmm 2>/dev/null || true
-  rmdir /var/lib/northgate-rmm/spool 2>/dev/null || true
-  rmdir /var/lib/northgate-rmm/sequence 2>/dev/null || true
-  rmdir /var/lib/northgate-rmm/identity 2>/dev/null || true
-  rmdir /var/lib/northgate-rmm 2>/dev/null || true
+  rm -rf -- /var/lib/northgate-rmm
+  rm -rf -- /etc/northgate-rmm
+  test ! -e /var/lib/northgate-rmm
+  test ! -e /etc/northgate-rmm
   deluser --quiet northgate-rmm 2>/dev/null || true
   delgroup --quiet northgate-rmm 2>/dev/null || true
 fi

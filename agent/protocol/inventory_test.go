@@ -47,6 +47,36 @@ func TestEncodeInventoryMatchesPhaseOneShape(t *testing.T) {
 	}
 }
 
+func TestDecodeInventoryReturnsValidatedExpiry(t *testing.T) {
+	raw, err := EncodeInventory(validEnvelope(), validPayload())
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := DecodeInventory(raw)
+	if err != nil {
+		t.Fatalf("DecodeInventory() error = %v", err)
+	}
+	if message.Envelope.ExpiresAt != validEnvelope().ExpiresAt || message.Type != "inventory" {
+		t.Fatalf("DecodeInventory() = %#v", message)
+	}
+}
+
+func TestDecodeInventoryRejectsUnknownTrailingAndMismatchedData(t *testing.T) {
+	raw, err := EncodeInventory(validEnvelope(), validPayload())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, modified := range [][]byte{
+		bytes.Replace(raw, []byte(`"type":"inventory"`), []byte(`"type":"job"`), 1),
+		bytes.Replace(raw, []byte(`"payload":{`), []byte(`"unknown":true,"payload":{`), 1),
+		append(append([]byte(nil), raw...), []byte(` {}`)...),
+	} {
+		if _, err := DecodeInventory(modified); err == nil {
+			t.Fatalf("DecodeInventory() accepted %s", modified)
+		}
+	}
+}
+
 func TestEncodeInventoryMatchesSharedContractFixture(t *testing.T) {
 	raw, err := EncodeInventory(validEnvelope(), validPayload())
 	if err != nil {

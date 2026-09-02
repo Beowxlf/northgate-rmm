@@ -282,8 +282,11 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return &DeliveryError{Code: "invalid_acknowledgement"}
 	}
-	if !ack.Accepted || ack.MessageID != messageID {
+	if ack.MessageID != messageID {
 		return &DeliveryError{Code: "acknowledgement_mismatch"}
+	}
+	if !ack.Accepted {
+		return &DeliveryError{Code: "acknowledgement_rejected"}
 	}
 	return nil
 }

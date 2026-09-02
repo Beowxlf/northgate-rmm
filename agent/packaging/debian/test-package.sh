@@ -129,13 +129,43 @@ chmod 0600 /etc/northgate-rmm/.identity-revoked
 install -d -m 0755 /run/systemd/system
 mv /usr/bin/systemctl /usr/bin/systemctl.real
 printf '%s\n' '#!/bin/sh' 'case "$1" in' \
-  '  is-active) exit 0 ;;' '  stop) exit 75 ;;' '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+  '  is-active) exit 0 ;;' '  stop) exit 75 ;;' \
+  '  start) touch /tmp/stop-abort-restarted; exit 0 ;;' \
+  '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
 chmod 0755 /usr/bin/systemctl
 if dpkg -r northgate-rmm-agent >/dev/null 2>&1; then
   echo "package removal unexpectedly ignored service stop failure" >&2
   exit 1
 fi
 test -e /usr/libexec/northgate-rmm/northgate-rmm-agent
+test -e /tmp/stop-abort-restarted
+test ! -e /run/northgate-rmm-agent.remove-state-recorded
+test ! -e /run/northgate-rmm-agent.was-active-remove
+test ! -e /run/northgate-rmm-agent.was-enabled-remove
+
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  is-active) test -e /tmp/remove-active ;;' \
+  '  stop) rm -f /tmp/remove-active; exit 0 ;;' \
+  '  is-enabled) test -e /tmp/remove-enabled ;;' \
+  '  disable) rm -f /tmp/remove-enabled; exit 75 ;;' \
+  '  enable) touch /tmp/remove-enabled /tmp/remove-abort-reenabled; exit 0 ;;' \
+  '  start) touch /tmp/remove-active /tmp/remove-abort-restarted; exit 0 ;;' \
+  '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+: > /tmp/remove-active
+: > /tmp/remove-enabled
+if dpkg -r northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package removal unexpectedly ignored service disable failure" >&2
+  exit 1
+fi
+test -e /usr/libexec/northgate-rmm/northgate-rmm-agent
+test -e /tmp/remove-abort-restarted
+test -e /tmp/remove-abort-reenabled
+test -e /tmp/remove-active
+test -e /tmp/remove-enabled
+test ! -e /run/northgate-rmm-agent.remove-state-recorded
+test ! -e /run/northgate-rmm-agent.was-active-remove
+test ! -e /run/northgate-rmm-agent.was-enabled-remove
 mv /usr/bin/systemctl.real /usr/bin/systemctl
 rm -rf -- /run/systemd/system
 dpkg -r northgate-rmm-agent >/dev/null
@@ -169,6 +199,22 @@ mv /usr/sbin/deluser.real /usr/sbin/deluser
 test -d /etc/northgate-rmm
 test ! -e /var/lib/northgate-rmm
 getent passwd northgate-rmm >/dev/null
+
+install -d -m 0755 /run/systemd/system
+mv /usr/bin/systemctl /usr/bin/systemctl.real
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  daemon-reload) exit 75 ;;' '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+if dpkg --purge northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package purge unexpectedly ignored daemon-reload failure" >&2
+  exit 1
+fi
+test -d /etc/northgate-rmm
+test -e /etc/northgate-rmm/.identity-revoked
+test -e /etc/northgate-rmm/.evidence-exported
+test -e /etc/northgate-rmm/.purge-approved
+mv /usr/bin/systemctl.real /usr/bin/systemctl
+rm -rf -- /run/systemd/system
 dpkg --purge northgate-rmm-agent >/dev/null
 test ! -e /etc/northgate-rmm
 test ! -e /var/lib/northgate-rmm

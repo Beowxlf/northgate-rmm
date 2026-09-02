@@ -21,6 +21,36 @@ case "$action" in
     fi
     exit 0
     ;;
+  abort-remove)
+    if [ -d /run/systemd/system ] && \
+       [ -f /run/northgate-rmm-agent.remove-state-recorded ]; then
+      systemctl daemon-reload
+      if [ -f /run/northgate-rmm-agent.was-enabled-remove ]; then
+        if ! systemctl enable northgate-rmm-agent.service >/dev/null; then
+          echo "agent service enablement could not be restored after aborted removal" >&2
+          exit 59
+        fi
+        if ! systemctl is-enabled --quiet northgate-rmm-agent.service; then
+          echo "agent service enablement is not restored after aborted removal" >&2
+          exit 60
+        fi
+      fi
+      if [ -f /run/northgate-rmm-agent.was-active-remove ]; then
+        if ! systemctl start northgate-rmm-agent.service; then
+          echo "agent service could not be restarted after aborted removal" >&2
+          exit 61
+        fi
+        if ! systemctl is-active --quiet northgate-rmm-agent.service; then
+          echo "agent service is not active after aborted removal" >&2
+          exit 62
+        fi
+      fi
+      rm -f -- /run/northgate-rmm-agent.remove-state-recorded \
+        /run/northgate-rmm-agent.was-active-remove \
+        /run/northgate-rmm-agent.was-enabled-remove
+    fi
+    exit 0
+    ;;
   *)
     exit 0
     ;;
@@ -79,7 +109,10 @@ install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm
 # evidence-export, and purge approval must all be established again afterward.
 rm -f -- /etc/northgate-rmm/.identity-revoked \
   /etc/northgate-rmm/.evidence-exported \
-  /etc/northgate-rmm/.purge-approved
+  /etc/northgate-rmm/.purge-approved \
+  /run/northgate-rmm-agent.remove-state-recorded \
+  /run/northgate-rmm-agent.was-active-remove \
+  /run/northgate-rmm-agent.was-enabled-remove
 if [ -f /etc/northgate-rmm/agent.json ]; then
   chown root:northgate-rmm /etc/northgate-rmm/agent.json
   chmod 0640 /etc/northgate-rmm/agent.json

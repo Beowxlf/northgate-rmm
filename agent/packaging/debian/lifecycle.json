@@ -61,7 +61,8 @@
       "remove_executable",
       "daemon_reload",
       "preserve_config",
-      "preserve_state"
+      "preserve_state",
+      "restart_if_remove_aborts"
     ],
     "purge": [
       "require_explicit_approval",
@@ -69,6 +70,7 @@
       "require_evidence_export",
       "remove_state",
       "remove_system_identity",
+      "daemon_reload_before_receipt_removal",
       "remove_config"
     ]
   }

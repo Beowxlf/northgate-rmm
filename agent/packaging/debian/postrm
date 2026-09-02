@@ -34,12 +34,21 @@ if [ "$action" = "purge" ]; then
     echo "service group remains after purge deletion" >&2
     exit 49
   fi
-  rm -rf -- /etc/northgate-rmm
-  test ! -e /etc/northgate-rmm
 fi
 
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload
+fi
+
+if [ "$action" = "purge" ]; then
+  rm -rf -- /etc/northgate-rmm
+  test ! -e /etc/northgate-rmm
+fi
+if [ "$action" = "remove" ] || [ "$action" = "purge" ]; then
+  rm -f -- /run/northgate-rmm-agent.was-active \
+    /run/northgate-rmm-agent.remove-state-recorded \
+    /run/northgate-rmm-agent.was-active-remove \
+    /run/northgate-rmm-agent.was-enabled-remove
 fi
 
 exit 0

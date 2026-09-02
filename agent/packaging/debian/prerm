@@ -22,7 +22,17 @@ if [ -d /run/systemd/system ]; then
       : > /run/northgate-rmm-agent.was-active
     fi
   elif [ "$action" = "remove" ]; then
-    rm -f -- /run/northgate-rmm-agent.was-active
+    if [ ! -f /run/northgate-rmm-agent.remove-state-recorded ]; then
+      rm -f -- /run/northgate-rmm-agent.was-active-remove \
+        /run/northgate-rmm-agent.was-enabled-remove
+      if systemctl is-active --quiet northgate-rmm-agent.service; then
+        : > /run/northgate-rmm-agent.was-active-remove
+      fi
+      if systemctl is-enabled --quiet northgate-rmm-agent.service; then
+        : > /run/northgate-rmm-agent.was-enabled-remove
+      fi
+      : > /run/northgate-rmm-agent.remove-state-recorded
+    fi
   fi
   if ! systemctl stop northgate-rmm-agent.service >/dev/null; then
     echo "refusing package operation because the agent service could not be stopped" >&2

@@ -64,12 +64,16 @@ cannot reuse an earlier spool position.
    under `/etc/northgate-rmm`, outside service-writable state. Service-owned state
    is removed and verified before account deletion. Account and group deletion
    are then verified; failure preserves the protected receipts so purge can be
-   retried without fabricating new gates.
+   retried without fabricating new gates. The systemd manager reload also
+   completes before the receipts are removed.
 
 A temporary restart marker is valid only for the upgrade generation that created
 it. Repeated upgrade preparation preserves an existing marker. Fresh
 installation and removal clear stale markers, and an upgrade marker is removed
 only after the replacement or rollback-restored service is verified active.
+Removal separately records prior activation and enablement; if removal aborts,
+the restored package re-enables and restarts as required, verifies both states,
+and only then clears the record.
 
 ## Service containment
 

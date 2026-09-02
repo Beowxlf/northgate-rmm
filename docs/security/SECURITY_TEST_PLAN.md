@@ -38,6 +38,8 @@
   environment fields, unbounded resources, and weakened sandbox directives;
 - package removal and upgrade fail before artifact replacement when service
   stop or inactive state cannot be verified;
+- an aborted removal restores and verifies prior service activation and
+  enablement before clearing the recorded state;
 - upgrade preserves enabled/disabled state independently from whether the
   service was running;
 - fresh installation cannot consume a stale upgrade restart marker, and upgrade
@@ -61,8 +63,9 @@
 - purge authorization is root-owned outside service-writable state, and an
   approved purge removes non-empty retained state before deleting the service
   identity;
-- account or group deletion failure keeps purge failed and preserves protected
-  gate receipts for a retry after service-owned state has been removed;
+- account or group deletion failure, or a later systemd manager reload failure,
+  keeps purge failed and preserves protected gate receipts for a retry after
+  service-owned state has been removed;
 - configure invalidates revocation, evidence-export, and purge-approval receipts
   from every older lifecycle generation;
 - installation rejects a pre-existing service account with a non-system UID,

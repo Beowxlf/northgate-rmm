@@ -105,6 +105,7 @@ var expectedActions = lifecycle{
 		"daemon_reload",
 		"preserve_config",
 		"preserve_state",
+		"restart_if_remove_aborts",
 	},
 	Purge: []string{
 		"require_explicit_approval",
@@ -112,6 +113,7 @@ var expectedActions = lifecycle{
 		"require_evidence_export",
 		"remove_state",
 		"remove_system_identity",
+		"daemon_reload_before_receipt_removal",
 		"remove_config",
 	},
 }

@@ -41,11 +41,13 @@ The isolated test verifies package metadata, ownership and modes, disabled
 service state, unit syntax, execution as the service user, rejection of
 supplementary service-account access, root-receipt-gated uninstall, state
 preservation, purge failure on account-removal error, and approval/evidence-gated
-purge. It also injects a service-stop failure and proves package removal leaves
-the installed executable in place, and proves an enabled-but-inactive upgrade
-does not disable boot activation. It also proves a stale interrupted-upgrade
-marker cannot start a fresh installation. A container is not a full systemd
-boot; the test uses a bounded mock to prove failed upgrade restart retains retry
-intent across repeated upgrade preparation, an aborted upgrade restores a
-previously active service, and verified recovery clears the marker. Live resource
-enforcement still requires the separately authorized disposable G2 canary.
+purge. It also injects service-stop and service-disable failures and proves
+aborted removal restores prior activation and enablement while leaving the
+installed executable in place. A failed purge manager reload retains its authorization
+receipts for retry. The test proves an enabled-but-inactive upgrade does not
+disable boot activation and a stale interrupted-upgrade marker cannot start a
+fresh installation. A container is not a full systemd boot; the test uses a
+bounded mock to prove failed upgrade restart retains retry intent across repeated
+upgrade preparation, an aborted upgrade restores a previously active service,
+and verified recovery clears the marker. Live resource enforcement still
+requires the separately authorized disposable G2 canary.

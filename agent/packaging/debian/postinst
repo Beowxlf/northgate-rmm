@@ -71,7 +71,14 @@ if [ -d /run/systemd/system ]; then
     rm -f /run/northgate-rmm-agent.was-active
     systemctl start northgate-rmm-agent.service
   else
-    systemctl disable northgate-rmm-agent.service >/dev/null 2>&1 || true
+    if ! systemctl disable northgate-rmm-agent.service >/dev/null; then
+      echo "agent service could not be left disabled" >&2
+      exit 54
+    fi
+    if systemctl is-enabled --quiet northgate-rmm-agent.service; then
+      echo "agent service remains enabled after configuration" >&2
+      exit 55
+    fi
   fi
 fi
 

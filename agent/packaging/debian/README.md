@@ -39,6 +39,7 @@ The isolated test verifies package metadata, ownership and modes, disabled
 service state, unit syntax, execution as the service user, rejection of
 supplementary service-account access, root-receipt-gated uninstall, state
 preservation, purge failure on account-removal error, and approval/evidence-gated
-purge. A container is not a full systemd boot, so restart behavior and live
-resource enforcement still require the separately authorized disposable G2
-canary.
+purge. It also injects a service-stop failure and proves package removal leaves
+the installed executable in place. A container is not a full systemd boot, so
+successful restart behavior and live resource enforcement still require the
+separately authorized disposable G2 canary.

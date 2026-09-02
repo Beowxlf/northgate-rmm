@@ -45,6 +45,18 @@ fi
 printf '%s\n' 'synthetic sandbox revocation receipt' > /etc/northgate-rmm/.identity-revoked
 chown root:root /etc/northgate-rmm/.identity-revoked
 chmod 0600 /etc/northgate-rmm/.identity-revoked
+install -d -m 0755 /run/systemd/system
+mv /usr/bin/systemctl /usr/bin/systemctl.real
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  is-active) exit 0 ;;' '  stop) exit 75 ;;' '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+if dpkg -r northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package removal unexpectedly ignored service stop failure" >&2
+  exit 1
+fi
+test -e /usr/libexec/northgate-rmm/northgate-rmm-agent
+mv /usr/bin/systemctl.real /usr/bin/systemctl
+rm -rf -- /run/systemd/system
 dpkg -r northgate-rmm-agent >/dev/null
 test ! -e /usr/libexec/northgate-rmm/northgate-rmm-agent
 test ! -e /usr/lib/systemd/system/northgate-rmm-agent.service

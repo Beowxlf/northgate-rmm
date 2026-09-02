@@ -19,9 +19,23 @@ if [ -d /run/systemd/system ]; then
   if [ "$action" = "upgrade" ] && systemctl is-active --quiet northgate-rmm-agent.service; then
     : > /run/northgate-rmm-agent.was-active
   fi
-  systemctl stop northgate-rmm-agent.service >/dev/null 2>&1 || true
+  if ! systemctl stop northgate-rmm-agent.service >/dev/null; then
+    echo "refusing package operation because the agent service could not be stopped" >&2
+    exit 50
+  fi
+  if systemctl is-active --quiet northgate-rmm-agent.service; then
+    echo "refusing package operation while the agent service remains active" >&2
+    exit 51
+  fi
   if [ "$action" = "remove" ]; then
-    systemctl disable northgate-rmm-agent.service >/dev/null 2>&1 || true
+    if ! systemctl disable northgate-rmm-agent.service >/dev/null; then
+      echo "refusing removal because the agent service could not be disabled" >&2
+      exit 52
+    fi
+    if systemctl is-enabled --quiet northgate-rmm-agent.service; then
+      echo "refusing removal while the agent service remains enabled" >&2
+      exit 53
+    fi
   fi
 fi
 

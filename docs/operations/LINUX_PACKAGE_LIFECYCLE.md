@@ -47,6 +47,8 @@ cannot reuse an earlier spool position.
    service disabled.
 2. Upgrade stops only a running instance, replaces only verified artifacts,
    preserves configuration/state/identity, and restarts only if it was running.
+   Upgrade or removal fails if stop and inactive state cannot both be verified;
+   removal also requires verified disablement before artifacts are removed.
 3. Revoke invalidates the exact control-plane identity first, then stops and
    disables the service, removes local identity material, and writes a fresh,
    non-empty root-owned `0600` receipt. Enrollment, configure, and upgrade must

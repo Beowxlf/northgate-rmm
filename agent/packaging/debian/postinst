@@ -8,6 +8,7 @@ case "${1:-}" in
     exit 0
     ;;
 esac
+previous_version="${2:-}"
 
 if ! getent group northgate-rmm >/dev/null; then
   addgroup --system --quiet northgate-rmm
@@ -70,7 +71,7 @@ if [ -d /run/systemd/system ]; then
   if [ -f /run/northgate-rmm-agent.was-active ]; then
     rm -f /run/northgate-rmm-agent.was-active
     systemctl start northgate-rmm-agent.service
-  elif [ -z "${2:-}" ]; then
+  elif [ -z "$previous_version" ]; then
     if ! systemctl disable northgate-rmm-agent.service >/dev/null; then
       echo "agent service could not be left disabled" >&2
       exit 54

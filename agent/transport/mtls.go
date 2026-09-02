@@ -217,7 +217,7 @@ func looksLikeLegacyIPv4(hostname string) bool {
 
 type acknowledgement struct {
 	MessageID string `json:"message_id"`
-	Accepted  bool   `json:"accepted"`
+	Accepted  *bool  `json:"accepted"`
 }
 
 // Send transmits one message and succeeds only after an exact, bounded
@@ -285,7 +285,10 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 	if ack.MessageID != messageID {
 		return &DeliveryError{Code: "acknowledgement_mismatch"}
 	}
-	if !ack.Accepted {
+	if ack.Accepted == nil {
+		return &DeliveryError{Code: "invalid_acknowledgement"}
+	}
+	if !*ack.Accepted {
 		return &DeliveryError{Code: "acknowledgement_rejected"}
 	}
 	return nil

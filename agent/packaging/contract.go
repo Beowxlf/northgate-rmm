@@ -108,9 +108,9 @@ var expectedActions = lifecycle{
 		"require_explicit_approval",
 		"require_root_revocation_receipt",
 		"require_evidence_export",
-		"remove_config",
 		"remove_state",
 		"remove_system_identity",
+		"remove_config",
 	},
 }
 

@@ -65,6 +65,17 @@ install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-r
 install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/sequence/state.json
 install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.purge-approved
 install -o root -g root -m 0600 /dev/null /etc/northgate-rmm/.evidence-exported
+mv /usr/sbin/deluser /usr/sbin/deluser.real
+printf '%s\n' '#!/bin/sh' 'exit 75' > /usr/sbin/deluser
+chmod 0755 /usr/sbin/deluser
+if dpkg --purge northgate-rmm-agent >/dev/null 2>&1; then
+  echo "package purge unexpectedly ignored service-account deletion failure" >&2
+  exit 1
+fi
+mv /usr/sbin/deluser.real /usr/sbin/deluser
+test -d /etc/northgate-rmm
+test ! -e /var/lib/northgate-rmm
+getent passwd northgate-rmm >/dev/null
 dpkg --purge northgate-rmm-agent >/dev/null
 test ! -e /etc/northgate-rmm
 test ! -e /var/lib/northgate-rmm

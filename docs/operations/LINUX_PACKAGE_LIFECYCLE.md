@@ -57,7 +57,10 @@ cannot reuse an earlier spool position.
 5. Purge is a separate destructive operation requiring explicit approval,
    confirmed revocation receipt, and evidence export before it removes retained
    state and the service identity. All three markers are root-owned `0600` files
-   under `/etc/northgate-rmm`, outside service-writable state.
+   under `/etc/northgate-rmm`, outside service-writable state. Service-owned state
+   is removed and verified before account deletion. Account and group deletion
+   are then verified; failure preserves the protected receipts so purge can be
+   retried without fabricating new gates.
 
 ## Service containment
 

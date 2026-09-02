@@ -51,6 +51,8 @@
 - purge authorization is root-owned outside service-writable state, and an
   approved purge removes non-empty retained state before deleting the service
   identity;
+- account or group deletion failure keeps purge failed and preserves protected
+  gate receipts for a retry after service-owned state has been removed;
 - installation rejects a pre-existing service account with a non-system UID,
   mismatched primary group, or any supplementary group access;
 - supported OS/architecture matrix and upgrade compatibility.

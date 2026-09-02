@@ -19,11 +19,23 @@ if [ "$action" = "purge" ]; then
     exit 43
   fi
   rm -rf -- /var/lib/northgate-rmm
-  rm -rf -- /etc/northgate-rmm
   test ! -e /var/lib/northgate-rmm
+  if getent passwd northgate-rmm >/dev/null; then
+    deluser --quiet northgate-rmm
+  fi
+  if getent passwd northgate-rmm >/dev/null; then
+    echo "service account remains after purge deletion" >&2
+    exit 48
+  fi
+  if getent group northgate-rmm >/dev/null; then
+    delgroup --quiet northgate-rmm
+  fi
+  if getent group northgate-rmm >/dev/null; then
+    echo "service group remains after purge deletion" >&2
+    exit 49
+  fi
+  rm -rf -- /etc/northgate-rmm
   test ! -e /etc/northgate-rmm
-  deluser --quiet northgate-rmm 2>/dev/null || true
-  delgroup --quiet northgate-rmm 2>/dev/null || true
 fi
 
 if [ -d /run/systemd/system ]; then

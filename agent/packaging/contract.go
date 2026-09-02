@@ -85,6 +85,7 @@ var expectedActions = lifecycle{
 		"preserve_config",
 		"preserve_state",
 		"preserve_identity",
+		"preserve_enablement",
 		"restart_only_if_previously_running",
 	},
 	Revoke: []string{

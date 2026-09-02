@@ -38,6 +38,8 @@
   environment fields, unbounded resources, and weakened sandbox directives;
 - package removal and upgrade fail before artifact replacement when service
   stop or inactive state cannot be verified;
+- upgrade preserves enabled/disabled state independently from whether the
+  service was running;
 - key/config/spool permission enforcement;
 - resource exhaustion and crash-loop limits;
 - expired and explicitly rejected queue heads are quarantined without losing

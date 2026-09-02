@@ -24,6 +24,18 @@ if su --shell /bin/sh --command 'touch /etc/northgate-rmm/.identity-revoked' nor
   exit 1
 fi
 
+install -d -m 0755 /run/systemd/system
+mv /usr/bin/systemctl /usr/bin/systemctl.real
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  is-active) exit 1 ;;' '  is-enabled) exit 0 ;;' '  disable) touch /tmp/unexpected-disable; exit 0 ;;' \
+  '  *) exit 0 ;;' 'esac' > /usr/bin/systemctl
+chmod 0755 /usr/bin/systemctl
+/var/lib/dpkg/info/northgate-rmm-agent.prerm upgrade 0.2.1
+/var/lib/dpkg/info/northgate-rmm-agent.postinst configure 0.1.0
+test ! -e /tmp/unexpected-disable
+mv /usr/bin/systemctl.real /usr/bin/systemctl
+rm -rf -- /run/systemd/system
+
 install -d -o northgate-rmm -g northgate-rmm -m 0700 /var/lib/northgate-rmm/identity
 install -o northgate-rmm -g northgate-rmm -m 0600 /dev/null /var/lib/northgate-rmm/identity/identity.json
 if dpkg -r northgate-rmm-agent >/dev/null 2>&1; then

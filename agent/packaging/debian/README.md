@@ -40,6 +40,7 @@ service state, unit syntax, execution as the service user, rejection of
 supplementary service-account access, root-receipt-gated uninstall, state
 preservation, purge failure on account-removal error, and approval/evidence-gated
 purge. It also injects a service-stop failure and proves package removal leaves
-the installed executable in place. A container is not a full systemd boot, so
+the installed executable in place, and proves an enabled-but-inactive upgrade
+does not disable boot activation. A container is not a full systemd boot, so
 successful restart behavior and live resource enforcement still require the
 separately authorized disposable G2 canary.

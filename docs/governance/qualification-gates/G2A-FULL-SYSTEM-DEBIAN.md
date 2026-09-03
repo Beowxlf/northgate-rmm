@@ -24,7 +24,8 @@ precondition for G2, not deployment authority.
 - A normal upgrade preserves identity, configuration, enablement, and activity.
 - An injected pre-install failure recovers the prior active package and clears
   its restart marker.
-- A bounded restart storm reaches `start-limit-hit` and recovers after repair.
+- A bounded restart storm exhausts the configured retries, refuses another
+  start, and recovers after repair.
 - Synthetic revocation permits removal while retaining configuration and state.
 - Separately marked evidence and approval permit purge, remove the service
   identity and retained state, and preserve the root-controlled purge transaction.

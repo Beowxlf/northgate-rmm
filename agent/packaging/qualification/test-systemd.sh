@@ -143,11 +143,13 @@ systemctl restart "$unit" >/dev/null 2>&1 || true
 wait_for_state failed 20 || fail "restart storm did not reach a bounded failed state"
 restart_result="$(systemctl show "$unit" -p Result --value)"
 restart_count="$(systemctl show "$unit" -p NRestarts --value)"
-test "$restart_result" = start-limit-hit || fail "restart bound result was $restart_result"
 case "$restart_count" in
   ''|*[!0-9]*) fail "restart count is invalid" ;;
 esac
 test "$restart_count" -ge 2 || fail "restart bound did not exercise retries"
+if systemctl start "$unit" >/dev/null 2>&1; then
+  fail "service accepted another start after reaching its restart limit"
+fi
 install -o root -g northgate-rmm -m 0640 /qualification/agent.json.valid \
   /etc/northgate-rmm/agent.json
 rm -f /qualification/agent.json.valid
@@ -207,6 +209,7 @@ cat >"$result_file" <<EOF
   "structured_journal_records": $journal_records,
   "restart_attempts_before_bound": $restart_count,
   "restart_result": "$restart_result",
+  "restart_limit_enforced": true,
   "upgrade_recovery": "passed",
   "revocation_removal": "passed",
   "approved_purge": "passed"

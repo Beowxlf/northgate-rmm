@@ -77,6 +77,8 @@ test "$(systemctl show "$unit" -p MemoryDenyWriteExecute --value)" = yes ||
 test "$(systemctl show "$unit" -p MemoryMax --value)" = 134217728 || fail "MemoryMax differs"
 test "$(systemctl show "$unit" -p TasksMax --value)" = 64 || fail "TasksMax differs"
 test "$(systemctl show "$unit" -p LimitNOFILE --value)" = 1024 || fail "LimitNOFILE differs"
+cpu_quota_property="$(systemctl show "$unit" -p CPUQuotaPerSecUSec --value)"
+test "$cpu_quota_property" = 200ms || fail "CPUQuota differs"
 
 pid="$(systemctl show "$unit" -p MainPID --value)"
 case "$pid" in
@@ -88,6 +90,20 @@ test "$(awk '/^CapEff:/ {print $2}' "/proc/$pid/status")" = 0000000000000000 ||
   fail "process has effective capabilities"
 test "$(awk '/^CapBnd:/ {print $2}' "/proc/$pid/status")" = 0000000000000000 ||
   fail "process has a capability bounding set"
+control_group="$(systemctl show "$unit" -p ControlGroup --value)"
+case "$control_group" in
+  /*/northgate-rmm-agent.service) ;;
+  *) fail "service control group identity differs" ;;
+esac
+cpu_max="$(cat "/sys/fs/cgroup$control_group/cpu.max")"
+cpu_quota="${cpu_max% *}"
+cpu_period="${cpu_max#* }"
+test "$cpu_quota" != "$cpu_max" || fail "cpu.max has an unexpected shape"
+case "$cpu_quota:$cpu_period" in
+  *[!0-9:]*) fail "cpu.max has a nonnumeric quota" ;;
+esac
+test "$cpu_quota" -lt "$cpu_period" || fail "cpu.max does not enforce a sub-core quota"
+test $((100 * cpu_quota / cpu_period)) -eq 20 || fail "cpu.max does not enforce 20 percent"
 
 memory_current="$(systemctl show "$unit" -p MemoryCurrent --value)"
 tasks_current="$(systemctl show "$unit" -p TasksCurrent --value)"
@@ -113,9 +129,12 @@ test "$(sha256sum /etc/northgate-rmm/agent.json | cut -d' ' -f1)" = "$config_has
 test "$(sha256sum /var/lib/northgate-rmm/identity/identity.json | cut -d' ' -f1)" = "$identity_hash" ||
   fail "upgrade changed identity"
 
-if dpkg -i "$failed_upgrade_package" >/dev/null 2>&1; then
+if dpkg -i "$failed_upgrade_package" >/qualification/failed-upgrade.log 2>&1; then
   fail "injected failed upgrade unexpectedly succeeded"
 fi
+grep -q 'trying to overwrite directory.*var/lib/northgate-rmm.*with nondirectory' \
+  /qualification/failed-upgrade.log || fail "upgrade did not fail during payload unpack"
+rm -f /qualification/failed-upgrade.log
 wait_for_state active 15 || fail "service was not recovered after the failed upgrade"
 test "$(dpkg-query -W -f='${Version}' northgate-rmm-agent)" = 0.2.1 ||
   fail "failed upgrade changed the installed package version"
@@ -205,6 +224,8 @@ cat >"$result_file" <<EOF
   "open_file_descriptors": $fd_count,
   "open_file_descriptor_limit": 1024,
   "cpu_usage_nanoseconds": $cpu_usage_nsec,
+  "cpu_quota_property": "$cpu_quota_property",
+  "cpu_max": "$cpu_max",
   "spool_bytes": $spool_bytes,
   "structured_journal_records": $journal_records,
   "restart_attempts_before_bound": $restart_count,

@@ -51,8 +51,9 @@ jobs:
           dpkg-deb --raw-extract \
             build/g2a/failed/northgate-rmm-agent_0.2.2_amd64.deb \
             build/g2a/failed/root
-          printf '%s\n' '#!/bin/sh' 'exit 75' >build/g2a/failed/root/DEBIAN/preinst
-          chmod 0755 build/g2a/failed/root/DEBIAN/preinst
+          mkdir -p build/g2a/failed/root/var/lib
+          printf '%s\n' 'intentional G2A unpack collision' > \
+            build/g2a/failed/root/var/lib/northgate-rmm
           dpkg-deb --root-owner-group --build \
             build/g2a/failed/root \
             build/g2a/failed/northgate-rmm-agent_0.2.2-fail_amd64.deb >/dev/null

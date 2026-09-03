@@ -91,6 +91,11 @@ test "$(systemctl show "$unit" -p MemoryDenyWriteExecute --value)" = yes ||
   fail "MemoryDenyWriteExecute is off"
 test "$(systemctl show "$unit" -p RestrictRealtime --value)" = yes ||
   fail "RestrictRealtime is off"
+test "$(systemctl show "$unit" -p SystemCallArchitectures --value)" = native ||
+  fail "SystemCallArchitectures differs"
+address_families="$(systemctl show "$unit" -p RestrictAddressFamilies --value)"
+test "$address_families" = "AF_UNIX AF_INET AF_INET6" ||
+  fail "RestrictAddressFamilies differs"
 test "$(systemctl show "$unit" -p MemoryMax --value)" = 134217728 || fail "MemoryMax differs"
 test "$(systemctl show "$unit" -p TasksMax --value)" = 64 || fail "TasksMax differs"
 test "$(systemctl show "$unit" -p LimitNOFILE --value)" = 1024 || fail "LimitNOFILE differs"

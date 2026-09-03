@@ -195,4 +195,3 @@ if find "$output" -type f \( -name '*.key' -o -name 'cosign.key' \) | grep -q .;
   echo "private signing material escaped into the candidate bundle" >&2
   exit 73
 fi
-

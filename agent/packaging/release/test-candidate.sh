@@ -84,4 +84,3 @@ path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="u
 PY
 
 cat "$candidate/qualification-result.json"
-

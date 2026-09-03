@@ -72,8 +72,25 @@ test "$(systemctl show "$unit" -p ProtectSystem --value)" = strict || fail "Prot
 test "$(systemctl show "$unit" -p ProtectHome --value)" = yes || fail "ProtectHome is off"
 test "$(systemctl show "$unit" -p PrivateTmp --value)" = yes || fail "PrivateTmp is off"
 test "$(systemctl show "$unit" -p PrivateDevices --value)" = yes || fail "PrivateDevices is off"
+test "$(systemctl show "$unit" -p ProtectKernelTunables --value)" = yes ||
+  fail "ProtectKernelTunables is off"
+test "$(systemctl show "$unit" -p ProtectKernelModules --value)" = yes ||
+  fail "ProtectKernelModules is off"
+test "$(systemctl show "$unit" -p ProtectKernelLogs --value)" = yes ||
+  fail "ProtectKernelLogs is off"
+test "$(systemctl show "$unit" -p ProtectControlGroups --value)" = yes ||
+  fail "ProtectControlGroups is off"
+test "$(systemctl show "$unit" -p ProtectProc --value)" = invisible || fail "ProtectProc differs"
+test "$(systemctl show "$unit" -p RestrictNamespaces --value)" = yes ||
+  fail "RestrictNamespaces is off"
+test "$(systemctl show "$unit" -p RestrictSUIDSGID --value)" = yes ||
+  fail "RestrictSUIDSGID is off"
+test "$(systemctl show "$unit" -p LockPersonality --value)" = yes ||
+  fail "LockPersonality is off"
 test "$(systemctl show "$unit" -p MemoryDenyWriteExecute --value)" = yes ||
   fail "MemoryDenyWriteExecute is off"
+test "$(systemctl show "$unit" -p RestrictRealtime --value)" = yes ||
+  fail "RestrictRealtime is off"
 test "$(systemctl show "$unit" -p MemoryMax --value)" = 134217728 || fail "MemoryMax differs"
 test "$(systemctl show "$unit" -p TasksMax --value)" = 64 || fail "TasksMax differs"
 test "$(systemctl show "$unit" -p LimitNOFILE --value)" = 1024 || fail "LimitNOFILE differs"

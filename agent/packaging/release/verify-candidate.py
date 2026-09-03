@@ -95,8 +95,13 @@ def verify(root: pathlib.Path, expected_commit: str, expected_version: str, cosi
             capture_output=True,
             text=True,
         )
-    except (OSError, subprocess.CalledProcessError) as error:
-        raise VerificationError("release manifest signature verification failed") from error
+    except OSError as error:
+        raise VerificationError("Cosign could not be executed") from error
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr.strip() or "Cosign returned no diagnostic"
+        raise VerificationError(
+            f"release manifest signature verification failed: {detail}"
+        ) from error
 
     manifest = load_json(manifest_path)
     require(manifest.get("schemaVersion") == 1, "unsupported manifest schema")

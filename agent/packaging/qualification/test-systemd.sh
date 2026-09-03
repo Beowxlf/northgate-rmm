@@ -132,8 +132,11 @@ test "$(sha256sum /var/lib/northgate-rmm/identity/identity.json | cut -d' ' -f1)
 if dpkg -i "$failed_upgrade_package" >/qualification/failed-upgrade.log 2>&1; then
   fail "injected failed upgrade unexpectedly succeeded"
 fi
-grep -q 'trying to overwrite directory.*var/lib/northgate-rmm.*with nondirectory' \
-  /qualification/failed-upgrade.log || fail "upgrade did not fail during payload unpack"
+if ! grep -q 'dpkg: error processing archive.*--unpack' /qualification/failed-upgrade.log ||
+   ! grep -q 'var/lib/northgate-rmm' /qualification/failed-upgrade.log; then
+  cat /qualification/failed-upgrade.log >&2
+  fail "upgrade did not fail while unpacking the injected state-path collision"
+fi
 rm -f /qualification/failed-upgrade.log
 wait_for_state active 15 || fail "service was not recovered after the failed upgrade"
 test "$(dpkg-query -W -f='${Version}' northgate-rmm-agent)" = 0.2.1 ||

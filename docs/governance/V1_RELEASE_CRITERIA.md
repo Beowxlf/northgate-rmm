@@ -27,7 +27,8 @@ release verification must preserve those guarantees.
 - reproducible, signed Debian package with SBOM and provenance;
 - documented backup, isolated restore, incident containment, uninstall, and
   rebuild procedures; and
-- one evidence-backed lab soak followed by a signed `1.0.0` release.
+- one evidence-backed lab soak followed by a G6-authorized signed `1.0.0`
+  release.
 
 ## Explicit exclusions
 
@@ -65,6 +66,8 @@ product requirements without claiming either unqualified platform as supported.
 
 ### V1C — Production release trust
 
+- G6 authorization names the exact release, artifacts, signing profile,
+  distribution location, canary ring, expiry, and rollback boundary;
 - production signing custody and recovery are approved and separated from the
   ordinary control plane;
 - the exact package, manifest, SBOM, provenance, signature, source commit, and
@@ -105,14 +108,14 @@ product requirements without claiming either unqualified platform as supported.
 - documentation, support matrix, changelog, runbooks, and known risks agree;
 - release evidence is published without secrets or live private configuration;
   and
-- the owner approves and signs the immutable `1.0.0` release record.
+- the owner approves and signs the immutable `1.0.0` release record under G6.
 
 ## Release stop conditions
 
-Do not tag or publish 1.0 when G2 is closed, an in-scope value remains `TBD`, a
-required check is not green on the exact commit, a high or critical finding is
-unresolved, restore or revocation is unproven, the artifact cannot be
-independently verified, or documentation overstates deployed or supported
+Do not tag or publish 1.0 when G2 or G6 is closed, an in-scope value remains
+`TBD`, a required check is not green on the exact commit, a high or critical
+finding is unresolved, restore or revocation is unproven, the artifact cannot
+be independently verified, or documentation overstates deployed or supported
 behavior.
 
 Passing qualification does not authorize VM Factory execution. A plan can be

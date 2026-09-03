@@ -1,6 +1,6 @@
 # G2B Release-Candidate Trust Qualification
 
-Status: Complete; merged as `bbf2b82f65944f541aaf2f93c47171e8b809b08d`  
+Status: Complete; [durable evidence](../qualification-evidence/G2B-2026-09-03.md)  
 Parent gate: G2 remains closed  
 Scope: Non-published Debian release candidate with test-only signing
 

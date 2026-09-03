@@ -1,6 +1,6 @@
 # G2A Full-System Debian Agent Qualification
 
-Status: Complete; merged as `b46d4fe1382d4a9e49c3f26340c9b7159c10c76c`  
+Status: Complete; [durable evidence](../qualification-evidence/G2A-2026-09-03.md)  
 Parent gate: G2 remains closed  
 Scope: Synthetic Debian 12 systemd sandbox only
 

@@ -1,8 +1,10 @@
 # Development Phases
 
 Each phase has a purpose, permitted work, entry evidence, exit evidence, and an
-authorization record. Later-phase work is prohibited while an earlier gate is
-closed.
+authorization record. Later-phase operational work is prohibited while an
+earlier gate is closed. Bounded source development may proceed only under the
+separate non-deployment authorization mechanism defined in
+`AUTHORIZATION_GATES.md`.
 
 ## Phase 0 — Govern and design
 
@@ -50,13 +52,17 @@ Exit evidence:
 - audit correlation explains every state transition;
 - no endpoint command-execution capability exists.
 
-## Phase 2 — Linux read-only canary
+## Phase 2 — Linux read-only service and canary
 
-Purpose: run an unprivileged agent on one disposable supported Linux VM.
+Purpose: productize the private control-plane boundary and run an unprivileged
+agent on one disposable supported Linux VM.
 
 Permitted:
 
 - Go agent core;
+- private control-plane HTTP service and enrollment boundary;
+- authenticated, read-only operator endpoint list and detail views;
+- PostgreSQL migrations for grants, identities, observations, and audit;
 - `systemd` service and native package draft;
 - bounded read-only collectors;
 - outbound authenticated transport;
@@ -65,6 +71,8 @@ Permitted:
 Exit evidence:
 
 - one named Linux version qualified;
+- single-use enrollment, authenticated message delivery, freshness, revocation,
+  and audit work across the real service boundary;
 - resource, retry, log, spool, install, upgrade, revoke, and uninstall behavior
   verified;
 - no inbound listener, root service, or general execution primitive;

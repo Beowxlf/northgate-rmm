@@ -67,8 +67,12 @@ jobs:
           export SOURCE_DATE_EPOCH
           signing_directory="$(mktemp -d)"
           verification_directory="$(mktemp -d)"
+          isolation_directory="$(mktemp -d)"
           cleanup() {
-            rm -rf -- "$signing_directory" "$verification_directory"
+            rm -rf -- \
+              "$signing_directory" \
+              "$verification_directory" \
+              "$isolation_directory"
           }
           trap cleanup EXIT HUP INT TERM
           chmod 0700 "$verification_directory"
@@ -97,7 +101,7 @@ jobs:
             packaging/release/test-candidate.sh \
             packaging/release/verify-candidate.py \
             "$GITHUB_WORKSPACE/scripts/validate-spdx.mjs"
-          mkdir -p build/g2b/package-a build/g2b/package-b build/g2b/candidate
+          mkdir -p build/g2b/package-a build/g2b/package-b
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
             -trimpath -buildvcs=false -ldflags='-buildid= -X main.version=0.2.0' \
             -o build/g2b/northgate-rmm-agent ./cmd/northgate-rmm-agent
@@ -108,14 +112,24 @@ jobs:
           cmp \
             build/g2b/package-a/northgate-rmm-agent_0.2.0_amd64.deb \
             build/g2b/package-b/northgate-rmm-agent_0.2.0_amd64.deb
-          sudo chown g2b-builder build/g2b/candidate
+          builder_input="$isolation_directory/input"
+          candidate_directory="$isolation_directory/candidate"
+          mkdir "$builder_input" "$candidate_directory"
+          cp packaging/release/create-candidate.sh "$builder_input/create-candidate.sh"
+          cp \
+            build/g2b/package-a/northgate-rmm-agent_0.2.0_amd64.deb \
+            "$builder_input/northgate-rmm-agent_0.2.0_amd64.deb"
+          chmod 0755 "$isolation_directory" "$builder_input"
+          chmod 0555 "$builder_input/create-candidate.sh"
+          chmod 0444 "$builder_input/northgate-rmm-agent_0.2.0_amd64.deb"
+          sudo chown g2b-builder "$candidate_directory"
           test ! -w packaging/release/verify-candidate.py
           sudo --preserve-env=COSIGN_PASSWORD -u g2b-builder -- \
             env \
             HOME="$builder_home" \
-            "$GITHUB_WORKSPACE/agent/packaging/release/create-candidate.sh" \
-            build/g2b/package-a/northgate-rmm-agent_0.2.0_amd64.deb \
-            build/g2b/candidate \
+            "$builder_input/create-candidate.sh" \
+            "$builder_input/northgate-rmm-agent_0.2.0_amd64.deb" \
+            "$candidate_directory" \
             "$version" \
             "$commit" \
             "$SOURCE_DATE_EPOCH" \
@@ -127,8 +141,12 @@ jobs:
             echo "candidate generator can write the protected verifier" >&2
             exit 71
           fi
+          if sudo -u g2b-builder -- test -w "$verification_directory"; then
+            echo "candidate generator can write protected verification state" >&2
+            exit 72
+          fi
           packaging/release/test-candidate.sh \
-            build/g2b/candidate \
+            "$candidate_directory" \
             "$commit" \
             "$version" \
             "$expected_key_sha256" \
@@ -136,7 +154,7 @@ jobs:
             "$verification_directory/qualification-result.json" \
             "$spdx_schema" \
             "$GITHUB_WORKSPACE/scripts/validate-spdx.mjs"
-          test ! -e build/g2b/candidate/cosign.key
+          test ! -e "$candidate_directory/cosign.key"
           rm -rf -- "$signing_directory"
           unset COSIGN_PASSWORD
           test ! -e "$signing_directory"

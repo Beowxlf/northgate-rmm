@@ -38,6 +38,12 @@ password-protected Cosign key only to qualify signing and verification behavior.
 Transparency-log upload is disabled, and the workflow has read-only repository
 permission and no artifact-upload or release-publication step.
 
+Cosign verification supplies the exact local public key and uses
+`--insecure-ignore-tlog` because the test signature is intentionally prohibited
+from entering a public log. This bypasses only log-inclusion verification; the
+detached signature and signed manifest digest remain mandatory. That flag is not
+an accepted production-signing profile.
+
 The candidate manifest explicitly records `publicationAuthorized: false`,
 `deploymentAuthorized: false`, and the `test-only-ephemeral` signing profile.
 The candidate directory is deleted with the runner.

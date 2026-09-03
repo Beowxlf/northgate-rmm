@@ -69,9 +69,11 @@ that artifact, metadata, private-key escape, and wrong-source tampering fail
 closed.
 
 The signing key is ephemeral test material, is destroyed in the workflow, and
-is never published. Passing G2B qualifies the release evidence format and
-verifier only; it does not authorize production signing, publication, G2
-installation, or G6 update rollout.
+is never published. Offline verification pins that local public key and skips
+only the deliberately absent transparency-log proof; the signature remains
+mandatory. Passing G2B qualifies the release evidence format and verifier only;
+it does not authorize production signing, publication, G2 installation, or G6
+update rollout.
 
 ## Rules for findings
 

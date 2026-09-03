@@ -89,6 +89,7 @@ def verify(root: pathlib.Path, expected_commit: str, expected_version: str, cosi
                 str(public_key),
                 "--bundle",
                 str(signature_bundle),
+                "--insecure-ignore-tlog",
                 str(manifest_path),
             ],
             check=True,

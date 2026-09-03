@@ -49,6 +49,16 @@ CI, and external GitHub Actions are pinned to full commit SHAs.
 | Signature verification | Cosign                                       | Artifact identity and integrity                    |
 | OpenSSF Scorecard      | Scorecard CLI                                | Repository security posture; advisory until public |
 
+## G2A full-system Debian qualification
+
+`Debian 12 systemd qualification` is a protected-main check. It builds the
+package from the exact commit and runs the G2A lifecycle, containment, resource,
+upgrade, recovery, restart-bound, revocation, removal, and purge contract under
+Debian 12 with `systemd` as PID 1 and no non-loopback network interface.
+
+Any failed assertion blocks merge. Passing G2A is package-runtime evidence only;
+it does not open G2 or authorize endpoint installation.
+
 ## Rules for findings
 
 - Scanner absence is a failed check, not a pass.

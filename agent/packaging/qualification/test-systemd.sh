@@ -94,8 +94,14 @@ test "$(systemctl show "$unit" -p RestrictRealtime --value)" = yes ||
 test "$(systemctl show "$unit" -p SystemCallArchitectures --value)" = native ||
   fail "SystemCallArchitectures differs"
 address_families="$(systemctl show "$unit" -p RestrictAddressFamilies --value)"
-test "$address_families" = "AF_UNIX AF_INET AF_INET6" ||
-  fail "RestrictAddressFamilies differs"
+set -- $address_families
+test "$#" -eq 3 || fail "RestrictAddressFamilies differs: $address_families"
+for required_family in AF_UNIX AF_INET AF_INET6; do
+  case " $address_families " in
+    *" $required_family "*) ;;
+    *) fail "RestrictAddressFamilies omits $required_family: $address_families" ;;
+  esac
+done
 test "$(systemctl show "$unit" -p MemoryMax --value)" = 134217728 || fail "MemoryMax differs"
 test "$(systemctl show "$unit" -p TasksMax --value)" = 64 || fail "TasksMax differs"
 test "$(systemctl show "$unit" -p LimitNOFILE --value)" = 1024 || fail "LimitNOFILE differs"

@@ -7,6 +7,8 @@ Changelog structure and will adopt semantic versioning before its first release.
 
 ### Added
 
+- version 1.0 release criteria and bounded authorization for isolated
+  control-plane source development without opening G2;
 - G2B non-published release-candidate trust qualification with reproducible
   package comparison, SPDX SBOM, SLSA provenance, test-only Cosign manifest,
   strict verification, and negative tamper tests;

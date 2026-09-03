@@ -1,11 +1,13 @@
 # Platform Support Matrix
 
-No operating-system release is qualified yet.
+No operating-system release is operationally supported yet. Debian 12 package
+and service behavior is qualified in isolated CI, but G2 installation and live
+canary acceptance remain closed.
 
 | Platform                     | Phase | Status                    | Required qualification                                         |
 | ---------------------------- | ----: | ------------------------- | -------------------------------------------------------------- |
-| Linux protocol simulator     |     1 | Planned                   | contract and failure tests                                     |
-| Debian 12 amd64              |     2 | Source draft; unqualified | package build, systemd canary, PKI, limits, upgrade/uninstall  |
+| Linux protocol simulator     |     1 | Qualified in CI           | completed contract, persistence, and failure tests             |
+| Debian 12 amd64              |     2 | CI-qualified; unsupported | G2 PKI, enrollment, live canary, soak, and release acceptance  |
 | Named RHEL-family release    |    2+ | Deferred                  | rpm, SELinux, systemd, collectors, upgrade/uninstall           |
 | Named Windows client release |     3 | Not qualified             | service, ACL, event log, installer, update/uninstall           |
 | Named Windows Server release |    3+ | Deferred                  | service/server-specific qualification                          |

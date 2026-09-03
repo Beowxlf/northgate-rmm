@@ -25,6 +25,7 @@ The first executable lesson is
 ## Project controls
 
 - [Project charter](PROJECT_CHARTER.md)
+- [Version 1.0 release criteria](docs/governance/V1_RELEASE_CRITERIA.md)
 - [Development phases](docs/governance/PHASES.md)
 - [Authorization gates](docs/governance/AUTHORIZATION_GATES.md)
 - [Licensing policy](docs/governance/LICENSING.md)
@@ -41,8 +42,9 @@ The first executable lesson is
 - [Backup and restore](docs/operations/BACKUP_RESTORE.md)
 - [Linux package lifecycle](docs/operations/LINUX_PACKAGE_LIFECYCLE.md)
 
-The Phase 1 trustworthy vertical-slice simulation is complete. A separate,
-bounded authorization now permits **Phase 2 Linux-agent source development**.
+The Phase 1 trustworthy vertical-slice simulation is complete. Separate,
+bounded authorizations permit **Phase 2 Linux-agent and control-plane source
+development**.
 G2 remains closed: endpoint or VM installation, live identity, live collection,
 networking, and infrastructure changes remain prohibited.
 
@@ -52,19 +54,21 @@ server-rendered read models, and an in-memory test-only certificate authority.
 It remains a synthetic control-plane proof: no HTTP listener, real endpoint
 collector, job scheduler, or command-execution primitive is present.
 
-The in-progress Go agent source adds strict non-secret configuration, bounded
+The executable Go agent includes strict non-secret configuration, bounded
 allowlisted Linux collectors, the Phase 1-compatible inventory envelope, an
 checksum-validated quota spool, a crash-durable per-boot sequence allocator,
-and an outbound-only transport interface. It
-also includes a source-tested TLS 1.3 mutual-authentication sender with exact
+and an outbound-only transport interface. It also includes a source-tested TLS
+1.3 mutual-authentication sender with exact
 message acknowledgement and bounded jittered retry policy. A create-once local
 identity store now validates the endpoint-bound certificate, key, and explicit
 server roots before publishing one permission-restricted bundle. A closed-schema
-JSON event logger rejects arbitrary fields and raw error text. A source-only
-Debian 12 amd64 lifecycle contract and hardened, resource-bounded `systemd` unit
-draft are validated without installing or invoking anything. The repository
-still has no executable agent entrypoint, installable package, service activation,
-listener, enrollment network flow, command runner, or privileged helper.
+JSON event logger rejects arbitrary fields and raw error text. A Debian 12 amd64
+lifecycle contract, executable entrypoint, installable package, and hardened,
+resource-bounded `systemd` unit have passed isolated Debian 12 qualification.
+Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
+test-only signature verification have also passed. The repository still has no
+deployable control-plane listener or live enrollment network flow, command
+runner, or privileged helper.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.

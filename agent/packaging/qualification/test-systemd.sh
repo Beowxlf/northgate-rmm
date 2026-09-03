@@ -77,6 +77,13 @@ test "$(systemctl show "$unit" -p MemoryDenyWriteExecute --value)" = yes ||
 test "$(systemctl show "$unit" -p MemoryMax --value)" = 134217728 || fail "MemoryMax differs"
 test "$(systemctl show "$unit" -p TasksMax --value)" = 64 || fail "TasksMax differs"
 test "$(systemctl show "$unit" -p LimitNOFILE --value)" = 1024 || fail "LimitNOFILE differs"
+start_limit_interval="$(systemctl show "$unit" -p StartLimitIntervalUSec --value)"
+case "$start_limit_interval" in
+  5min|300s|300000000us) ;;
+  *) fail "packaged StartLimitIntervalSec differs" ;;
+esac
+start_limit_burst="$(systemctl show "$unit" -p StartLimitBurst --value)"
+test "$start_limit_burst" = 5 || fail "packaged StartLimitBurst differs"
 cpu_quota_property="$(systemctl show "$unit" -p CPUQuotaPerSecUSec --value)"
 test "$cpu_quota_property" = 200ms || fail "CPUQuota differs"
 
@@ -237,6 +244,8 @@ cat >"$result_file" <<EOF
   "cpu_usage_nanoseconds": $cpu_usage_nsec,
   "cpu_quota_property": "$cpu_quota_property",
   "cpu_max": "$cpu_max",
+  "packaged_start_limit_interval": "$start_limit_interval",
+  "packaged_start_limit_burst": $start_limit_burst,
   "spool_bytes": $spool_bytes,
   "structured_journal_records": $journal_records,
   "restart_attempts_before_bound": $restart_count,

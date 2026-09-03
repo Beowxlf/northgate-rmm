@@ -7,6 +7,10 @@ Changelog structure and will adopt semantic versioning before its first release.
 
 ### Added
 
+- G2A Debian 12 full-system qualification for real `systemd`, cgroup resource
+  controls, upgrade and failed-upgrade recovery, restart bounds, synthetic
+  revocation, removal, and approved purge testing without NorthGate access or
+  package publication;
 - project charter, learning program, architecture, security governance, and
   pre-code authorization framework;
 - repository audit tooling and free-software check plan;

@@ -64,9 +64,9 @@ it does not open G2 or authorize endpoint installation.
 `Release-candidate trust qualification` is a protected-main check. It builds
 the Debian package twice from the exact commit, generates an SPDX 2.3 SBOM and
 SLSA provenance statement with checksum-verified Syft, binds the evidence into
-a test-signed Cosign manifest, verifies all identities and digests, and proves
-that artifact, metadata, private-key escape, and wrong-source tampering fail
-closed.
+a test-signed Cosign manifest, requires a separately supplied public-key digest
+pin, verifies all identities and digests, and proves that artifact, metadata,
+private-key escape, wrong-source, and wrong-key tampering fail closed.
 
 The signing key is ephemeral test material, is destroyed in the workflow, and
 is never published. Offline verification pins that local public key and skips

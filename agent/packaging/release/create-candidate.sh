@@ -37,6 +37,10 @@ for tool in cosign dpkg-deb python3 sha256sum syft; do
     exit 69
   }
 done
+if [ -L "$output" ] || { [ -e "$output" ] && [ ! -d "$output" ]; }; then
+  echo "output must be a real directory path" >&2
+  exit 70
+fi
 if [ -e "$output" ] && [ -n "$(find "$output" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
   echo "output directory must be empty" >&2
   exit 70

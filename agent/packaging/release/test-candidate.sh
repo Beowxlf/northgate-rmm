@@ -1,14 +1,16 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -ne 3 ]; then
-  echo "usage: test-candidate.sh CANDIDATE EXPECTED_COMMIT EXPECTED_VERSION" >&2
+if [ "$#" -ne 5 ]; then
+  echo "usage: test-candidate.sh CANDIDATE EXPECTED_COMMIT EXPECTED_VERSION EXPECTED_KEY_SHA256 RESULT" >&2
   exit 64
 fi
 
 candidate=$1
 commit=$2
 version=$3
+expected_key_sha256=$4
+result=$5
 script_directory="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 verifier="$script_directory/verify-candidate.py"
 temporary=$(mktemp -d)
@@ -17,15 +19,16 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-result="$temporary/qualification-result.json"
-python3 "$verifier" "$candidate" "$commit" "$version" > "$result"
-mv "$result" "$candidate/qualification-result.json"
+python3 "$verifier" \
+  "$candidate" "$commit" "$version" "$expected_key_sha256" > "$result"
 
 expect_failure() {
   name=$1
   directory=$2
   expected_commit=${3:-$commit}
-  if python3 "$verifier" "$directory" "$expected_commit" "$version" \
+  expected_key=${4:-$expected_key_sha256}
+  if python3 "$verifier" \
+    "$directory" "$expected_commit" "$version" "$expected_key" \
     >"$temporary/$name.stdout" 2>"$temporary/$name.stderr"; then
     echo "negative verification unexpectedly passed: $name" >&2
     exit 70
@@ -37,7 +40,6 @@ copy_candidate() {
   directory="$temporary/$name"
   mkdir "$directory"
   cp -a "$candidate/." "$directory/"
-  rm -f "$directory/qualification-result.json"
   printf '%s\n' "$directory"
 }
 
@@ -67,7 +69,13 @@ if [ "$wrong_commit" = "$commit" ]; then
 fi
 expect_failure wrong-commit "$candidate" "$wrong_commit"
 
-python3 - "$candidate/qualification-result.json" <<'PY'
+wrong_key=$(printf '0%.0s' $(seq 1 64))
+if [ "$wrong_key" = "$expected_key_sha256" ]; then
+  wrong_key=$(printf '1%.0s' $(seq 1 64))
+fi
+expect_failure wrong-key "$candidate" "$commit" "$wrong_key"
+
+python3 - "$result" <<'PY'
 import json
 import pathlib
 import sys
@@ -81,8 +89,9 @@ result["negative_tests"] = [
     "provenance_digest_tamper",
     "private_key_escape",
     "wrong_source_commit",
+    "wrong_public_key_pin",
 ]
 path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 
-cat "$candidate/qualification-result.json"
+cat "$result"

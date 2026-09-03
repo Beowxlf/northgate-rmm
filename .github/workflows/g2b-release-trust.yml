@@ -82,8 +82,13 @@ jobs:
             "$SOURCE_DATE_EPOCH" \
             "https://github.com/Beowxlf/northgate-rmm/.github/workflows/g2b-release-trust.yml" \
             "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          expected_key_sha256="$(sha256sum build/g2b/candidate/release-test.pub | cut -d ' ' -f 1)"
           packaging/release/test-candidate.sh \
-            build/g2b/candidate "$commit" "$version"
+            build/g2b/candidate \
+            "$commit" \
+            "$version" \
+            "$expected_key_sha256" \
+            build/g2b/qualification-result.json
           test ! -e build/g2b/candidate/cosign.key
           {
             echo '## G2B release-candidate trust qualification'
@@ -91,6 +96,6 @@ jobs:
             echo 'Test-only signing material was destroyed; nothing was published.'
             echo
             echo '```json'
-            cat build/g2b/candidate/qualification-result.json
+            cat build/g2b/qualification-result.json
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

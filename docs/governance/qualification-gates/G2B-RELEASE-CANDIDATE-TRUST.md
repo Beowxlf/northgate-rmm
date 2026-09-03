@@ -20,13 +20,13 @@ introduced.
   by the release manifest.
 - The SLSA provenance statement binds the package digest, source commit, build
   type, invocation, version, architecture, and source date epoch.
-- Cosign verifies the manifest with a public key whose digest is itself bound
-  by the manifest.
+- Cosign verifies the manifest with a public key whose digest is bound by the
+  manifest and must match a separately supplied trust pin.
 - The verifier checks an exact file set, safe filenames, package metadata,
   hashes, sizes, source identity, build identity, SBOM semantics, and provenance
   semantics.
-- Package, manifest, SBOM, provenance, private-key escape, and wrong-source
-  negative tests all fail closed.
+- Package, manifest, SBOM, provenance, private-key escape, wrong-source, and
+  wrong-trust-pin negative tests all fail closed.
 - Ephemeral private signing material is destroyed and never uploaded or
   committed.
 

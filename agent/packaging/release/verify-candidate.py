@@ -69,10 +69,20 @@ def dpkg_field(package: pathlib.Path, field: str) -> str:
     return process.stdout.strip()
 
 
-def verify(root: pathlib.Path, expected_commit: str, expected_version: str, cosign: str) -> dict[str, Any]:
+def verify(
+    root: pathlib.Path,
+    expected_commit: str,
+    expected_version: str,
+    expected_public_key_sha256: str,
+    cosign: str,
+) -> dict[str, Any]:
     require(root.is_dir(), "candidate directory is missing")
     require(bool(re.fullmatch(r"[0-9a-f]{40}", expected_commit)), "expected commit must be a full SHA")
     require(bool(re.fullmatch(r"[0-9A-Za-z.+~:-]+", expected_version)), "expected version is invalid")
+    require(
+        bool(re.fullmatch(r"[0-9a-f]{64}", expected_public_key_sha256)),
+        "expected public-key digest must be a SHA-256 value",
+    )
 
     manifest_path = root / "release-manifest.json"
     public_key = root / "release-test.pub"
@@ -136,6 +146,10 @@ def verify(root: pathlib.Path, expected_commit: str, expected_version: str, cosi
     require(signing.get("profile") == "test-only-ephemeral", "unexpected signing profile")
     key_path = evidence_path(root, signing.get("publicKey"), "public key")
     require(key_path == public_key, "manifest names an unexpected public key")
+    require(
+        digest(public_key) == expected_public_key_sha256,
+        "public key does not match the independently supplied trust pin",
+    )
 
     artifacts = manifest.get("artifacts")
     require(isinstance(artifacts, dict), "artifact evidence is missing")
@@ -248,6 +262,7 @@ def main() -> int:
     parser.add_argument("candidate")
     parser.add_argument("expected_commit")
     parser.add_argument("expected_version")
+    parser.add_argument("expected_public_key_sha256")
     parser.add_argument("--cosign", default="cosign")
     args = parser.parse_args()
     try:
@@ -255,6 +270,7 @@ def main() -> int:
             pathlib.Path(args.candidate).resolve(),
             args.expected_commit,
             args.expected_version,
+            args.expected_public_key_sha256,
             args.cosign,
         )
     except VerificationError as error:

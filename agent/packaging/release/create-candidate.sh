@@ -81,6 +81,53 @@ install -m 0644 "$package" "$candidate_package"
 SYFT_CHECK_FOR_APP_UPDATE=false syft scan "file:$candidate_package" \
   --output "spdx-json=$sbom" >/dev/null
 
+python3 - "$sbom" "$candidate_package" "$version" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+sbom_path = pathlib.Path(sys.argv[1])
+package_path = pathlib.Path(sys.argv[2])
+version = sys.argv[3]
+document = json.loads(sbom_path.read_text(encoding="utf-8"))
+packages = document.get("packages")
+if not isinstance(packages, list):
+    raise SystemExit("Syft SPDX document has no package inventory")
+matches = [
+    item
+    for item in packages
+    if isinstance(item, dict)
+    and item.get("name") == "northgate-rmm-agent"
+    and item.get("versionInfo") == version
+]
+if len(matches) != 1 or not isinstance(matches[0].get("SPDXID"), str):
+    raise SystemExit("Syft SPDX document does not uniquely identify the candidate")
+package = matches[0]
+checksums = package.get("checksums")
+if not isinstance(checksums, list):
+    checksums = []
+package["checksums"] = [
+    item
+    for item in checksums
+    if not isinstance(item, dict) or item.get("algorithm") != "SHA256"
+] + [
+    {
+        "algorithm": "SHA256",
+        "checksumValue": hashlib.sha256(package_path.read_bytes()).hexdigest(),
+    }
+]
+described = document.get("documentDescribes")
+if not isinstance(described, list):
+    described = []
+if package["SPDXID"] not in described:
+    described.append(package["SPDXID"])
+document["documentDescribes"] = described
+sbom_path.write_text(
+    json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+)
+PY
+
 python3 - "$provenance" "$expected_name" "$commit" "$version" "$epoch" \
   "$build_type" "$invocation_id" <<'PY'
 import hashlib

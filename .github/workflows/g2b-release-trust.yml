@@ -105,16 +105,24 @@ jobs:
             packaging/release/verify-candidate.py \
             "$GITHUB_WORKSPACE/scripts/validate-spdx.mjs"
           mkdir -p build/g2b/package-a build/g2b/package-b
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+          GOCACHE="$RUNNER_TEMP/g2b-go-cache-a" \
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
             -trimpath -buildvcs=false -ldflags='-buildid= -X main.version=0.2.0' \
-            -o build/g2b/northgate-rmm-agent ./cmd/northgate-rmm-agent
+            -o build/g2b/northgate-rmm-agent-a ./cmd/northgate-rmm-agent
+          GOCACHE="$RUNNER_TEMP/g2b-go-cache-b" \
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -buildvcs=false -ldflags='-buildid= -X main.version=0.2.0' \
+            -o build/g2b/northgate-rmm-agent-b ./cmd/northgate-rmm-agent
           packaging/build-deb.sh \
-            "$version" build/g2b/northgate-rmm-agent build/g2b/package-a
+            "$version" build/g2b/northgate-rmm-agent-a build/g2b/package-a
           packaging/build-deb.sh \
-            "$version" build/g2b/northgate-rmm-agent build/g2b/package-b
+            "$version" build/g2b/northgate-rmm-agent-b build/g2b/package-b
           cmp \
             build/g2b/package-a/northgate-rmm-agent_0.2.0_amd64.deb \
             build/g2b/package-b/northgate-rmm-agent_0.2.0_amd64.deb
+          expected_package_sha256="$(sha256sum \
+            build/g2b/package-a/northgate-rmm-agent_0.2.0_amd64.deb \
+            | cut -d ' ' -f 1)"
           builder_input="$isolation_directory/input"
           builder_tools="$isolation_directory/tools"
           candidate_directory="$isolation_directory/candidate"
@@ -160,6 +168,8 @@ jobs:
             "$candidate_directory" \
             "$commit" \
             "$version" \
+            "$expected_package_sha256" \
+            "$SOURCE_DATE_EPOCH" \
             "$expected_key_sha256" \
             "$expected_invocation" \
             "$verification_directory/qualification-result.json" \

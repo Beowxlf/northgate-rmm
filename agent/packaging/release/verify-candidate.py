@@ -73,6 +73,8 @@ def verify(
     root: pathlib.Path,
     expected_commit: str,
     expected_version: str,
+    expected_package_sha256: str,
+    expected_source_date_epoch: int,
     expected_public_key_sha256: str,
     expected_invocation_id: str,
     cosign: str,
@@ -82,6 +84,11 @@ def verify(
     require(root.is_dir(), "candidate directory is missing")
     require(bool(re.fullmatch(r"[0-9a-f]{40}", expected_commit)), "expected commit must be a full SHA")
     require(bool(re.fullmatch(r"[0-9A-Za-z.+~:-]+", expected_version)), "expected version is invalid")
+    require(
+        bool(re.fullmatch(r"[0-9a-f]{64}", expected_package_sha256)),
+        "expected package digest must be a SHA-256 value",
+    )
+    require(expected_source_date_epoch > 0, "expected source epoch is invalid")
     require(
         bool(re.fullmatch(r"[0-9a-f]{64}", expected_public_key_sha256)),
         "expected public-key digest must be a SHA-256 value",
@@ -148,7 +155,10 @@ def verify(
 
     build = manifest.get("build")
     require(isinstance(build, dict), "build metadata is missing")
-    require(isinstance(build.get("sourceDateEpoch"), int) and build["sourceDateEpoch"] > 0, "source epoch is invalid")
+    require(
+        build.get("sourceDateEpoch") == expected_source_date_epoch,
+        "source epoch mismatch",
+    )
     expected_build_type = "https://github.com/Beowxlf/northgate-rmm/.github/workflows/g2b-release-trust.yml"
     require(build.get("buildType") == expected_build_type, "build type mismatch")
     invocation_id = build.get("invocationId")
@@ -170,6 +180,10 @@ def verify(
     package = evidence_path(root, artifacts.get("package"), "package")
     sbom_path = evidence_path(root, artifacts.get("sbom"), "SBOM")
     provenance_path = evidence_path(root, artifacts.get("provenance"), "provenance")
+    require(
+        digest(package) == expected_package_sha256,
+        "package does not match the independently supplied build digest",
+    )
 
     expected_package_name = f"northgate-rmm-agent_{expected_version}_amd64.deb"
     require(package.name == expected_package_name, "package filename mismatch")
@@ -303,7 +317,7 @@ def verify(
     require(isinstance(internal, dict), "provenance internal parameters are missing")
     require(internal.get("publicationAuthorized") is False, "provenance publication boundary is absent")
     require(internal.get("signingProfile") == "test-only-ephemeral", "provenance signing boundary is absent")
-    require(internal.get("sourceDateEpoch") == build.get("sourceDateEpoch"), "source epoch disagreement")
+    require(internal.get("sourceDateEpoch") == expected_source_date_epoch, "source epoch disagreement")
     details = predicate.get("runDetails")
     require(isinstance(details, dict), "provenance run details are missing")
     require(details.get("builder") == {"id": expected_build_type}, "provenance builder mismatch")
@@ -312,6 +326,7 @@ def verify(
     return {
         "gate": "G2B",
         "source_commit": expected_commit,
+        "source_date_epoch": expected_source_date_epoch,
         "version": expected_version,
         "package_sha256": digest(package),
         "package_bytes": package.stat().st_size,
@@ -330,6 +345,8 @@ def main() -> int:
     parser.add_argument("candidate")
     parser.add_argument("expected_commit")
     parser.add_argument("expected_version")
+    parser.add_argument("expected_package_sha256")
+    parser.add_argument("expected_source_date_epoch", type=int)
     parser.add_argument("expected_public_key_sha256")
     parser.add_argument("expected_invocation_id")
     parser.add_argument("--cosign", default="cosign")
@@ -341,6 +358,8 @@ def main() -> int:
             pathlib.Path(args.candidate).resolve(),
             args.expected_commit,
             args.expected_version,
+            args.expected_package_sha256,
+            args.expected_source_date_epoch,
             args.expected_public_key_sha256,
             args.expected_invocation_id,
             args.cosign,

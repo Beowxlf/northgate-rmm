@@ -22,8 +22,9 @@ precondition for G2, not deployment authority.
 - Memory, CPU, task, descriptor, spool, retry/restart, and structured-journal
   observations are recorded without credentials or private infrastructure data.
 - A normal upgrade preserves identity, configuration, enablement, and activity.
-- An injected payload collision fails during unpack after the active old package
-  is stopped, then recovers that prior package and clears its restart marker.
+- A read-only bind fault on the executable directory fails during unpack after
+  the active old package is stopped, then recovers that prior package and clears
+  its restart marker.
 - A bounded restart storm exhausts the configured retries, refuses another
   start, and recovers after repair.
 - Synthetic revocation permits removal while retaining configuration and state.

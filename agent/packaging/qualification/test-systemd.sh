@@ -138,7 +138,9 @@ umount /usr/libexec/northgate-rmm || fail "failed to release the read-only upgra
 if [ "$failed_upgrade_status" -eq 0 ]; then
   fail "injected failed upgrade unexpectedly succeeded"
 fi
-if ! grep -q 'dpkg: error processing archive.*--unpack' /qualification/failed-upgrade.log ||
+if ! grep -q '^Unpacking northgate-rmm-agent (0.2.2) over (0.2.1)' \
+     /qualification/failed-upgrade.log ||
+   ! grep -q 'northgate-rmm-agent.dpkg-new' /qualification/failed-upgrade.log ||
    ! grep -q 'Read-only file system' /qualification/failed-upgrade.log; then
   cat /qualification/failed-upgrade.log >&2
   fail "upgrade did not fail while unpacking onto the read-only executable path"

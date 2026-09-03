@@ -17,7 +17,9 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-python3 "$verifier" "$candidate" "$commit" "$version" > "$candidate/qualification-result.json"
+result="$temporary/qualification-result.json"
+python3 "$verifier" "$candidate" "$commit" "$version" > "$result"
+mv "$result" "$candidate/qualification-result.json"
 
 expect_failure() {
   name=$1

@@ -6,6 +6,7 @@ const workflowDirectory = path.join(process.cwd(), ".github", "workflows");
 const errors = [];
 const headBoundWorkflows = new Set([
   "g2a-systemd-qualification.yml",
+  "g2b-release-trust.yml",
   "governance.yml",
   "security.yml",
 ]);

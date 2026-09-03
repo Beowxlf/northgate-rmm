@@ -7,6 +7,9 @@ Changelog structure and will adopt semantic versioning before its first release.
 
 ### Added
 
+- G2B non-published release-candidate trust qualification with reproducible
+  package comparison, SPDX SBOM, SLSA provenance, test-only Cosign manifest,
+  strict verification, and negative tamper tests;
 - G2A Debian 12 full-system qualification for real `systemd`, cgroup resource
   controls, upgrade and failed-upgrade recovery, restart bounds, synthetic
   revocation, removal, and approved purge testing without NorthGate access or

@@ -44,7 +44,8 @@
     "requiredStatusChecks": [
       "Pre-code governance audit",
       "Free-software security checks",
-      "Debian 12 systemd qualification"
+      "Debian 12 systemd qualification",
+      "Release-candidate trust qualification"
     ]
   }
 }

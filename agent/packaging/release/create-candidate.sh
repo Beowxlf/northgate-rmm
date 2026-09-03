@@ -1,0 +1,261 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 9 ]; then
+  echo "usage: create-candidate.sh PACKAGE OUTPUT VERSION COMMIT EPOCH BUILD_TYPE INVOCATION_ID SIGNING_KEY SIGNING_PUBLIC_KEY" >&2
+  exit 64
+fi
+
+package=$1
+output=$2
+version=$3
+commit=$4
+epoch=$5
+build_type=$6
+invocation_id=$7
+signing_key=$8
+signing_public_key=$9
+
+case "$version" in
+  *[!0-9A-Za-z.+~:-]*|'') echo "invalid Debian version" >&2; exit 65 ;;
+esac
+case "$commit" in
+  *[!0-9a-f]*|'') echo "invalid source commit" >&2; exit 66 ;;
+esac
+if [ "${#commit}" -ne 40 ]; then
+  echo "source commit must be a full SHA" >&2
+  exit 66
+fi
+case "$epoch" in
+  *[!0-9]*|'') echo "invalid source epoch" >&2; exit 67 ;;
+esac
+if [ ! -f "$package" ] || [ -L "$package" ]; then
+  echo "package must be a regular non-symlink file" >&2
+  exit 68
+fi
+if [ ! -f "$signing_key" ] || [ -L "$signing_key" ] ||
+  [ ! -f "$signing_public_key" ] || [ -L "$signing_public_key" ]; then
+  echo "signing inputs must be regular non-symlink files" >&2
+  exit 68
+fi
+if [ -z "${COSIGN_PASSWORD:-}" ]; then
+  echo "COSIGN_PASSWORD is required for the ephemeral test signer" >&2
+  exit 68
+fi
+for tool in cosign dpkg-deb python3 sha256sum syft; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "required tool is unavailable: $tool" >&2
+    exit 69
+  }
+done
+if [ -L "$output" ] || { [ -e "$output" ] && [ ! -d "$output" ]; }; then
+  echo "output must be a real directory path" >&2
+  exit 70
+fi
+if [ -e "$output" ] && [ -n "$(find "$output" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+  echo "output directory must be empty" >&2
+  exit 70
+fi
+
+expected_name="northgate-rmm-agent_${version}_amd64.deb"
+if [ "$(basename "$package")" != "$expected_name" ]; then
+  echo "package filename does not match version and architecture" >&2
+  exit 71
+fi
+if [ "$(dpkg-deb --field "$package" Package)" != "northgate-rmm-agent" ] ||
+  [ "$(dpkg-deb --field "$package" Version)" != "$version" ] ||
+  [ "$(dpkg-deb --field "$package" Architecture)" != "amd64" ]; then
+  echo "package control metadata does not match the release candidate" >&2
+  exit 72
+fi
+
+mkdir -p "$output"
+candidate_package="$output/$expected_name"
+sbom="$output/$expected_name.spdx.json"
+provenance="$output/$expected_name.provenance.json"
+manifest="$output/release-manifest.json"
+public_key="$output/release-test.pub"
+signature_bundle="$output/release-manifest.sigstore.json"
+install -m 0644 "$package" "$candidate_package"
+
+SYFT_CHECK_FOR_APP_UPDATE=false syft scan "file:$candidate_package" \
+  --output "spdx-json=$sbom" >/dev/null
+
+python3 - "$sbom" "$candidate_package" "$version" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+sbom_path = pathlib.Path(sys.argv[1])
+package_path = pathlib.Path(sys.argv[2])
+version = sys.argv[3]
+document = json.loads(sbom_path.read_text(encoding="utf-8"))
+packages = document.get("packages")
+if not isinstance(packages, list):
+    raise SystemExit("Syft SPDX document has no package inventory")
+matches = [
+    item
+    for item in packages
+    if isinstance(item, dict)
+    and item.get("name") == "northgate-rmm-agent"
+    and item.get("versionInfo") == version
+]
+if len(matches) != 1 or not isinstance(matches[0].get("SPDXID"), str):
+    raise SystemExit("Syft SPDX document does not uniquely identify the candidate")
+package = matches[0]
+checksums = package.get("checksums")
+if not isinstance(checksums, list):
+    checksums = []
+package["checksums"] = [
+    item
+    for item in checksums
+    if not isinstance(item, dict) or item.get("algorithm") != "SHA256"
+] + [
+    {
+        "algorithm": "SHA256",
+        "checksumValue": hashlib.sha256(package_path.read_bytes()).hexdigest(),
+    }
+]
+described = document.get("documentDescribes")
+if not isinstance(described, list):
+    described = []
+if package["SPDXID"] not in described:
+    described.append(package["SPDXID"])
+document["documentDescribes"] = described
+sbom_path.write_text(
+    json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+)
+PY
+
+python3 - "$provenance" "$expected_name" "$commit" "$version" "$epoch" \
+  "$build_type" "$invocation_id" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+destination, package_name, commit, version, epoch, build_type, invocation_id = sys.argv[1:]
+package = pathlib.Path(destination).parent / package_name
+statement = {
+    "_type": "https://in-toto.io/Statement/v1",
+    "predicateType": "https://slsa.dev/provenance/v1",
+    "subject": [
+        {
+            "name": package_name,
+            "digest": {"sha256": hashlib.sha256(package.read_bytes()).hexdigest()},
+        }
+    ],
+    "predicate": {
+        "buildDefinition": {
+            "buildType": build_type,
+            "externalParameters": {
+                "architecture": "amd64",
+                "releaseCandidate": True,
+                "version": version,
+            },
+            "internalParameters": {
+                "publicationAuthorized": False,
+                "signingProfile": "test-only-ephemeral",
+                "sourceDateEpoch": int(epoch),
+            },
+            "resolvedDependencies": [
+                {
+                    "uri": f"git+https://github.com/Beowxlf/northgate-rmm@{commit}",
+                    "digest": {"gitCommit": commit},
+                }
+            ],
+        },
+        "runDetails": {
+            "builder": {"id": build_type},
+            "metadata": {"invocationId": invocation_id},
+        },
+    },
+}
+pathlib.Path(destination).write_text(
+    json.dumps(statement, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+)
+PY
+
+signing_directory=$(mktemp -d)
+cleanup() {
+  rm -rf -- "$signing_directory"
+}
+trap cleanup EXIT HUP INT TERM
+install -m 0644 "$signing_public_key" "$public_key"
+signing_config="$signing_directory/signing-config.json"
+cosign signing-config create \
+  --no-default-fulcio \
+  --no-default-oidc \
+  --no-default-rekor \
+  --no-default-tsa \
+  --out "$signing_config"
+
+python3 - "$manifest" "$expected_name" "$commit" "$version" "$epoch" \
+  "$build_type" "$invocation_id" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+destination, package_name, commit, version, epoch, build_type, invocation_id = sys.argv[1:]
+root = pathlib.Path(destination).parent
+
+
+def evidence(path):
+    data = path.read_bytes()
+    return {"path": path.name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+
+
+package = root / package_name
+sbom = root / f"{package_name}.spdx.json"
+provenance = root / f"{package_name}.provenance.json"
+public_key = root / "release-test.pub"
+manifest = {
+    "schemaVersion": 1,
+    "gate": "G2B",
+    "product": "northgate-rmm-agent",
+    "version": version,
+    "architecture": "amd64",
+    "releaseCandidate": True,
+    "publicationAuthorized": False,
+    "deploymentAuthorized": False,
+    "source": {
+        "repository": "https://github.com/Beowxlf/northgate-rmm",
+        "commit": commit,
+    },
+    "build": {
+        "sourceDateEpoch": int(epoch),
+        "buildType": build_type,
+        "invocationId": invocation_id,
+    },
+    "signing": {
+        "profile": "test-only-ephemeral",
+        "publicKey": evidence(public_key),
+    },
+    "artifacts": {
+        "package": evidence(package),
+        "sbom": {**evidence(sbom), "format": "SPDX-2.3"},
+        "provenance": {
+            **evidence(provenance),
+            "predicateType": "https://slsa.dev/provenance/v1",
+        },
+    },
+}
+pathlib.Path(destination).write_text(
+    json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+)
+PY
+
+cosign sign-blob --yes \
+  --signing-config "$signing_config" \
+  --key "$signing_key" \
+  --bundle "$signature_bundle" \
+  "$manifest" >/dev/null
+
+cleanup
+trap - EXIT HUP INT TERM
+if find "$output" -type f \( -name '*.key' -o -name 'cosign.key' \) | grep -q .; then
+  echo "private signing material escaped into the candidate bundle" >&2
+  exit 73
+fi

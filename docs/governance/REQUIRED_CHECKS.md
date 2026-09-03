@@ -59,6 +59,26 @@ Debian 12 with `systemd` as PID 1 and no non-loopback network interface.
 Any failed assertion blocks merge. Passing G2A is package-runtime evidence only;
 it does not open G2 or authorize endpoint installation.
 
+## G2B release-candidate trust qualification
+
+`Release-candidate trust qualification` is a protected-main check. It compiles
+and packages the agent twice from the exact commit, generates an SPDX 2.3 SBOM and
+SLSA provenance statement with checksum-verified Syft, binds the evidence into
+a test-signed Cosign manifest, requires separately supplied package and
+public-key digest pins captured before candidate generation, pins the exact
+source-date epoch, verifies all identities and digests,
+validates against the pinned official SPDX 2.3 schema and exact package digest,
+isolates generation from the verifier, and proves that artifact, metadata,
+private-key escape, wrong-source, wrong-package, wrong-epoch, wrong-key, and
+wrong-invocation tampering fail closed.
+
+The signing key is ephemeral test material, is destroyed in the workflow, and
+is never published. Offline verification pins that local public key and skips
+only the deliberately absent transparency-log proof; the signature remains
+mandatory. Passing G2B qualifies the release evidence format and verifier only;
+it does not authorize production signing, publication, G2 installation, or G6
+update rollout.
+
 ## Rules for findings
 
 - Scanner absence is a failed check, not a pass.

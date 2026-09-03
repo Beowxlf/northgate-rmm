@@ -11,4 +11,6 @@ Each release directory must contain:
 - staged rollout and rollback plan;
 - post-release verification and incident contact.
 
-No release exists yet.
+No release exists yet. A G2B qualification candidate is disposable test
+evidence, not a release: it uses test-only signing, is not uploaded or published,
+and carries explicit publication and deployment denials.

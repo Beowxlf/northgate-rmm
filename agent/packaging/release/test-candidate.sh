@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -ne 5 ]; then
-  echo "usage: test-candidate.sh CANDIDATE EXPECTED_COMMIT EXPECTED_VERSION EXPECTED_KEY_SHA256 RESULT" >&2
+if [ "$#" -ne 8 ]; then
+  echo "usage: test-candidate.sh CANDIDATE EXPECTED_COMMIT EXPECTED_VERSION EXPECTED_KEY_SHA256 EXPECTED_INVOCATION RESULT SPDX_SCHEMA SPDX_VALIDATOR" >&2
   exit 64
 fi
 
@@ -10,7 +10,10 @@ candidate=$1
 commit=$2
 version=$3
 expected_key_sha256=$4
-result=$5
+expected_invocation=$5
+result=$6
+spdx_schema=$7
+spdx_validator=$8
 script_directory="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 verifier="$script_directory/verify-candidate.py"
 temporary=$(mktemp -d)
@@ -20,15 +23,21 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 python3 "$verifier" \
-  "$candidate" "$commit" "$version" "$expected_key_sha256" > "$result"
+  "$candidate" "$commit" "$version" "$expected_key_sha256" \
+  "$expected_invocation" \
+  --spdx-schema "$spdx_schema" \
+  --spdx-validator "$spdx_validator" > "$result"
 
 expect_failure() {
   name=$1
   directory=$2
   expected_commit=${3:-$commit}
   expected_key=${4:-$expected_key_sha256}
+  expected_run=${5:-$expected_invocation}
   if python3 "$verifier" \
-    "$directory" "$expected_commit" "$version" "$expected_key" \
+    "$directory" "$expected_commit" "$version" "$expected_key" "$expected_run" \
+    --spdx-schema "$spdx_schema" \
+    --spdx-validator "$spdx_validator" \
     >"$temporary/$name.stdout" 2>"$temporary/$name.stderr"; then
     echo "negative verification unexpectedly passed: $name" >&2
     exit 70
@@ -75,6 +84,13 @@ if [ "$wrong_key" = "$expected_key_sha256" ]; then
 fi
 expect_failure wrong-key "$candidate" "$commit" "$wrong_key"
 
+wrong_invocation="https://github.com/Beowxlf/northgate-rmm/actions/runs/999999999"
+if [ "$wrong_invocation" = "$expected_invocation" ]; then
+  wrong_invocation="https://github.com/Beowxlf/northgate-rmm/actions/runs/888888888"
+fi
+expect_failure \
+  wrong-invocation "$candidate" "$commit" "$expected_key_sha256" "$wrong_invocation"
+
 python3 - "$result" <<'PY'
 import json
 import pathlib
@@ -90,6 +106,7 @@ result["negative_tests"] = [
     "private_key_escape",
     "wrong_source_commit",
     "wrong_public_key_pin",
+    "wrong_invocation_id",
 ]
 path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY

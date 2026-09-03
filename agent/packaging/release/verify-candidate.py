@@ -74,7 +74,10 @@ def verify(
     expected_commit: str,
     expected_version: str,
     expected_public_key_sha256: str,
+    expected_invocation_id: str,
     cosign: str,
+    spdx_schema: pathlib.Path,
+    spdx_validator: pathlib.Path,
 ) -> dict[str, Any]:
     require(root.is_dir(), "candidate directory is missing")
     require(bool(re.fullmatch(r"[0-9a-f]{40}", expected_commit)), "expected commit must be a full SHA")
@@ -83,6 +86,20 @@ def verify(
         bool(re.fullmatch(r"[0-9a-f]{64}", expected_public_key_sha256)),
         "expected public-key digest must be a SHA-256 value",
     )
+    require(
+        bool(
+            re.fullmatch(
+                r"https://github\.com/Beowxlf/northgate-rmm/actions/runs/[1-9][0-9]*",
+                expected_invocation_id,
+            )
+        ),
+        "expected invocation identifier is invalid",
+    )
+    for path, label in (
+        (spdx_schema, "SPDX schema"),
+        (spdx_validator, "SPDX validator"),
+    ):
+        require(path.is_file() and not path.is_symlink(), f"{label} is missing or unsafe")
 
     manifest_path = root / "release-manifest.json"
     public_key = root / "release-test.pub"
@@ -135,11 +152,7 @@ def verify(
     expected_build_type = "https://github.com/Beowxlf/northgate-rmm/.github/workflows/g2b-release-trust.yml"
     require(build.get("buildType") == expected_build_type, "build type mismatch")
     invocation_id = build.get("invocationId")
-    require(
-        isinstance(invocation_id, str)
-        and invocation_id.startswith("https://github.com/Beowxlf/northgate-rmm/actions/runs/"),
-        "invocation identifier mismatch",
-    )
+    require(invocation_id == expected_invocation_id, "invocation identifier mismatch")
 
     signing = manifest.get("signing")
     require(isinstance(signing, dict), "signing metadata is missing")
@@ -191,19 +204,74 @@ def verify(
     require(dpkg_field(package, "Architecture") == "amd64", "Debian package architecture mismatch")
 
     sbom = load_json(sbom_path)
+    try:
+        subprocess.run(
+            ["node", str(spdx_validator), str(spdx_schema), str(sbom_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise VerificationError("SPDX schema validator could not be executed") from error
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr.strip() or "validator returned no diagnostic"
+        raise VerificationError(f"SPDX 2.3 schema validation failed: {detail}") from error
     require(sbom.get("spdxVersion") == "SPDX-2.3", "SBOM is not SPDX 2.3")
     require(sbom.get("dataLicense") == "CC0-1.0", "SBOM data license mismatch")
+    require(sbom.get("SPDXID") == "SPDXRef-DOCUMENT", "SBOM document identity mismatch")
+    require(isinstance(sbom.get("name"), str) and sbom["name"], "SBOM document name is missing")
+    require(
+        isinstance(sbom.get("documentNamespace"), str)
+        and sbom["documentNamespace"].startswith(("https://", "http://")),
+        "SBOM document namespace is invalid",
+    )
+    creation = sbom.get("creationInfo")
+    require(isinstance(creation, dict), "SBOM creation information is missing")
+    require(isinstance(creation.get("created"), str) and creation["created"], "SBOM creation time is missing")
+    creators = creation.get("creators")
+    require(
+        isinstance(creators, list)
+        and any(isinstance(item, str) and item.startswith("Tool: syft-") for item in creators),
+        "SBOM does not identify Syft as its creator",
+    )
     packages = sbom.get("packages")
     require(isinstance(packages, list) and len(packages) > 0, "SBOM package inventory is empty")
+    candidate_packages = [
+        item
+        for item in packages
+        if isinstance(item, dict)
+        and item.get("name") == "northgate-rmm-agent"
+        and item.get("versionInfo") == expected_version
+    ]
+    require(
+        len(candidate_packages) == 1,
+        "SBOM does not identify exactly one Debian release candidate",
+    )
+    candidate_package = candidate_packages[0]
+    checksums = candidate_package.get("checksums")
+    require(isinstance(checksums, list), "SBOM package checksums are missing")
     require(
         any(
             isinstance(item, dict)
-            and item.get("name") == "northgate-rmm-agent"
-            and item.get("versionInfo") == expected_version
-            for item in packages
+            and item.get("algorithm") == "SHA256"
+            and item.get("checksumValue") == digest(package)
+            for item in checksums
         ),
-        "SBOM does not identify the Debian release candidate",
+        "SBOM package checksum does not bind the candidate bytes",
     )
+    candidate_spdx_id = candidate_package.get("SPDXID")
+    require(isinstance(candidate_spdx_id, str), "SBOM package identity is missing")
+    described = candidate_spdx_id in (sbom.get("documentDescribes") or [])
+    if not described:
+        relationships = sbom.get("relationships") or []
+        described = any(
+            isinstance(item, dict)
+            and item.get("spdxElementId") == "SPDXRef-DOCUMENT"
+            and item.get("relationshipType") == "DESCRIBES"
+            and item.get("relatedSpdxElement") == candidate_spdx_id
+            for item in relationships
+        )
+    require(described, "SBOM document does not describe the candidate package")
 
     provenance = load_json(provenance_path)
     require(provenance.get("_type") == "https://in-toto.io/Statement/v1", "provenance statement type mismatch")
@@ -263,7 +331,10 @@ def main() -> int:
     parser.add_argument("expected_commit")
     parser.add_argument("expected_version")
     parser.add_argument("expected_public_key_sha256")
+    parser.add_argument("expected_invocation_id")
     parser.add_argument("--cosign", default="cosign")
+    parser.add_argument("--spdx-schema", type=pathlib.Path, required=True)
+    parser.add_argument("--spdx-validator", type=pathlib.Path, required=True)
     args = parser.parse_args()
     try:
         result = verify(
@@ -271,7 +342,10 @@ def main() -> int:
             args.expected_commit,
             args.expected_version,
             args.expected_public_key_sha256,
+            args.expected_invocation_id,
             args.cosign,
+            args.spdx_schema.resolve(),
+            args.spdx_validator.resolve(),
         )
     except VerificationError as error:
         print(f"verification failed: {error}", file=sys.stderr)

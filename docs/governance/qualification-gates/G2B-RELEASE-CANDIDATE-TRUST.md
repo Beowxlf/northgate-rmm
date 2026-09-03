@@ -17,7 +17,8 @@ introduced.
 - Two package builds from the exact source commit are byte-identical.
 - Syft and Cosign binaries are version-pinned and checksum-verified before use.
 - The SPDX 2.3 SBOM identifies the package name and version and is digest-bound
-  by the release manifest.
+  by the release manifest, passes the pinned official SPDX schema, records the
+  exact package SHA-256, and has a document-to-package relationship.
 - The SLSA provenance statement binds the package digest, source commit, build
   type, invocation, version, architecture, and source date epoch.
 - Cosign verifies the manifest with a public key whose digest is bound by the
@@ -26,8 +27,10 @@ introduced.
 - The verifier checks an exact file set, safe filenames, package metadata,
   hashes, sizes, source identity, build identity, SBOM semantics, and provenance
   semantics.
+- Candidate generation runs as a separate unprivileged OS identity that cannot
+  write the verifier, schema, verification output, or repository checkout.
 - Package, manifest, SBOM, provenance, private-key escape, wrong-source, and
-  wrong-trust-pin negative tests all fail closed.
+  wrong-trust-pin, and wrong-invocation negative tests all fail closed.
 - Ephemeral private signing material is destroyed and never uploaded or
   committed.
 

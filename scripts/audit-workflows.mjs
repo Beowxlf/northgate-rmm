@@ -22,12 +22,19 @@ function auditCheckoutBindings(relative, text) {
     checkoutCount += 1;
     const usesIndent = match[1].length;
     let bound = false;
+    let inWith = false;
     for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
       const next = lines[cursor];
       const trimmed = next.trimStart();
       const indent = next.length - trimmed.length;
       if (trimmed.startsWith("- ") && indent < usesIndent) break;
-      if (trimmed === expectedHeadRef && indent > usesIndent) bound = true;
+      if (trimmed === "with:" && indent === usesIndent) {
+        inWith = true;
+        continue;
+      }
+      if (inWith && trimmed.length > 0 && indent <= usesIndent) inWith = false;
+      if (inWith && trimmed === expectedHeadRef && indent === usesIndent + 2)
+        bound = true;
     }
     if (!bound)
       errors.push(`${relative}: checkout step is not bound to the PR head.`);

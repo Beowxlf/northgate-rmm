@@ -21,7 +21,8 @@ introduced.
 - The SLSA provenance statement binds the package digest, source commit, build
   type, invocation, version, architecture, and source date epoch.
 - Cosign verifies the manifest with a public key whose digest is bound by the
-  manifest and must match a separately supplied trust pin.
+  manifest and must match a trust pin captured before and outside candidate
+  generation.
 - The verifier checks an exact file set, safe filenames, package metadata,
   hashes, sizes, source identity, build identity, SBOM semantics, and provenance
   semantics.
@@ -47,6 +48,13 @@ an accepted production-signing profile.
 The candidate manifest explicitly records `publicationAuthorized: false`,
 `deploymentAuthorized: false`, and the `test-only-ephemeral` signing profile.
 The candidate directory is deleted with the runner.
+
+The workflow establishes the ephemeral test signer in runner-temporary storage
+before it invokes the candidate builder. It retains that public-key digest
+outside the candidate and supplies the digest separately to the verifier. The
+builder cannot substitute a self-selected signer without failing the pin check.
+This separation qualifies the interface; it is not a production trust-root or
+key-custody ceremony.
 
 ## Closure rule
 

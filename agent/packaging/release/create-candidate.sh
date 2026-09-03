@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -ne 7 ]; then
-  echo "usage: create-candidate.sh PACKAGE OUTPUT VERSION COMMIT EPOCH BUILD_TYPE INVOCATION_ID" >&2
+if [ "$#" -ne 9 ]; then
+  echo "usage: create-candidate.sh PACKAGE OUTPUT VERSION COMMIT EPOCH BUILD_TYPE INVOCATION_ID SIGNING_KEY SIGNING_PUBLIC_KEY" >&2
   exit 64
 fi
 
@@ -13,6 +13,8 @@ commit=$4
 epoch=$5
 build_type=$6
 invocation_id=$7
+signing_key=$8
+signing_public_key=$9
 
 case "$version" in
   *[!0-9A-Za-z.+~:-]*|'') echo "invalid Debian version" >&2; exit 65 ;;
@@ -29,6 +31,15 @@ case "$epoch" in
 esac
 if [ ! -f "$package" ] || [ -L "$package" ]; then
   echo "package must be a regular non-symlink file" >&2
+  exit 68
+fi
+if [ ! -f "$signing_key" ] || [ -L "$signing_key" ] ||
+  [ ! -f "$signing_public_key" ] || [ -L "$signing_public_key" ]; then
+  echo "signing inputs must be regular non-symlink files" >&2
+  exit 68
+fi
+if [ -z "${COSIGN_PASSWORD:-}" ]; then
+  echo "COSIGN_PASSWORD is required for the ephemeral test signer" >&2
   exit 68
 fi
 for tool in cosign dpkg-deb python3 sha256sum syft; do
@@ -124,13 +135,7 @@ cleanup() {
   rm -rf -- "$signing_directory"
 }
 trap cleanup EXIT HUP INT TERM
-COSIGN_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
-export COSIGN_PASSWORD
-(
-  cd "$signing_directory"
-  cosign generate-key-pair >/dev/null
-)
-install -m 0644 "$signing_directory/cosign.pub" "$public_key"
+install -m 0644 "$signing_public_key" "$public_key"
 signing_config="$signing_directory/signing-config.json"
 cosign signing-config create \
   --no-default-fulcio \
@@ -197,7 +202,7 @@ PY
 
 cosign sign-blob --yes \
   --signing-config "$signing_config" \
-  --key "$signing_directory/cosign.key" \
+  --key "$signing_key" \
   --bundle "$signature_bundle" \
   "$manifest" >/dev/null
 

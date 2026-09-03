@@ -69,6 +69,7 @@ if (
 const expectedChecks = new Set([
   "Pre-code governance audit",
   "Free-software security checks",
+  "Debian 12 systemd qualification",
 ]);
 for (const check of expectedChecks) {
   if (!githubBaseline.mainProtection.requiredStatusChecks.includes(check))

@@ -100,3 +100,8 @@ and temporary-file boundaries.
   identity only; and
 - exact disposable VM, microsegmentation, recovery, retention, and separate G2
   authorization.
+
+The repeatable full-system qualification contract is defined in
+[`G2A Full-System Debian Agent Qualification`](../governance/qualification-gates/G2A-FULL-SYSTEM-DEBIAN.md).
+Its implementation does not count as evidence until the exact reviewed commit
+passes the named CI checks and the bounded result is recorded. G2 remains closed.

@@ -1,0 +1,138 @@
+name: G2A full-system Debian qualification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g2a-systemd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    name: Debian 12 systemd qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: agent/go.mod
+          cache: false
+      - name: Build deterministic qualification packages
+        working-directory: agent
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
+          mkdir -p build/g2a/base build/g2a/upgrade build/g2a/failed
+          chmod 0755 packaging/build-deb.sh packaging/qualification/test-systemd.sh
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -buildvcs=false -ldflags='-buildid= -X main.version=0.2.0' \
+            -o build/g2a/agent-0.2.0 ./cmd/northgate-rmm-agent
+          packaging/build-deb.sh 0.2.0 build/g2a/agent-0.2.0 build/g2a/base
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -buildvcs=false -ldflags='-buildid= -X main.version=0.2.1' \
+            -o build/g2a/agent-0.2.1 ./cmd/northgate-rmm-agent
+          packaging/build-deb.sh 0.2.1 build/g2a/agent-0.2.1 build/g2a/upgrade
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -buildvcs=false -ldflags='-buildid= -X main.version=0.2.2' \
+            -o build/g2a/agent-0.2.2 ./cmd/northgate-rmm-agent
+          packaging/build-deb.sh 0.2.2 build/g2a/agent-0.2.2 build/g2a/failed
+          dpkg-deb --raw-extract \
+            build/g2a/failed/northgate-rmm-agent_0.2.2_amd64.deb \
+            build/g2a/failed/root
+          cat >build/g2a/failed/root/DEBIAN/preinst <<'EOF'
+          #!/bin/sh
+          set -eu
+          test "${1:-}" = upgrade
+          test "${2:-}" = 0.2.1
+          test -f /run/northgate-rmm-agent.was-active
+          if systemctl is-active --quiet northgate-rmm-agent.service; then
+            exit 71
+          fi
+          : > /run/northgate-rmm-agent.failed-preinst-observed
+          exit 75
+          EOF
+          chmod 0755 build/g2a/failed/root/DEBIAN/preinst
+          touch --date="@$SOURCE_DATE_EPOCH" build/g2a/failed/root/DEBIAN/preinst
+          dpkg-deb --root-owner-group --build \
+            build/g2a/failed/root \
+            build/g2a/failed/northgate-rmm-agent_0.2.2-fail_amd64.deb >/dev/null
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -buildvcs=false -ldflags='-buildid=' \
+            -o build/g2a/identity-fixture ./packaging/qualification/identity-fixture
+      - name: Qualify under real Debian systemd
+        working-directory: agent
+        run: |
+          set -euo pipefail
+          container=northgate-rmm-g2a
+          cleanup() {
+            docker rm --force "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker build --pull=false \
+            --file packaging/qualification/Dockerfile.systemd \
+            --tag northgate-rmm-g2a-systemd:debian12 .
+          docker run --detach --name "$container" \
+            --privileged \
+            --cgroupns=host \
+            --network none \
+            --tmpfs /run \
+            --tmpfs /run/lock \
+            --tmpfs /tmp \
+            --volume /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            northgate-rmm-g2a-systemd:debian12 >/dev/null
+          for attempt in $(seq 1 30); do
+            system_state="$(
+              docker exec "$container" systemctl is-system-running 2>/dev/null || true
+            )"
+            case "$system_state" in
+              running | degraded) break ;;
+            esac
+            if [ "$attempt" -eq 30 ]; then
+              docker logs "$container"
+              exit 1
+            fi
+            sleep 1
+          done
+          docker exec "$container" mkdir -p /qualification
+          docker cp \
+            build/g2a/base/northgate-rmm-agent_0.2.0_amd64.deb \
+            "$container:/qualification/base.deb"
+          docker cp \
+            build/g2a/upgrade/northgate-rmm-agent_0.2.1_amd64.deb \
+            "$container:/qualification/upgrade.deb"
+          docker cp \
+            build/g2a/failed/northgate-rmm-agent_0.2.2-fail_amd64.deb \
+            "$container:/qualification/failed-upgrade.deb"
+          docker cp build/g2a/identity-fixture "$container:/qualification/identity-fixture"
+          docker cp \
+            packaging/qualification/test-systemd.sh \
+            "$container:/qualification/test-systemd.sh"
+          test "$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container")" = none
+          docker exec "$container" sh /qualification/test-systemd.sh \
+            /qualification/base.deb \
+            /qualification/upgrade.deb \
+            /qualification/failed-upgrade.deb \
+            /qualification/identity-fixture \
+            /qualification/result.json
+          docker cp "$container:/qualification/result.json" build/g2a/result.json
+          cat build/g2a/result.json
+          {
+            echo '## G2A full-system Debian qualification'
+            echo
+            echo '```json'
+            cat build/g2a/result.json
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"

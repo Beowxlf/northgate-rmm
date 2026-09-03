@@ -1,0 +1,19 @@
+FROM debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        adduser \
+        ca-certificates \
+        dbus \
+        procps \
+        systemd \
+        systemd-sysv \
+    && rm -rf /var/lib/apt/lists/* \
+    && systemctl mask \
+        console-getty.service \
+        getty@.service \
+        systemd-logind.service
+
+STOPSIGNAL SIGRTMIN+3
+
+CMD ["/sbin/init"]

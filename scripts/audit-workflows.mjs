@@ -18,7 +18,7 @@ function auditCheckoutBindings(relative, workflow) {
     for (const step of job?.steps ?? []) {
       if (
         typeof step?.uses !== "string" ||
-        !/^actions\/checkout@[0-9a-f]{40}$/.test(step.uses)
+        !/^actions\/checkout@[0-9a-f]{40}$/i.test(step.uses)
       )
         continue;
       checkoutCount += 1;

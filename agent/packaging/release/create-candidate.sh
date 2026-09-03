@@ -127,6 +127,13 @@ export COSIGN_PASSWORD
   cosign generate-key-pair >/dev/null
 )
 install -m 0644 "$signing_directory/cosign.pub" "$public_key"
+signing_config="$signing_directory/signing-config.json"
+cosign signing-config create \
+  --no-default-fulcio \
+  --no-default-oidc \
+  --no-default-rekor \
+  --no-default-tsa \
+  --out "$signing_config"
 
 python3 - "$manifest" "$expected_name" "$commit" "$version" "$epoch" \
   "$build_type" "$invocation_id" <<'PY'
@@ -184,7 +191,8 @@ pathlib.Path(destination).write_text(
 )
 PY
 
-cosign sign-blob --yes --tlog-upload=false \
+cosign sign-blob --yes \
+  --signing-config "$signing_config" \
   --key "$signing_directory/cosign.key" \
   --bundle "$signature_bundle" \
   "$manifest" >/dev/null

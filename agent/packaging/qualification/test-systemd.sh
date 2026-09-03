@@ -129,27 +129,27 @@ test "$(sha256sum /etc/northgate-rmm/agent.json | cut -d' ' -f1)" = "$config_has
 test "$(sha256sum /var/lib/northgate-rmm/identity/identity.json | cut -d' ' -f1)" = "$identity_hash" ||
   fail "upgrade changed identity"
 
-mount --bind /usr/libexec/northgate-rmm /usr/libexec/northgate-rmm
-mount -o remount,bind,ro /usr/libexec/northgate-rmm
 failed_upgrade_status=0
 dpkg -i "$failed_upgrade_package" >/qualification/failed-upgrade.log 2>&1 ||
   failed_upgrade_status="$?"
-umount /usr/libexec/northgate-rmm || fail "failed to release the read-only upgrade fault"
 if [ "$failed_upgrade_status" -eq 0 ]; then
   fail "injected failed upgrade unexpectedly succeeded"
 fi
-if ! grep -q '^Unpacking northgate-rmm-agent (0.2.2) over (0.2.1)' \
+if ! grep -q 'pre-installation script subprocess returned error exit status 75' \
      /qualification/failed-upgrade.log ||
-   ! grep -q 'northgate-rmm-agent.dpkg-new' /qualification/failed-upgrade.log ||
-   ! grep -q 'Read-only file system' /qualification/failed-upgrade.log; then
+   [ ! -f /run/northgate-rmm-agent.failed-preinst-observed ]; then
   cat /qualification/failed-upgrade.log >&2
-  fail "upgrade did not fail while unpacking onto the read-only executable path"
+  fail "upgrade fault did not observe the stopped prior service and restart marker"
 fi
-rm -f /qualification/failed-upgrade.log
-wait_for_state active 15 || fail "service was not recovered after the failed upgrade"
+if ! wait_for_state active 15; then
+  cat /qualification/failed-upgrade.log >&2
+  systemctl status "$unit" --no-pager >&2 || true
+  fail "service was not recovered after the failed upgrade"
+fi
 test "$(dpkg-query -W -f='${Version}' northgate-rmm-agent)" = 0.2.1 ||
   fail "failed upgrade changed the installed package version"
 test ! -e /run/northgate-rmm-agent.was-active || fail "failed upgrade left a restart marker"
+rm -f /run/northgate-rmm-agent.failed-preinst-observed /qualification/failed-upgrade.log
 test "$(sha256sum /etc/northgate-rmm/agent.json | cut -d' ' -f1)" = "$config_hash" ||
   fail "failed upgrade changed configuration"
 test "$(sha256sum /var/lib/northgate-rmm/identity/identity.json | cut -d' ' -f1)" = "$identity_hash" ||

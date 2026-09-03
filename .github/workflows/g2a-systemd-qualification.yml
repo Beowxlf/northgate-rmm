@@ -48,6 +48,26 @@ jobs:
             -trimpath -buildvcs=false -ldflags='-buildid= -X main.version=0.2.2' \
             -o build/g2a/agent-0.2.2 ./cmd/northgate-rmm-agent
           packaging/build-deb.sh 0.2.2 build/g2a/agent-0.2.2 build/g2a/failed
+          dpkg-deb --raw-extract \
+            build/g2a/failed/northgate-rmm-agent_0.2.2_amd64.deb \
+            build/g2a/failed/root
+          cat >build/g2a/failed/root/DEBIAN/preinst <<'EOF'
+          #!/bin/sh
+          set -eu
+          test "${1:-}" = upgrade
+          test "${2:-}" = 0.2.1
+          test -f /run/northgate-rmm-agent.was-active
+          if systemctl is-active --quiet northgate-rmm-agent.service; then
+            exit 71
+          fi
+          : > /run/northgate-rmm-agent.failed-preinst-observed
+          exit 75
+          EOF
+          chmod 0755 build/g2a/failed/root/DEBIAN/preinst
+          touch --date="@$SOURCE_DATE_EPOCH" build/g2a/failed/root/DEBIAN/preinst
+          dpkg-deb --root-owner-group --build \
+            build/g2a/failed/root \
+            build/g2a/failed/northgate-rmm-agent_0.2.2-fail_amd64.deb >/dev/null
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
             -trimpath -buildvcs=false -ldflags='-buildid=' \
             -o build/g2a/identity-fixture ./packaging/qualification/identity-fixture
@@ -93,7 +113,7 @@ jobs:
             build/g2a/upgrade/northgate-rmm-agent_0.2.1_amd64.deb \
             "$container:/qualification/upgrade.deb"
           docker cp \
-            build/g2a/failed/northgate-rmm-agent_0.2.2_amd64.deb \
+            build/g2a/failed/northgate-rmm-agent_0.2.2-fail_amd64.deb \
             "$container:/qualification/failed-upgrade.deb"
           docker cp build/g2a/identity-fixture "$container:/qualification/identity-fixture"
           docker cp \

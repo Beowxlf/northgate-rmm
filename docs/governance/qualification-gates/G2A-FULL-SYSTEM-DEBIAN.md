@@ -22,9 +22,9 @@ precondition for G2, not deployment authority.
 - Memory, CPU, task, descriptor, spool, retry/restart, and structured-journal
   observations are recorded without credentials or private infrastructure data.
 - A normal upgrade preserves identity, configuration, enablement, and activity.
-- A read-only bind fault on the executable directory fails during unpack after
-  the active old package is stopped, then recovers that prior package and clears
-  its restart marker.
+- An instrumented preinstall fault first proves the old package stopped the
+  active service and recorded restart intent, then aborts the upgrade and proves
+  Debian restored that prior package and cleared its restart marker.
 - A bounded restart storm exhausts the configured retries, refuses another
   start, and recovers after repair.
 - Synthetic revocation permits removal while retaining configuration and state.

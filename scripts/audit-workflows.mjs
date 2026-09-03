@@ -3,6 +3,11 @@ import path from "node:path";
 
 const workflowDirectory = path.join(process.cwd(), ".github", "workflows");
 const errors = [];
+const headBoundWorkflows = new Set([
+  "g2a-systemd-qualification.yml",
+  "governance.yml",
+  "security.yml",
+]);
 
 if (!fs.existsSync(workflowDirectory)) {
   errors.push("Missing .github/workflows directory.");
@@ -26,6 +31,15 @@ if (!fs.existsSync(workflowDirectory)) {
     }
     if (/permissions:\s*write-all/.test(text))
       errors.push(`${relative}: write-all permissions are prohibited.`);
+    if (
+      headBoundWorkflows.has(name) &&
+      !text.includes(
+        "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+      )
+    )
+      errors.push(
+        `${relative}: required closure check is not bound to the PR head.`,
+      );
   }
 }
 

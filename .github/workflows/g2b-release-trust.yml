@@ -69,6 +69,9 @@ jobs:
           verification_directory="$(mktemp -d)"
           isolation_directory="$(mktemp -d)"
           cleanup() {
+            sudo chown -R "$(id -u):$(id -g)" \
+              "$signing_directory" \
+              "$isolation_directory" 2>/dev/null || true
             rm -rf -- \
               "$signing_directory" \
               "$verification_directory" \
@@ -142,6 +145,9 @@ jobs:
             "$expected_invocation" \
             "$signing_directory/cosign.key" \
             "$signing_directory/cosign.pub"
+          runner_identity="$(id -u):$(id -g)"
+          sudo chown -R "$runner_identity" "$builder_home" "$candidate_directory"
+          chmod -R u+rwX,go+rX "$candidate_directory"
           if sudo -u g2b-builder -- test -w packaging/release/verify-candidate.py; then
             echo "candidate generator can write the protected verifier" >&2
             exit 71

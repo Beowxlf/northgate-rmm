@@ -5,7 +5,7 @@
   "server_certificate": "/etc/northgate-rmm/tls/agent-service.crt",
   "server_private_key": "/etc/northgate-rmm/tls/agent-service.key",
   "endpoint_ca_certificate": "/etc/northgate-rmm/tls/endpoint-ca.crt",
-  "database_dsn_credential": "/run/credentials/northgate-rmm-agent.service/database-dsn",
+  "database_dsn_credential": "/run/credentials/northgate-rmm-agent-ingress.service/database-dsn",
   "request_timeout_seconds": 10,
   "database_operation_timeout_seconds": 8
 }

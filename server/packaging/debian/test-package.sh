@@ -2,9 +2,12 @@
 set -eu
 
 package="${1:?package path is required}"
+agent_package="${2:?endpoint agent package path is required}"
 
 awk -F: 'NR > 2 {gsub(/[[:space:]]/, "", $1); if ($1 != "lo") exit 1}' /proc/net/dev
 dpkg-deb --info "$package" >/dev/null
+dpkg-deb --info "$agent_package" >/dev/null
+dpkg -i "$agent_package" >/dev/null
 dpkg -i "$package" >/dev/null
 
 test "$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')" = "3.11"
@@ -13,6 +16,9 @@ test "$(stat -c '%U:%G:%a' /etc/northgate-rmm/secrets)" = "root:root:700"
 for service in agent enrollment operator; do
   identity="northgate-rmm-$service"
   unit="northgate-rmm-${service}.service"
+  if [ "$service" = "agent" ]; then
+    unit=northgate-rmm-agent-ingress.service
+  fi
   launcher="/usr/libexec/northgate-rmm-server/northgate-rmm-${service}-service"
   test "$(stat -c '%U:%G:%a' "$launcher")" = "root:root:755"
   test "$(stat -c '%U:%G:%a' "/usr/lib/systemd/system/$unit")" = "root:root:644"
@@ -31,10 +37,11 @@ for service in agent enrollment operator; do
 done
 test "$(for service in agent enrollment operator; do id -u "northgate-rmm-$service"; done | sort -u | wc -l)" = "3"
 systemd-analyze verify \
-  /usr/lib/systemd/system/northgate-rmm-agent.service \
+  /usr/lib/systemd/system/northgate-rmm-agent-ingress.service \
   /usr/lib/systemd/system/northgate-rmm-enrollment.service \
   /usr/lib/systemd/system/northgate-rmm-operator.service
-test ! -e /usr/libexec/northgate-rmm/northgate-rmm-agent
+test -e /usr/libexec/northgate-rmm/northgate-rmm-agent
+test -e /usr/lib/systemd/system/northgate-rmm-agent.service
 
 python3 - <<'PY'
 import importlib.metadata
@@ -83,11 +90,18 @@ fi
 mv /usr/bin/systemctl.real /usr/bin/systemctl
 rm -rf -- /run/systemd/system
 
+printf '%s\n' 'retained endpoint agent configuration' > /etc/northgate-rmm/agent.json
+for receipt in .identity-revoked .evidence-exported .purge-approved; do
+  printf '%s\n' "retained endpoint agent $receipt" > "/etc/northgate-rmm/$receipt"
+done
 if dpkg -r northgate-rmm-server >/dev/null 2>&1; then
   echo "server package removal ignored missing revocation/evidence receipts" >&2
   exit 1
 fi
-for receipt in .server-identities-revoked .evidence-exported .purge-approved; do
+for receipt in \
+  .server-identities-revoked \
+  .server-evidence-exported \
+  .server-purge-approved; do
   printf '%s\n' "synthetic isolated-package $receipt receipt" > "/etc/northgate-rmm/$receipt"
   chown root:root "/etc/northgate-rmm/$receipt"
   chmod 0600 "/etc/northgate-rmm/$receipt"
@@ -101,7 +115,17 @@ for service in agent enrollment operator; do
 done
 
 dpkg --purge northgate-rmm-server >/dev/null
-test ! -e /etc/northgate-rmm
+test "$(cat /etc/northgate-rmm/agent.json)" = "retained endpoint agent configuration"
+test -e /etc/northgate-rmm/agent.json.example
+test -e /usr/libexec/northgate-rmm/northgate-rmm-agent
+test -e /usr/lib/systemd/system/northgate-rmm-agent.service
+test "$(dpkg-query -W -f='${Status}' northgate-rmm-agent)" = "install ok installed"
+for receipt in .identity-revoked .evidence-exported .purge-approved; do
+  test -f "/etc/northgate-rmm/$receipt"
+done
+test ! -e /etc/northgate-rmm/.server-identities-revoked
+test ! -e /etc/northgate-rmm/.server-evidence-exported
+test ! -e /etc/northgate-rmm/.server-purge-approved
 test ! -e /var/lib/northgate-rmm-server
 test "$(cat /var/lib/northgate-rmm-server-purge-transaction)" = \
   "northgate-rmm-server-purge-v1:authorized"

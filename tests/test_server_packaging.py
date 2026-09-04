@@ -27,12 +27,16 @@ def test_server_package_build_is_offline_and_uses_reference_units() -> None:
 
     assert "runtime-wheels.sha256" in build
     assert "sha256sum --check --strict" in build
-    assert "../../deploy/systemd/northgate-rmm-${service}.service" in build
+    assert "../../deploy/systemd/northgate-rmm-${unit_service}.service" in build
     assert "curl " not in build
     assert "wget " not in build
     assert "pip install" not in build
     assert "#!/usr/bin/python3 -I" in launcher
     assert "/usr/lib/northgate-rmm-server/site-packages" in launcher
+    assert (
+        ROOT / "deploy" / "systemd" / "northgate-rmm-agent-ingress.service"
+    ).is_file()
+    assert not (ROOT / "deploy" / "systemd" / "northgate-rmm-agent.service").exists()
 
 
 def test_server_package_lifecycle_is_disabled_and_receipt_gated() -> None:
@@ -45,8 +49,25 @@ def test_server_package_lifecycle_is_disabled_and_receipt_gated() -> None:
         assert identity in postinst
     assert "refusing package installation" in preinst
     assert "prior purge evidence remains unarchived" in preinst
+    assert "symlinked server path" in preinst
     assert "systemctl disable" in postinst
     assert ".server-identities-revoked" in prerm
-    assert ".evidence-exported" in prerm
-    assert ".purge-approved" in postrm
+    assert ".server-evidence-exported" in prerm
+    assert ".server-purge-approved" in postrm
     assert "northgate-rmm-server-purge-v1:authorized" in postrm
+    assert "symlinked configuration path" in postrm
+    assert "rm -rf -- /var/lib/northgate-rmm-server /etc/northgate-rmm" not in postrm
+
+
+def test_server_package_is_qualified_with_the_endpoint_package_installed() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "security.yml").read_text(
+        encoding="utf-8"
+    )
+    package_test = (PACKAGING / "debian" / "test-package.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "/agent-packages/northgate-rmm-agent_0.2.0_amd64.deb" in workflow
+    assert 'dpkg -i "$agent_package"' in package_test
+    assert "dpkg-query -W" in package_test
+    assert "retained endpoint agent configuration" in package_test

@@ -67,12 +67,17 @@ find "$site_packages" -type d -name __pycache__ -prune -exec rm -rf -- {} +
 find "$site_packages" -type f -name '*.pyc' -delete
 
 for service in agent enrollment operator; do
+  unit_service="$service"
+  if [ "$service" = "agent" ]; then
+    unit_service=agent-ingress
+  fi
   install -m 0755 "$script_directory/launcher.py" \
     "$stage/usr/libexec/northgate-rmm-server/northgate-rmm-${service}-service"
   sed 's#/opt/northgate-rmm/venv/bin#/usr/libexec/northgate-rmm-server#' \
-    "$script_directory/../../deploy/systemd/northgate-rmm-${service}.service" > \
-    "$stage/usr/lib/systemd/system/northgate-rmm-${service}.service"
-  chmod 0644 "$stage/usr/lib/systemd/system/northgate-rmm-${service}.service"
+    "$script_directory/../../deploy/systemd/northgate-rmm-${unit_service}.service" > \
+    "$stage/usr/lib/systemd/system/northgate-rmm-${unit_service}.service"
+  chmod 0644 \
+    "$stage/usr/lib/systemd/system/northgate-rmm-${unit_service}.service"
   install -m 0644 "$script_directory/../../deploy/${service}-service.example.json" \
     "$stage/etc/northgate-rmm/${service}-service.json.example"
 done

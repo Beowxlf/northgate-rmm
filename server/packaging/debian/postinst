@@ -59,13 +59,16 @@ for service in agent enrollment operator; do
 done
 
 rm -f -- /etc/northgate-rmm/.server-identities-revoked \
-  /etc/northgate-rmm/.evidence-exported \
-  /etc/northgate-rmm/.purge-approved
+  /etc/northgate-rmm/.server-evidence-exported \
+  /etc/northgate-rmm/.server-purge-approved
 
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload
   for service in agent enrollment operator; do
     unit="northgate-rmm-${service}.service"
+    if [ "$service" = "agent" ]; then
+      unit=northgate-rmm-agent-ingress.service
+    fi
     if ! systemctl disable "$unit" >/dev/null; then
       echo "$unit could not be left disabled" >&2
       exit 46

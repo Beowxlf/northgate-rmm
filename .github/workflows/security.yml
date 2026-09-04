@@ -208,10 +208,12 @@ jobs:
           docker run --rm --network none \
             --security-opt no-new-privileges \
             --volume "$PWD/build/server/package-a:/packages:ro" \
+            --volume "$PWD/agent/build/package-a:/agent-packages:ro" \
             --volume "$PWD/server/packaging/debian/test-package.sh:/test-package.sh:ro" \
             northgate-rmm-server-package-test:12 \
             sh /test-package.sh \
-            /packages/northgate-rmm-server_0.1.0~dev0_amd64.deb
+            /packages/northgate-rmm-server_0.1.0~dev0_amd64.deb \
+            /agent-packages/northgate-rmm-agent_0.2.0_amd64.deb
       - name: Run Semgrep Community Edition
         run: |
           semgrep scan --config p/javascript --error scripts

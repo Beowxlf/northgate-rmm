@@ -6,7 +6,7 @@ case "$action" in
   upgrade)
     ;;
   remove)
-    for receipt in .server-identities-revoked .evidence-exported; do
+    for receipt in .server-identities-revoked .server-evidence-exported; do
       path="/etc/northgate-rmm/$receipt"
       if [ ! -f "$path" ] || [ -L "$path" ] || [ ! -s "$path" ] || \
          [ "$(stat -c '%U:%G:%a' "$path")" != "root:root:600" ]; then
@@ -23,6 +23,9 @@ esac
 if [ -d /run/systemd/system ]; then
   for service in operator enrollment agent; do
     unit="northgate-rmm-${service}.service"
+    if [ "$service" = "agent" ]; then
+      unit=northgate-rmm-agent-ingress.service
+    fi
     if systemctl is-active --quiet "$unit"; then
       echo "refusing package operation while $unit is active" >&2
       exit 49
@@ -31,6 +34,9 @@ if [ -d /run/systemd/system ]; then
   if [ "$action" = "remove" ]; then
     for service in operator enrollment agent; do
       unit="northgate-rmm-${service}.service"
+      if [ "$service" = "agent" ]; then
+        unit=northgate-rmm-agent-ingress.service
+      fi
       if ! systemctl disable "$unit" >/dev/null; then
         echo "refusing removal because $unit could not be disabled" >&2
         exit 50

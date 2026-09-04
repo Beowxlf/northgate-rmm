@@ -13,7 +13,10 @@ if [ "$action" = "purge" ]; then
       exit 52
     fi
   else
-    for receipt in .server-identities-revoked .evidence-exported .purge-approved; do
+    for receipt in \
+      .server-identities-revoked \
+      .server-evidence-exported \
+      .server-purge-approved; do
       path="/etc/northgate-rmm/$receipt"
       if [ ! -f "$path" ] || [ -L "$path" ] || [ ! -s "$path" ] || \
          [ "$(stat -c '%U:%G:%a' "$path")" != "root:root:600" ]; then
@@ -30,9 +33,46 @@ if [ "$action" = "purge" ]; then
     sync -f /var/lib
   fi
 
-  rm -rf -- /var/lib/northgate-rmm-server /etc/northgate-rmm
+  for path in \
+    /etc/northgate-rmm \
+    /etc/northgate-rmm/secrets \
+    /etc/northgate-rmm/tls; do
+    if [ -L "$path" ]; then
+      echo "refusing server purge through a symlinked configuration path" >&2
+      exit 56
+    fi
+  done
+
+  rm -rf -- /var/lib/northgate-rmm-server
+  rm -f -- \
+    /etc/northgate-rmm/agent-service.json \
+    /etc/northgate-rmm/enrollment-service.json \
+    /etc/northgate-rmm/operator-service.json \
+    /etc/northgate-rmm/.server-identities-revoked \
+    /etc/northgate-rmm/.server-evidence-exported \
+    /etc/northgate-rmm/.server-purge-approved \
+    /etc/northgate-rmm/secrets/database-dsn \
+    /etc/northgate-rmm/secrets/enrollment-database-dsn \
+    /etc/northgate-rmm/secrets/issuer-client.crt \
+    /etc/northgate-rmm/secrets/issuer-client.key \
+    /etc/northgate-rmm/secrets/operator-database-dsn \
+    /etc/northgate-rmm/secrets/verifier-client.crt \
+    /etc/northgate-rmm/secrets/verifier-client.key \
+    /etc/northgate-rmm/tls/agent-service.crt \
+    /etc/northgate-rmm/tls/agent-service.key \
+    /etc/northgate-rmm/tls/database-ca.crt \
+    /etc/northgate-rmm/tls/endpoint-ca.crt \
+    /etc/northgate-rmm/tls/enrollment-service.crt \
+    /etc/northgate-rmm/tls/enrollment-service.key \
+    /etc/northgate-rmm/tls/endpoint-issuer-root.crt \
+    /etc/northgate-rmm/tls/issuer-service-ca.crt \
+    /etc/northgate-rmm/tls/idp-service-ca.crt \
+    /etc/northgate-rmm/tls/operator-service.crt \
+    /etc/northgate-rmm/tls/operator-service.key
+  rmdir -- /etc/northgate-rmm/secrets 2>/dev/null || true
+  rmdir -- /etc/northgate-rmm/tls 2>/dev/null || true
+  rmdir -- /etc/northgate-rmm 2>/dev/null || true
   test ! -e /var/lib/northgate-rmm-server
-  test ! -e /etc/northgate-rmm
   for service in operator enrollment agent; do
     identity="northgate-rmm-$service"
     if getent passwd "$identity" >/dev/null; then

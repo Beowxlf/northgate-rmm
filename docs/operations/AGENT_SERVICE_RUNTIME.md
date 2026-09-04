@@ -67,8 +67,9 @@ cleanup, and executor shutdown before systemd may force termination.
 
 ## Reference Debian service
 
-[`deploy/systemd/northgate-rmm-agent.service`](../../deploy/systemd/northgate-rmm-agent.service)
-is a disabled reference unit. It expects:
+[`deploy/systemd/northgate-rmm-agent-ingress.service`](../../deploy/systemd/northgate-rmm-agent-ingress.service)
+is a disabled reference unit. Its ingress-specific name cannot collide with the
+endpoint package's `northgate-rmm-agent.service`. It expects:
 
 - a dedicated `northgate-rmm-agent` system user and group;
 - an immutable application virtual environment under `/opt/northgate-rmm`;

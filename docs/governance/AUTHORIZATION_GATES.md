@@ -49,7 +49,8 @@ value fails validation.
 That manifest must hash and reference a protected-main V1C pass record and the
 seven separate external-dependency approval records. Each prerequisite record
 must be owner-approved, unexpired, evidence- and rollback-bound, unchanged from
-the audited commit, and valid for its exact required identity and status.
+the audited commit, valid for its exact required identity and status, and valid
+through the authorization expiry.
 
 The authorization permits installation and operation of the named private
 control-plane server only to complete V1D backup/restore, telemetry-outage,

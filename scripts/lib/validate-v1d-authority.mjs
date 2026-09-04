@@ -146,7 +146,8 @@ function validatePrerequisite(
   options,
 ) {
   const errors = [];
-  const { isRegularFile, readText, readAtCommit, now } = options;
+  const { isRegularFile, readText, readAtCommit, now, authorityExpiresAt } =
+    options;
   const recordPath = descriptor?.record ?? "";
   if (
     !/^docs\/governance\/authorizations\/prerequisites\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
@@ -191,6 +192,14 @@ function validatePrerequisite(
     errors.push(`V1D-SV ${expectedId} prerequisite approval time is invalid.`);
   if (expiresAt === null || expiresAt <= now.getTime())
     errors.push(`V1D-SV ${expectedId} prerequisite is invalid or expired.`);
+  if (
+    expiresAt !== null &&
+    authorityExpiresAt !== null &&
+    authorityExpiresAt > expiresAt
+  )
+    errors.push(
+      `V1D-SV authorization outlives the ${expectedId} prerequisite.`,
+    );
   if (!/^sha256:[a-f0-9]{64}$/.test(record.evidenceBinding ?? ""))
     errors.push(
       `V1D-SV ${expectedId} prerequisite lacks its evidence binding.`,
@@ -324,6 +333,7 @@ function validateApprovedBindings(
       readText,
       readAtCommit,
       now,
+      authorityExpiresAt: authorizationExpiresAt,
     }),
   );
   return errors;

@@ -440,6 +440,18 @@ expectFailure("V1C control missing", open, "V1C pass record lacks control", {
     records[v1cPath] = canonical(record);
   },
 });
+expectFailure(
+  "authority outlives V1C approval",
+  open,
+  "outlives the V1C prerequisite",
+  {
+    mutatePrerequisites: (records) => {
+      const record = JSON.parse(records[v1cPath]);
+      record.expiresAt = "2026-09-04T23:59:59Z";
+      records[v1cPath] = canonical(record);
+    },
+  },
+);
 expectFailure("dependency approval missing", open, "prerequisite record", {
   mutatePrerequisites: (records) => delete records[dependencyRecords[0][1]],
 });

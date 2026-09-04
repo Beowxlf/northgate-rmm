@@ -56,3 +56,5 @@ JSON is rejected. The manifest must hash and reference the protected-main
 external-dependency records built from
 [`V1D-DEPENDENCY-APPROVAL-TEMPLATE.json`](V1D-DEPENDENCY-APPROVAL-TEMPLATE.json).
 Binding-manifest approval must occur after Factory plan approval.
+The authorization expiry must not exceed the expiry of the binding manifest,
+the V1C pass record, or any external-dependency approval record.

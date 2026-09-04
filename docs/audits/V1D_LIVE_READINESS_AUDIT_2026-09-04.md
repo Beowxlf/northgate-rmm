@@ -76,10 +76,12 @@ and evidence records.
 7. Install and promote the new Factory release only through its own reviewed
    bootstrap and activation ceremony.
 8. Only after V1C and every required external-dependency implementation pass,
-   under a separate bounded V1D server-validation authorization, generate the
-   fresh control-plane Factory plan after current-state validation. Obtain exact
-   owner approval of that plan ID and authenticated state hash after issuance,
-   then deploy and harden only the control plane without installing an endpoint.
+   use the Factory's non-deployment planning path to generate the fresh
+   control-plane plan after current-state validation. Obtain exact owner approval
+   of that plan ID and authenticated state hash after issuance. Then commit the
+   exact bounded V1D server-validation record, open `V1D-SV`, and use it only to
+   execute that approved plan and harden the control plane without installing an
+   endpoint.
    Prove database-consistent backup and isolated restore, telemetry-outage and
    capacity behavior, certificate revocation, containment, and rollback; V1D
    remains open until every required proof passes.

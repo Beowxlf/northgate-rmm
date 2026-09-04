@@ -21,6 +21,9 @@ authorization within Phase 2. It is not a product gate and cannot open G2. It ma
 be opened only after V1C passes, every external V1D dependency has its own exact
 approved and verified implementation record, and a fresh host-issued Factory
 plan ID and authenticated state hash receive owner approval after issuance.
+Plan generation and approval use the Factory's existing non-deployment planning
+path while `V1D-SV` remains closed. Only the later execution of that exact plan
+is placed under `V1D-SV`.
 
 An exact V1D-SV record must bind the named private control-plane server, signed
 release, service and database identities, synthetic validation identity profile,
@@ -28,6 +31,14 @@ private flows, expiry, evidence, rollback, and recovery. It may install and
 operate only that server for the required V1D proofs. Every endpoint and canary
 route remains blocked. Synthetic grants and identities must be cryptographically
 and operationally unusable by endpoints and removed or revoked at cleanup.
+
+The machine-readable record format is defined by the
+[V1D-SV authorization template](../../governance/templates/V1D-SV-AUTHORIZATION-TEMPLATE.md).
+The governance audit parses the record and rejects missing, duplicate,
+placeholder, malformed, expired, or mismatched authority, owner, commit, time,
+server, release, plan, state-hash, dependency, identity, network, rollback,
+recovery, and evidence bindings. Plan approval must follow plan issuance, and
+the V1D-SV record must be issued after that approval.
 
 V1D-SV cannot install an endpoint package, issue an endpoint-usable grant or
 identity, admit endpoint traffic, publish or update artifacts, expand the plan,

@@ -38,7 +38,11 @@ have been separately approved, provisioned, and verified. It must name the
 control-plane server, signed release, private network policy, service and
 database identities, synthetic validation identities, expiry, rollback, and
 evidence boundary. Its fresh host-issued VM Factory plan ID and authenticated
-state hash require exact owner approval after issuance.
+state hash require exact owner approval after issuance. The plan is generated
+and approved through the Factory's non-deployment planning path while `V1D-SV`
+remains closed; `V1D-SV` governs only execution of the approved plan. Before the
+authority can open, its record must use the parsed, fail-closed field contract in
+the [V1D-SV authorization template](templates/V1D-SV-AUTHORIZATION-TEMPLATE.md).
 
 The authorization permits installation and operation of the named private
 control-plane server only to complete V1D backup/restore, telemetry-outage,

@@ -77,9 +77,10 @@ Pre-G2 V1D validation boundary:
 
 - the machine-readable `V1D-SV` authority remains closed until V1C and every
   required external dependency implementation pass;
-- a separate exact record and post-issued Factory plan approval may then permit
-  only the named private control-plane server and synthetic validation
-  identities;
+- the Factory's non-deployment planning path must first issue a fresh plan and
+  authenticated state hash for exact owner approval;
+- a separate exact record may then open `V1D-SV` and permit execution only for
+  the named private control-plane server and synthetic validation identities;
 - canary and endpoint routes remain blocked, and no endpoint-usable grant,
   identity, package, or traffic is permitted; and
 - the negative tests, rollback, and recovery evidence in ADR 0011 and the

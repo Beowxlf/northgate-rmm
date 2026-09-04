@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 import { validateV1dAuthority } from "./lib/validate-v1d-authority.mjs";
 
@@ -23,6 +24,15 @@ function isRegularFile(relativePath) {
   } catch {
     return false;
   }
+}
+
+function isCommit(commit) {
+  return (
+    spawnSync("git", ["cat-file", "-e", `${commit}^{commit}`], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
 }
 
 function walk(directory) {
@@ -108,7 +118,11 @@ for (let number = 0; number <= 8; number += 1) {
   if (!gateIds.includes(`G${number}`)) error(`Missing gate G${number}.`);
 }
 
-for (const authorityError of validateV1dAuthority(gates, isRegularFile))
+for (const authorityError of validateV1dAuthority(gates, {
+  isRegularFile,
+  readText: read,
+  isCommit,
+}))
   error(authorityError);
 
 for (const artifact of gates.requiredPhase0Artifacts) {

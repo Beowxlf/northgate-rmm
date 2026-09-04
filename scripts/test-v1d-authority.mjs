@@ -606,6 +606,20 @@ expectFailure(
   },
 );
 expectFailure(
+  "dependency evidence verified at approval time",
+  open,
+  "verified after approval",
+  {
+    mutatePrerequisites: (records) => {
+      const id = dependencyRecords[0][0];
+      const path = evidencePath(id);
+      const receipt = JSON.parse(records[path]);
+      receipt.verifiedAt = "2026-09-04T12:55:00Z";
+      records[path] = canonical(receipt);
+    },
+  },
+);
+expectFailure(
   "dependency approval after Factory planning",
   open,
   "prerequisite approval must precede Factory plan issuance",

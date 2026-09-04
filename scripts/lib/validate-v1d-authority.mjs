@@ -216,7 +216,7 @@ function validatePrerequisiteEvidence(
     errors.push(
       `V1D-SV ${expectedId} prerequisite ${label} verification time is invalid.`,
     );
-  if (verifiedAt !== null && approvedAt !== null && verifiedAt > approvedAt)
+  if (verifiedAt !== null && approvedAt !== null && verifiedAt >= approvedAt)
     errors.push(
       `V1D-SV ${expectedId} prerequisite ${label} was verified after approval.`,
     );

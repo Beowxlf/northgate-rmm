@@ -65,11 +65,21 @@ and evidence records.
    apply it in isolation and retain positive and negative path evidence.
 6. Install and promote the new Factory release only through its own reviewed
    bootstrap and activation ceremony.
-7. Open G2 with the exact RMM server, canary, signed release, network policy, identities,
-   expiry, rollback, and evidence. Generate fresh host-issued plans only after
-   the merge and current-state validation.
-8. Deploy and harden the control plane, prove backup/restore and containment,
-   then deploy one disposable Debian canary and complete the soak.
+7. Under a separate bounded V1D server-validation authorization, generate the
+   fresh control-plane Factory plan after current-state validation. Obtain exact
+   owner approval of that plan ID and authenticated state hash after issuance,
+   then deploy and harden only the control plane without installing an endpoint.
+   Prove database-consistent backup and isolated restore, telemetry-outage and
+   capacity behavior, certificate revocation, containment, and rollback; V1D
+   remains open until every required proof passes.
+8. Only after V1D passes and the owner accepts the hardened-server and recovery
+   evidence, open G2 for only the disposable canary while binding the exact
+   deployed server, signed release, network policy, identities, expiry,
+   rollback, server plan and receipt, and reviewed V1D evidence as fixed
+   dependencies. Generate the fresh canary Factory plan after current-state
+   validation, obtain exact owner approval of its plan ID and authenticated
+   state hash after issuance, and only then deploy the canary and complete the
+   approved lifecycle test and soak.
 9. After every other V1F prerequisite passes, use an exact G6 acceptance
    authorization to sign the immutable `1.0.0` release record as the final V1F
    action.

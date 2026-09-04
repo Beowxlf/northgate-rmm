@@ -14,12 +14,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
 from uuid import UUID, uuid4
 
-from northgate_rmm.domain import require_aware
+from northgate_rmm.domain import Endpoint, require_aware
 from northgate_rmm.errors import AuthorizationError, NotFoundError, ValidationError
 from northgate_rmm.views import (
     EndpointReader,
     render_endpoint_detail,
-    render_endpoint_list,
+    render_endpoint_page,
 )
 
 MAX_AUTHORIZATION_HEADER_BYTES = 4_096
@@ -28,6 +28,7 @@ MAX_OPERATOR_AUDIT_IDENTIFIER_LENGTH = 256
 MAX_OPERATOR_ROLE_LENGTH = 64
 MAX_OPERATOR_PATH_LENGTH = 256
 MAX_OPERATOR_SESSION_AGE = timedelta(hours=12)
+OPERATOR_ENDPOINT_PAGE_SIZE = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +160,13 @@ class OperatorSessionVerifier(Protocol):
 
 
 class OperatorStore(EndpointReader, Protocol):
+    def list_endpoint_page(
+        self,
+        *,
+        after: UUID | None,
+        limit: int,
+    ) -> tuple[Endpoint, ...]: ...
+
     def record_operator_access(
         self,
         *,
@@ -225,7 +233,6 @@ class OperatorApplication:
             type(request.method) is not str
             or request.method != "GET"
             or type(request.query_string) is not str
-            or request.query_string
             or type(request.path) is not str
             or not 1 <= len(request.path) <= MAX_OPERATOR_PATH_LENGTH
             or not request.path.isprintable()
@@ -241,7 +248,32 @@ class OperatorApplication:
             )
             return _error(404, "not_found")
         if request.path == "/endpoints":
-            body = render_endpoint_list(self._store, now=now).encode("utf-8")
+            try:
+                after = _endpoint_page_after(request.query_string)
+            except ValidationError:
+                self._audit(
+                    principal,
+                    subject="operator:endpoint-views",
+                    action="operator.request",
+                    decision="rejected",
+                    reason="operator route contract rejected",
+                    correlation_id=correlation_id,
+                    now=now,
+                )
+                return _error(404, "not_found")
+            page = self._store.list_endpoint_page(
+                after=after,
+                limit=OPERATOR_ENDPOINT_PAGE_SIZE + 1,
+            )
+            has_more = len(page) > OPERATOR_ENDPOINT_PAGE_SIZE
+            endpoints = page[:OPERATOR_ENDPOINT_PAGE_SIZE]
+            next_after = endpoints[-1].endpoint_id if has_more else None
+            body = render_endpoint_page(
+                self._store,
+                endpoints,
+                next_after=next_after,
+                now=now,
+            ).encode("utf-8")
             self._audit(
                 principal,
                 subject="endpoint:collection",
@@ -252,7 +284,9 @@ class OperatorApplication:
                 now=now,
             )
             return _html(body)
-        endpoint_id = _endpoint_id_from_path(request.path)
+        endpoint_id = (
+            None if request.query_string else _endpoint_id_from_path(request.path)
+        )
         if endpoint_id is None:
             self._audit(
                 principal,
@@ -398,6 +432,22 @@ def _endpoint_id_from_path(path: str) -> UUID | None:
     if str(endpoint_id) != value:
         return None
     return endpoint_id
+
+
+def _endpoint_page_after(query_string: str) -> UUID | None:
+    if not query_string:
+        return None
+    prefix = "after="
+    if not query_string.startswith(prefix):
+        raise ValidationError("operator page cursor is invalid")
+    value = query_string.removeprefix(prefix)
+    try:
+        after = UUID(value)
+    except ValueError as error:
+        raise ValidationError("operator page cursor is invalid") from error
+    if str(after) != value:
+        raise ValidationError("operator page cursor is invalid")
+    return after
 
 
 def _html(body: bytes) -> OperatorResponse:

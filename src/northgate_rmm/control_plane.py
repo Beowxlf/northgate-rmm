@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timedelta
+from heapq import nsmallest
 from typing import Never
 from uuid import UUID, uuid4
 
@@ -61,6 +62,25 @@ class ControlPlane:
     def list_endpoints(self) -> tuple[Endpoint, ...]:
         return tuple(
             sorted(self._endpoints.values(), key=lambda item: str(item.endpoint_id))
+        )
+
+    def list_endpoint_page(
+        self,
+        *,
+        after: UUID | None,
+        limit: int,
+    ) -> tuple[Endpoint, ...]:
+        if after is not None and type(after) is not UUID:
+            raise ValidationError("endpoint page cursor is invalid")
+        if type(limit) is not int or not 1 <= limit <= 1_000:
+            raise ValidationError("endpoint page limit is invalid")
+        candidates = (
+            endpoint
+            for endpoint in self._endpoints.values()
+            if after is None or endpoint.endpoint_id > after
+        )
+        return tuple(
+            nsmallest(limit, candidates, key=lambda endpoint: endpoint.endpoint_id)
         )
 
     def get_endpoint(self, endpoint_id: UUID) -> Endpoint:

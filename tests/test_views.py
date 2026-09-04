@@ -3,7 +3,11 @@ from datetime import UTC, datetime
 from northgate_rmm.control_plane import ControlPlane
 from northgate_rmm.domain import Platform
 from northgate_rmm.simulator import SyntheticAgent
-from northgate_rmm.views import render_endpoint_detail, render_endpoint_list
+from northgate_rmm.views import (
+    render_endpoint_detail,
+    render_endpoint_list,
+    render_endpoint_page,
+)
 
 NOW = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
 
@@ -24,6 +28,26 @@ def test_list_view_escapes_endpoint_controlled_values() -> None:
     assert "<img" not in rendered
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in rendered
     assert str(agent.endpoint_id) in rendered
+
+
+def test_list_page_emits_only_the_canonical_next_cursor() -> None:
+    plane = ControlPlane()
+    agent = SyntheticAgent.enroll(
+        plane,
+        display_name="linux-page-01",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+    )
+
+    rendered = render_endpoint_page(
+        plane,
+        plane.list_endpoints(),
+        next_after=agent.endpoint_id,
+        now=NOW,
+    )
+
+    assert f'href="/endpoints?after={agent.endpoint_id}"' in rendered
 
 
 def test_detail_view_keeps_lifecycle_and_health_separate() -> None:

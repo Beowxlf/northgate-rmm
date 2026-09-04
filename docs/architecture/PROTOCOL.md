@@ -112,6 +112,12 @@ server-rendered, escaped, non-cacheable, protected by a restrictive content
 security policy, and derive health from server receipt time. No operator
 mutation route exists in this application.
 
+The collection is keyset-paginated in ascending endpoint-ID order. Each
+database read requests at most 101 records, renders at most 100, and emits an
+optional next link using the exact `after=<canonical-endpoint-uuid>` query.
+Other query forms fail closed. This bounds allocation before rendering rather
+than making a large fleet lose the collection view.
+
 The source-only verifier adapter sends the opaque Authorization value only to
 `POST /v1/operator-sessions/verify` over TLS 1.3 mTLS at one configured private
 IP and independently verified DNS authority. The request has no body. A success

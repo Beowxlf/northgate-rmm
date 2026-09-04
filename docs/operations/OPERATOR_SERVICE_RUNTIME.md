@@ -4,7 +4,8 @@
 
 `northgate-rmm-operator-service` is the private, server-authenticated TLS entry
 point for the version 1.0 endpoint list and detail views. It exposes only
-`GET /endpoints` and `GET /endpoints/<canonical-endpoint-uuid>`. It has no
+`GET /endpoints`, its exact optional canonical `after` cursor, and
+`GET /endpoints/<canonical-endpoint-uuid>`. It has no
 enrollment, agent-message, job, shell, file-transfer, update, remote-access, or
 mutation route.
 
@@ -44,6 +45,9 @@ Eight application requests may run globally and two per source, with additional
 source and global rate ceilings. A timed-out database or verifier worker retains
 its slot until it actually finishes. Responses are non-cacheable, carry a
 restrictive content-security policy and HSTS, and are capped at 512 KiB.
+Collection reads use keyset pagination: the database returns at most 101 rows,
+the page renders at most 100, and only a canonical endpoint UUID may select the
+next page.
 
 The verifier call is a fixed `POST /v1/operator-sessions/verify` with no body,
 no redirect path, the opaque Authorization header, and a dedicated workload

@@ -198,6 +198,28 @@ def test_inventory_status_and_missing_records(postgres_dsn: str) -> None:
         plane.get_identity(uuid4())
 
 
+def test_endpoint_page_is_bounded_in_postgres(postgres_dsn: str) -> None:
+    plane, _agent = enrolled_plane(postgres_dsn)
+    for index in range(2):
+        SyntheticAgent.enroll(
+            plane,
+            display_name=f"linux-page-{index}",
+            platform=Platform.LINUX,
+            architecture="amd64",
+            now=NOW,
+        )
+    ordered = plane.list_endpoints()
+
+    assert plane.list_endpoint_page(after=None, limit=2) == ordered[:2]
+    assert (
+        plane.list_endpoint_page(after=ordered[0].endpoint_id, limit=2) == ordered[1:]
+    )
+    with pytest.raises(ValidationError, match="cursor"):
+        plane.list_endpoint_page(after="invalid", limit=2)  # type: ignore[arg-type]
+    with pytest.raises(ValidationError, match="limit"):
+        plane.list_endpoint_page(after=None, limit=0)
+
+
 def test_operator_view_revalidates_and_persists_read_audit(postgres_dsn: str) -> None:
     plane, agent = enrolled_plane(postgres_dsn)
     operator = OperatorPrincipal(

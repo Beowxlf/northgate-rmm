@@ -71,7 +71,66 @@ try {
     verifyCmsDetached(content, signature, `sha256:${"0".repeat(64)}`),
     false,
   );
-  console.log("Factory CMS verification tests: 3 passed.");
+
+  const weakKeyPath = path.join(temporaryRoot, "weak-signer.key");
+  const weakCertificatePath = path.join(temporaryRoot, "weak-signer.pem");
+  const weakSignaturePath = path.join(temporaryRoot, "weak-receipt.cms.pem");
+  assert.equal(
+    runOpenSsl([
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-subj",
+      "/CN=algorithm: sha256",
+      "-days",
+      "1",
+      "-keyout",
+      weakKeyPath,
+      "-out",
+      weakCertificatePath,
+    ]).status,
+    0,
+    "weak-digest test certificate generation failed",
+  );
+  assert.equal(
+    runOpenSsl([
+      "cms",
+      "-sign",
+      "-binary",
+      "-in",
+      contentPath,
+      "-signer",
+      weakCertificatePath,
+      "-inkey",
+      weakKeyPath,
+      "-outform",
+      "PEM",
+      "-out",
+      weakSignaturePath,
+      "-nosmimecap",
+      "-md",
+      "md5",
+    ]).status,
+    0,
+    "weak-digest test receipt signing failed",
+  );
+  const weakCertificate = new X509Certificate(
+    fs.readFileSync(weakCertificatePath),
+  );
+  const weakFingerprint = `sha256:${weakCertificate.fingerprint256
+    .replaceAll(":", "")
+    .toLowerCase()}`;
+  assert.equal(
+    verifyCmsDetached(
+      content,
+      fs.readFileSync(weakSignaturePath, "utf8"),
+      weakFingerprint,
+    ),
+    false,
+  );
+  console.log("Factory CMS verification tests: 4 passed.");
 } finally {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
 }

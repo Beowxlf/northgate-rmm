@@ -18,6 +18,46 @@ export function runOpenSsl(arguments_, options = {}) {
   });
 }
 
+function sectionAlgorithms(lines, sectionIndex) {
+  const sectionIndent = lines[sectionIndex].search(/\S/);
+  const algorithms = [];
+  for (let index = sectionIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() === "") continue;
+    const indent = line.search(/\S/);
+    if (indent <= sectionIndent) break;
+    const match = /^\s*algorithm:\s*([^\s(]+)/.exec(line);
+    if (match) algorithms.push(match[1].toLowerCase());
+  }
+  return algorithms;
+}
+
+function usesOnlySha256Digests(details) {
+  const lines = details.replaceAll("\r\n", "\n").split("\n");
+  const digestSets = lines
+    .map((line, index) => (line.trim() === "digestAlgorithms:" ? index : -1))
+    .filter((index) => index >= 0);
+  if (digestSets.length !== 1) return false;
+  const declaredAlgorithms = sectionAlgorithms(lines, digestSets[0]);
+  if (declaredAlgorithms.length !== 1 || declaredAlgorithms[0] !== "sha256")
+    return false;
+
+  const signerStart = lines.findIndex((line) => line.trim() === "signerInfos:");
+  if (signerStart < 0) return false;
+  const signerDigests = lines
+    .map((line, index) =>
+      index > signerStart && line.trim() === "digestAlgorithm:" ? index : -1,
+    )
+    .filter((index) => index >= 0);
+  return (
+    signerDigests.length > 0 &&
+    signerDigests.every((index) => {
+      const algorithms = sectionAlgorithms(lines, index);
+      return algorithms.length === 1 && algorithms[0] === "sha256";
+    })
+  );
+}
+
 export function verifyCmsDetached(
   content,
   signature,
@@ -51,9 +91,7 @@ export function verifyCmsDetached(
     ]);
     if (
       signatureDetails.status !== 0 ||
-      !/digestAlgorithms:[\s\S]*algorithm:\s*sha256\b/.test(
-        signatureDetails.stdout,
-      )
+      !usesOnlySha256Digests(signatureDetails.stdout)
     )
       return false;
     const verification = runOpenSsl([

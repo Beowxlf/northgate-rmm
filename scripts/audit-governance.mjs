@@ -15,6 +15,16 @@ function exists(relativePath) {
   return fs.existsSync(path.join(root, relativePath));
 }
 
+function isRegularFile(relativePath) {
+  if (typeof relativePath !== "string" || relativePath.trim() === "")
+    return false;
+  try {
+    return fs.statSync(path.join(root, relativePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function walk(directory) {
   if (!exists(directory)) return [];
   return fs
@@ -98,7 +108,7 @@ for (let number = 0; number <= 8; number += 1) {
   if (!gateIds.includes(`G${number}`)) error(`Missing gate G${number}.`);
 }
 
-for (const authorityError of validateV1dAuthority(gates, exists))
+for (const authorityError of validateV1dAuthority(gates, isRegularFile))
   error(authorityError);
 
 for (const artifact of gates.requiredPhase0Artifacts) {

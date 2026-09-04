@@ -18,7 +18,10 @@ function authority(config) {
 function expectFailure(name, mutate, expected) {
   const config = clone();
   mutate(config);
-  const errors = validateV1dAuthority(config, (path) => path === "exact.md");
+  const errors = validateV1dAuthority(
+    config,
+    (path) => path === "docs/governance/authorizations/V1D-SV-EXACT.md",
+  );
   assert(
     errors.some((item) => item.includes(expected)),
     `${name} did not fail with ${expected}: ${errors.join(" | ")}`,
@@ -76,13 +79,30 @@ expectFailure(
   (config) => {
     authority(config).status = "open";
   },
-  "lacks its exact authorization record",
+  "lacks its exact regular authorization file",
+);
+expectFailure(
+  "directory path",
+  (config) => {
+    authority(config).status = "open";
+    authority(config).authorization = "docs/governance/authorizations/";
+  },
+  "lacks its exact regular authorization file",
+);
+expectFailure(
+  "out-of-scope path",
+  (config) => {
+    authority(config).status = "open";
+    authority(config).authorization = "README.md";
+  },
+  "lacks its exact regular authorization file",
 );
 expectFailure(
   "concurrent G2",
   (config) => {
     authority(config).status = "open";
-    authority(config).authorization = "exact.md";
+    authority(config).authorization =
+      "docs/governance/authorizations/V1D-SV-EXACT.md";
     config.gates.find((gate) => gate.id === "G2").status = "open";
   },
   "cannot be open at the same time",
@@ -104,10 +124,14 @@ expectFailure(
 
 const exactOpen = clone();
 authority(exactOpen).status = "open";
-authority(exactOpen).authorization = "exact.md";
+authority(exactOpen).authorization =
+  "docs/governance/authorizations/V1D-SV-EXACT.md";
 assert.deepEqual(
-  validateV1dAuthority(exactOpen, (path) => path === "exact.md"),
+  validateV1dAuthority(
+    exactOpen,
+    (path) => path === "docs/governance/authorizations/V1D-SV-EXACT.md",
+  ),
   [],
 );
 
-console.log("V1D-SV governance tests: 11 passed.");
+console.log("V1D-SV governance tests: 14 passed.");

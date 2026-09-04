@@ -15,7 +15,7 @@ const REQUIRED_PROHIBITIONS = [
   "opening G2",
 ];
 
-export function validateV1dAuthority(gates, exists = () => false) {
+export function validateV1dAuthority(gates, isRegularFile = () => false) {
   const errors = [];
   const authorities = gates.boundedOperationalAuthorizations ?? [];
   const authorityIds = authorities.map((authority) => authority.id);
@@ -45,8 +45,18 @@ export function validateV1dAuthority(gates, exists = () => false) {
       errors.push(`V1D-SV lacks required prohibition: ${prohibition}.`);
   }
 
-  if (authority.status === "open" && !exists(authority.authorization ?? ""))
-    errors.push("Open V1D-SV authority lacks its exact authorization record.");
+  if (authority.status === "open") {
+    const authorization = authority.authorization;
+    const validPath =
+      typeof authorization === "string" &&
+      /^docs\/governance\/authorizations\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(
+        authorization,
+      );
+    if (!validPath || !isRegularFile(authorization))
+      errors.push(
+        "Open V1D-SV authority lacks its exact regular authorization file.",
+      );
+  }
   const g2 = gates.gates?.find((gate) => gate.id === "G2");
   if (authority.status === "open" && g2?.status !== "closed")
     errors.push("V1D-SV and G2 cannot be open at the same time.");

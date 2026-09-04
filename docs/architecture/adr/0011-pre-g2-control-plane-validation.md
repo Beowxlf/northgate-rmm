@@ -66,7 +66,8 @@ Each prerequisite record must be present and unchanged at the audited
 protected-main commit, owner-approved, unexpired, and bound to evidence and
 rollback. Each prerequisite and every referenced evidence, rollback, and
 network artifact must have a protected-main introduction commit predating
-Factory plan issuance. Manifest approval must follow plan approval.
+Factory plan issuance, and each claimed event must be no later than that
+trusted introduction. Manifest approval must follow plan approval.
 All approved records and their referenced artifacts must remain byte-identical
 at the current protected-main tip. Deletion or replacement is a revocation, and
 an older still-valid snapshot cannot be replayed after that revocation.

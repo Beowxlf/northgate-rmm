@@ -233,6 +233,23 @@ function validatePathPredatesPlan(
   return [];
 }
 
+function validateClaimAtIntroduction(
+  label,
+  recordPath,
+  claimedAt,
+  pathIntroductionTime,
+) {
+  const introducedAt = Date.parse(pathIntroductionTime(recordPath) ?? "");
+  if (
+    claimedAt !== null &&
+    (!Number.isFinite(introducedAt) || claimedAt > introducedAt)
+  )
+    return [
+      `${label} claimed event postdates its protected-main introduction.`,
+    ];
+  return [];
+}
+
 const NETWORK_EVIDENCE_ARTIFACTS = [
   ["changeApprovalRecord", "changeApprovalBinding", "ChangeApproved"],
   ["applyReceiptRecord", "applyReceiptDigest", "ChangeApplied"],
@@ -329,6 +346,14 @@ function validateNetworkEvidenceArtifacts(
     )
       errors.push(`V1D-SV network ${event} record time is invalid.`);
     else recordedAtByEvent.set(event, recordedAt);
+    errors.push(
+      ...validateClaimAtIntroduction(
+        `V1D-SV network ${event} record`,
+        recordPath,
+        recordedAt,
+        pathIntroductionTime,
+      ),
+    );
   }
   const approvedAt = recordedAtByEvent.get("ChangeApproved");
   const appliedAt = recordedAtByEvent.get("ChangeApplied");
@@ -442,6 +467,14 @@ function validatePrerequisiteEvidence(
     errors.push(
       `V1D-SV ${expectedId} prerequisite ${label} was verified after approval.`,
     );
+  errors.push(
+    ...validateClaimAtIntroduction(
+      `V1D-SV ${expectedId} prerequisite ${label}`,
+      recordPath,
+      verifiedAt,
+      pathIntroductionTime,
+    ),
+  );
   const requiredBindings = isEvidence
     ? [
         "targetBinding",
@@ -562,6 +595,14 @@ function validatePrerequisite(
   const expiresAt = validDate(record.expiresAt);
   if (approvedAt === null || approvedAt > now.getTime())
     errors.push(`V1D-SV ${expectedId} prerequisite approval time is invalid.`);
+  errors.push(
+    ...validateClaimAtIntroduction(
+      `V1D-SV ${expectedId} prerequisite`,
+      recordPath,
+      approvedAt,
+      pathIntroductionTime,
+    ),
+  );
   if (
     approvedAt !== null &&
     planIssuedAt !== null &&
@@ -763,6 +804,10 @@ function validateApprovedBindings(
   )
     errors.push(
       "V1D-SV approved bindings introduction must predate authorization issuance.",
+    );
+  if (approvedAt !== null && approvedAt > bindingsIntroducedAt)
+    errors.push(
+      "V1D-SV approved bindings claimed approval postdates protected-main introduction.",
     );
   if (approvedAt === null || approvedAt > now.getTime())
     errors.push("V1D-SV bindings approval time is invalid or in the future.");
@@ -989,6 +1034,10 @@ function validateFactoryPlanReceipt(fields, auditedCommit, options) {
       trustApprovedAt >= planIssuedAt
     )
       errors.push("V1D-SV Factory approval trust must predate plan issuance.");
+    if (trustApprovedAt !== null && trustApprovedAt > trustIntroductionAt)
+      errors.push(
+        "V1D-SV Factory approval trust claimed approval postdates protected-main introduction.",
+      );
     if (!/^sha256:[a-f0-9]{64}$/.test(trust.certificateSha256 ?? ""))
       errors.push(
         "V1D-SV Factory approval trust has an invalid certificate digest.",

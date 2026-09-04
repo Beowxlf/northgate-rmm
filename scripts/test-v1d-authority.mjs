@@ -396,9 +396,10 @@ function expectFailure(
     protectedMainTexts = {},
     nonImmutablePaths = [],
     trustPredatesReceipt = true,
-    trustIntroductionTime = "2026-09-04T12:53:00Z",
-    prerequisiteIntroductionTime = "2026-09-04T12:30:00Z",
+    trustIntroductionTime = "2026-09-04T12:55:00Z",
+    prerequisiteIntroductionTime = "2026-09-04T12:56:00Z",
     bindingsIntroductionTime = "2026-09-04T13:02:30Z",
+    receiptIntroductionTime = "2026-09-04T13:01:30Z",
   } = {},
 ) {
   const config = clone();
@@ -472,6 +473,7 @@ function expectFailure(
     pathIntroductionTime: (path) => {
       if (path === factoryTrustPath) return trustIntroductionTime;
       if (path === bindingPath) return bindingsIntroductionTime;
+      if (path === factoryReceiptPath) return receiptIntroductionTime;
       return path in prerequisites ? prerequisiteIntroductionTime : null;
     },
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
@@ -721,10 +723,22 @@ expectFailure(
   { trustIntroductionTime: validFields["Factory plan issued at"] },
 );
 expectFailure(
+  "Factory trust committed before claimed approval",
+  open,
+  "claimed approval postdates protected-main introduction",
+  { trustIntroductionTime: "2026-09-04T12:53:00Z" },
+);
+expectFailure(
   "prerequisites merged at plan issuance",
   open,
   "protected-main introduction must predate Factory plan issuance",
   { prerequisiteIntroductionTime: validFields["Factory plan issued at"] },
+);
+expectFailure(
+  "prerequisite evidence committed before claimed events",
+  open,
+  "claimed event postdates its protected-main introduction",
+  { prerequisiteIntroductionTime: "2026-09-04T12:30:00Z" },
 );
 expectFailure(
   "Factory receipt changed after approval",
@@ -866,6 +880,12 @@ expectFailure(
   open,
   "bindings introduction must predate authorization issuance",
   { bindingsIntroductionTime: validFields["Issued at"] },
+);
+expectFailure(
+  "bindings committed before claimed approval",
+  open,
+  "bindings claimed approval postdates protected-main introduction",
+  { bindingsIntroductionTime: "2026-09-04T13:01:30Z" },
 );
 expectFailure("excessive bindings lifetime", open, "seven-day lifetime", {
   mutateApproval: (approval) => (approval.expiresAt = "2026-09-12T13:02:01Z"),
@@ -1171,9 +1191,10 @@ assert.deepEqual(
     isPathIntroducedBefore: (earlierPath, laterPath) =>
       earlierPath === factoryTrustPath && laterPath === factoryReceiptPath,
     pathIntroductionTime: (path) => {
-      if (path === factoryTrustPath) return "2026-09-04T12:53:00Z";
+      if (path === factoryTrustPath) return "2026-09-04T12:55:00Z";
       if (path === bindingPath) return "2026-09-04T13:02:30Z";
-      return path in exactPrerequisites ? "2026-09-04T12:30:00Z" : null;
+      if (path === factoryReceiptPath) return "2026-09-04T13:01:30Z";
+      return path in exactPrerequisites ? "2026-09-04T12:56:00Z" : null;
     },
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
       signature === renderFactorySignature(content, certificateSha256),

@@ -115,7 +115,9 @@ Every prerequisite record must be approved before Factory plan issuance and
 before binding-manifest approval. Its protected-main introduction commit, and
 the introduction commit of every referenced evidence, rollback, and network
 artifact, must also predate Factory plan issuance; backdated record timestamps
-do not qualify an already-issued plan.
+do not qualify an already-issued plan. Each claimed approval, verification, or
+network event must also occur no later than its record's protected-main
+introduction; precommitted future evidence is rejected.
 The plan must be no more than two hours old at governance validation, the
 authority must expire no later than two hours after plan issuance, and the
 plan's issue-to-expiry lifetime must not exceed 24 hours. G2 through G8 must all

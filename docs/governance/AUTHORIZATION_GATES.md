@@ -74,7 +74,8 @@ the audited commit, valid for its exact required identity and status, and valid
 through the authorization expiry. Every prerequisite approval must precede
 Factory plan issuance and approval of the binding manifest. Protected-main
 introduction commit times for every prerequisite, evidence, rollback, and
-network artifact must also precede Factory plan issuance.
+network artifact must also precede Factory plan issuance. Each record's claimed
+event must be no later than that trusted introduction time.
 Each evidence and rollback binding must identify a separate canonical receipt
 that is present and unchanged at the audited commit, matches the prerequisite,
 records owner-approved verification before prerequisite approval, and binds the

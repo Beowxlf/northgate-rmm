@@ -43,6 +43,7 @@ The first executable lesson is
 - [Linux package lifecycle](docs/operations/LINUX_PACKAGE_LIFECYCLE.md)
 - [Agent service runtime](docs/operations/AGENT_SERVICE_RUNTIME.md)
 - [Enrollment service runtime](docs/operations/ENROLLMENT_SERVICE_RUNTIME.md)
+- [Operator service runtime](docs/operations/OPERATOR_SERVICE_RUNTIME.md)
 
 The Phase 1 trustworthy vertical-slice simulation is complete. Separate,
 bounded authorizations permit **Phase 2 Linux-agent and control-plane source
@@ -74,6 +75,15 @@ loading the issuer signing key. Both JSON contracts and hardened reference
 issuer, approved network rule, job scheduler, or command-execution primitive is
 present.
 
+A third source-only executable composes the read-only operator application,
+PostgreSQL, a server-authenticated TLS listener, and a fixed-route TLS 1.3 mTLS
+session-verifier client. It revalidates the opaque human session on every read,
+pins the single-operator identity tuple, separates its public server and verifier
+workload identities, bounds admission and responses, and exposes no mutation
+route. Its example configuration and hardened reference `systemd` unit are also
+disabled and uninstalled; no operational IdP connection or operator listener is
+present.
+
 The executable Go agent includes strict non-secret configuration, bounded
 allowlisted Linux collectors, the Phase 1-compatible inventory envelope, a
 checksum-validated quota spool, a crash-durable per-boot sequence allocator,
@@ -88,8 +98,8 @@ resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
 Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
 test-only signature verification have also passed. Evidence-complete G2A and
 G2B qualification records retain every required digest. The repository still
-has no operator network adapter, production issuer/IdP
-integration, server package or approved deployment configuration, command
+has no operational issuer/IdP integration, server package or approved deployment
+configuration, command
 runner, or privileged helper.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity

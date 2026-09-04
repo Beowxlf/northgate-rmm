@@ -1,0 +1,23 @@
+{
+  "bind_address": "127.0.0.1",
+  "port": 8443,
+  "authority": "operator.invalid",
+  "server_certificate": "/etc/northgate-rmm/tls/operator-service.crt",
+  "server_private_key": "/etc/northgate-rmm/tls/operator-service.key",
+  "database_dsn_credential": "/run/credentials/northgate-rmm-operator.service/database-dsn",
+  "verifier_connect_address": "127.0.0.1",
+  "verifier_port": 9444,
+  "verifier_authority": "idp.invalid",
+  "verifier_ca_certificate": "/etc/northgate-rmm/tls/idp-service-ca.crt",
+  "verifier_client_certificate": "/run/credentials/northgate-rmm-operator.service/verifier-client-cert",
+  "verifier_client_private_key": "/run/credentials/northgate-rmm-operator.service/verifier-client-key",
+  "policy_issuer": "https://idp.invalid/issuer",
+  "policy_tenant": "northgate",
+  "policy_subject": "replace-with-exact-operator-subject",
+  "policy_client_id": "northgate-rmm",
+  "policy_required_role": "viewer",
+  "policy_maximum_session_age_seconds": 43200,
+  "request_timeout_seconds": 10,
+  "database_operation_timeout_seconds": 8,
+  "verifier_timeout_seconds": 5
+}

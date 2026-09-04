@@ -5,24 +5,25 @@ from __future__ import annotations
 import base64
 import binascii
 import http.client
-import io
 import ipaddress
 import json
 import re
-import socket
 import ssl
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, BinaryIO, cast
+from typing import Any, cast
 
 from northgate_rmm.enrollment import (
     EndpointIssuanceRequest,
     IssuedEndpointCredential,
 )
 from northgate_rmm.errors import ServiceUnavailableError, ValidationError
-from northgate_rmm.secure_files import private_key_reference, regular_file_reference
+from northgate_rmm.private_https import (
+    PinnedHTTPSConnection,
+    build_mtls_client_context,
+    http_authority,
+)
 
 ISSUER_PATH = "/v1/endpoint-certificates"
 MAX_ISSUER_RESPONSE_BYTES = 65_536
@@ -117,7 +118,7 @@ class MTLSIssuerClient:
                     "Content-Type": "application/json",
                     "Content-Length": str(len(body)),
                     "Accept": "application/json",
-                    "Host": _http_authority(
+                    "Host": http_authority(
                         self._configuration.authority,
                         self._configuration.port,
                     ),
@@ -156,129 +157,40 @@ class MTLSIssuerClient:
             connection.close()
 
 
-class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+class _PinnedHTTPSConnection:
     def __init__(
         self,
         configuration: IssuerClientConfiguration,
         *,
         context: ssl.SSLContext,
     ) -> None:
-        super().__init__(
-            configuration.authority,
+        self._connection = PinnedHTTPSConnection(
+            connect_address=configuration.connect_address,
             port=configuration.port,
-            timeout=float(configuration.timeout_seconds),
+            authority=configuration.authority,
+            timeout_seconds=float(configuration.timeout_seconds),
             context=context,
         )
-        self._connect_address = configuration.connect_address
-        self._ssl_context = context
-        self._deadline = time.monotonic() + float(configuration.timeout_seconds)
 
-    def connect(self) -> None:
-        raw_socket = socket.create_connection(
-            (self._connect_address, self.port),
-            _remaining(self._deadline),
-        )
-        try:
-            raw_socket.settimeout(_remaining(self._deadline))
-            secured_socket = self._ssl_context.wrap_socket(
-                raw_socket,
-                server_hostname=self.host,
-            )
-            self.sock = cast(
-                socket.socket,
-                _DeadlineSocket(secured_socket, deadline=self._deadline),
-            )
-        except BaseException:
-            raw_socket.close()
-            raise
+    def request(self, *args: Any, **kwargs: Any) -> None:
+        self._connection.request(*args, **kwargs)
 
-
-class _DeadlineSocket:
-    """Re-arm each socket operation with the remaining whole-request budget."""
-
-    def __init__(self, wrapped: ssl.SSLSocket, *, deadline: float) -> None:
-        self._wrapped = wrapped
-        self._deadline = deadline
-
-    def sendall(self, data: bytes, flags: int = 0) -> None:
-        self._arm()
-        self._wrapped.sendall(data, flags)
-
-    def recv_into(self, buffer: Any, nbytes: int = 0, flags: int = 0) -> int:
-        self._arm()
-        return self._wrapped.recv_into(buffer, nbytes, flags)
-
-    def makefile(
-        self,
-        mode: str,
-        buffering: int | None = None,
-    ) -> BinaryIO:
-        if mode != "rb":
-            raise ValueError("issuer socket supports response reads only")
-        size = io.DEFAULT_BUFFER_SIZE if buffering in (None, -1) else buffering
-        return io.BufferedReader(_DeadlineReader(self), buffer_size=size)
+    def getresponse(self) -> http.client.HTTPResponse:
+        return self._connection.getresponse()
 
     def close(self) -> None:
-        self._wrapped.close()
-
-    def _arm(self) -> None:
-        self._wrapped.settimeout(_remaining(self._deadline))
-
-
-class _DeadlineReader(io.RawIOBase):
-    def __init__(self, deadline_socket: _DeadlineSocket) -> None:
-        super().__init__()
-        self._deadline_socket = deadline_socket
-
-    def readable(self) -> bool:
-        return True
-
-    def readinto(self, buffer: Any) -> int:
-        return self._deadline_socket.recv_into(buffer)
-
-
-def _remaining(deadline: float) -> float:
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError("issuer request deadline expired")
-    return remaining
-
-
-def _http_authority(authority: str, port: int) -> str:
-    return authority if port == 443 else f"{authority}:{port}"
+        self._connection.close()
 
 
 def _build_client_context(configuration: IssuerClientConfiguration) -> ssl.SSLContext:
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.minimum_version = ssl.TLSVersion.TLSv1_3
-    context.maximum_version = ssl.TLSVersion.TLSv1_3
-    context.verify_mode = ssl.CERT_REQUIRED
-    context.check_hostname = True
-    context.options |= ssl.OP_NO_TICKET
-    with regular_file_reference(
-        configuration.ca_certificate,
-        label="issuer CA certificate",
-        maximum_bytes=65_536,
-        private=False,
-    ) as ca_path:
-        context.load_verify_locations(cafile=str(ca_path))
-    with (
-        regular_file_reference(
-            configuration.client_certificate,
-            label="issuer client certificate",
-            maximum_bytes=65_536,
-            private=False,
-        ) as certificate_path,
-        private_key_reference(
-            configuration.client_private_key,
-            label="issuer client private key",
-        ) as key_path,
-    ):
-        context.load_cert_chain(
-            certfile=str(certificate_path),
-            keyfile=str(key_path),
-        )
-    return context
+    return build_mtls_client_context(
+        ca_certificate=configuration.ca_certificate,
+        client_certificate=configuration.client_certificate,
+        client_private_key=configuration.client_private_key,
+        ca_label="issuer CA certificate",
+        certificate_label="issuer client certificate",
+        private_key_label="issuer client private key",
+    )
 
 
 def _decode_issuer_response(encoded: bytes) -> IssuedEndpointCredential:

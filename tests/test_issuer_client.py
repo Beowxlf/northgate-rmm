@@ -15,9 +15,9 @@ from northgate_rmm.issuer_client import (
     IssuerClientConfiguration,
     MTLSIssuerClient,
     _build_client_context,
-    _DeadlineSocket,
     _decode_issuer_response,
 )
+from northgate_rmm.private_https import DeadlineSocket
 from tests.support.pki import issue_test_endpoint_credential
 
 NOW = datetime(2026, 9, 4, 10, 0, tzinfo=UTC)
@@ -342,10 +342,10 @@ def test_issuer_socket_enforces_one_monotonic_deadline(
 
     times = iter([1.0, 9.0, 10.1])
     monkeypatch.setattr(
-        "northgate_rmm.issuer_client.time.monotonic", lambda: next(times)
+        "northgate_rmm.private_https.time.monotonic", lambda: next(times)
     )
     wrapped = FakeSocket()
-    deadline = _DeadlineSocket(wrapped, deadline=10.0)  # type: ignore[arg-type]
+    deadline = DeadlineSocket(wrapped, deadline=10.0)  # type: ignore[arg-type]
 
     deadline.sendall(b"first")
     deadline.sendall(b"second")

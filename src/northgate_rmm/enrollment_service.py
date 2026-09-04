@@ -13,8 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from cryptography import x509
-from cryptography.exceptions import UnsupportedAlgorithm
-from cryptography.hazmat.primitives import serialization
 
 from northgate_rmm.agent_service import (
     MAX_SERVICE_CONFIGURATION_BYTES,
@@ -36,6 +34,7 @@ from northgate_rmm.persistence import (
     DEFAULT_DATABASE_OPERATION_TIMEOUT_SECONDS,
     PostgresControlPlane,
 )
+from northgate_rmm.tls_identity import load_tls_identity_public_key
 
 MAX_TRUST_ROOT_BYTES = 65_536
 _REQUIRED_CONFIGURATION_FIELDS = frozenset(
@@ -187,11 +186,11 @@ def load_endpoint_issuer_trust_root(path: Path) -> x509.Certificate:
 def _validate_distinct_tls_identities(
     configuration: EnrollmentServiceConfiguration,
 ) -> None:
-    server_public_key = _load_tls_identity_public_key(
+    server_public_key = load_tls_identity_public_key(
         configuration.listener.server_certificate,
         label="enrollment server certificate",
     )
-    issuer_public_key = _load_tls_identity_public_key(
+    issuer_public_key = load_tls_identity_public_key(
         configuration.issuer.client_certificate,
         label="issuer client certificate",
     )
@@ -199,29 +198,6 @@ def _validate_distinct_tls_identities(
         raise ValidationError(
             "enrollment server and issuer client identities must be distinct"
         )
-
-
-def _load_tls_identity_public_key(path: Path, *, label: str) -> bytes:
-    encoded = _read_regular_file(
-        path,
-        label=label,
-        maximum_bytes=MAX_TRUST_ROOT_BYTES,
-        private=False,
-    )
-    try:
-        certificates = x509.load_pem_x509_certificates(encoded)
-        if not certificates:
-            raise ValueError("certificate bundle is empty")
-        return (
-            certificates[0]
-            .public_key()
-            .public_bytes(
-                serialization.Encoding.DER,
-                serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
-        )
-    except (ValueError, UnsupportedAlgorithm) as error:
-        raise ValidationError(f"{label} is invalid") from error
 
 
 def _reject_enrollment_duplicates(

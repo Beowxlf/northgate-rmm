@@ -21,7 +21,7 @@ from northgate_rmm.enrollment import (
     EnrollmentResponse,
 )
 from northgate_rmm.errors import ValidationError
-from northgate_rmm.secure_files import private_key_reference
+from northgate_rmm.secure_files import private_key_reference, regular_file_reference
 
 MAX_ENROLLMENT_HEADER_BYTES = 2_048
 MAX_ENROLLMENT_HEADERS = 24
@@ -400,12 +400,20 @@ def _build_server_context(
     context.verify_mode = ssl.CERT_NONE
     context.options |= ssl.OP_NO_TICKET
     context.num_tickets = 0
-    with private_key_reference(
-        configuration.server_private_key,
-        label="enrollment server private key",
-    ) as key_path:
+    with (
+        regular_file_reference(
+            configuration.server_certificate,
+            label="enrollment server certificate",
+            maximum_bytes=65_536,
+            private=False,
+        ) as certificate_path,
+        private_key_reference(
+            configuration.server_private_key,
+            label="enrollment server private key",
+        ) as key_path,
+    ):
         context.load_cert_chain(
-            certfile=str(configuration.server_certificate),
+            certfile=str(certificate_path),
             keyfile=str(key_path),
         )
     return context

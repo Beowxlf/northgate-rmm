@@ -288,6 +288,7 @@ def test_issuer_client_rejects_symlinked_private_key(tmp_path: Path) -> None:
     )
     key_target = tmp_path / "target.key"
     key_target.write_text("not loaded", encoding="ascii")
+    (tmp_path / "enrollment-client.crt").write_text("not loaded", encoding="ascii")
     key_link = tmp_path / "linked.key"
     try:
         key_link.symlink_to(key_target)
@@ -301,6 +302,25 @@ def test_issuer_client_rejects_symlinked_private_key(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError, match="opened safely"):
         _build_client_context(config)
+
+
+def test_issuer_client_rejects_symlinked_ca(tmp_path: Path) -> None:
+    material = issue_test_endpoint_credential(
+        UUID("11111111-1111-4111-8111-111111111111"),
+        now=NOW,
+    )
+    target = tmp_path / "target-ca.crt"
+    target.write_bytes(
+        material.root_certificate.public_bytes(serialization.Encoding.PEM)
+    )
+    linked = tmp_path / "linked-ca.crt"
+    try:
+        linked.symlink_to(target)
+    except OSError:
+        pytest.skip("test account cannot create symlinks")
+
+    with pytest.raises(ValidationError, match="opened safely"):
+        _build_client_context(configuration(tmp_path, ca_certificate=linked))
 
 
 def test_issuer_socket_enforces_one_monotonic_deadline(

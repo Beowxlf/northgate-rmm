@@ -22,7 +22,7 @@ from northgate_rmm.enrollment import (
     IssuedEndpointCredential,
 )
 from northgate_rmm.errors import ServiceUnavailableError, ValidationError
-from northgate_rmm.secure_files import private_key_reference
+from northgate_rmm.secure_files import private_key_reference, regular_file_reference
 
 ISSUER_PATH = "/v1/endpoint-certificates"
 MAX_ISSUER_RESPONSE_BYTES = 65_536
@@ -254,13 +254,27 @@ def _build_client_context(configuration: IssuerClientConfiguration) -> ssl.SSLCo
     context.verify_mode = ssl.CERT_REQUIRED
     context.check_hostname = True
     context.options |= ssl.OP_NO_TICKET
-    context.load_verify_locations(cafile=str(configuration.ca_certificate))
-    with private_key_reference(
-        configuration.client_private_key,
-        label="issuer client private key",
-    ) as key_path:
+    with regular_file_reference(
+        configuration.ca_certificate,
+        label="issuer CA certificate",
+        maximum_bytes=65_536,
+        private=False,
+    ) as ca_path:
+        context.load_verify_locations(cafile=str(ca_path))
+    with (
+        regular_file_reference(
+            configuration.client_certificate,
+            label="issuer client certificate",
+            maximum_bytes=65_536,
+            private=False,
+        ) as certificate_path,
+        private_key_reference(
+            configuration.client_private_key,
+            label="issuer client private key",
+        ) as key_path,
+    ):
         context.load_cert_chain(
-            certfile=str(configuration.client_certificate),
+            certfile=str(certificate_path),
             keyfile=str(key_path),
         )
     return context

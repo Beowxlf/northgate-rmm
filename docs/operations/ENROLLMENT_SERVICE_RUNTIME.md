@@ -55,6 +55,10 @@ The reference unit uses a distinct `northgate-rmm-enrollment` identity and
 separate systemd credentials for the database DSN and issuer workload
 certificate and key. The inbound listener key is a different server identity.
 The endpoint-issuer root and issuer-service CA are public trust material.
+Every inbound and issuer TLS certificate, trust anchor, and private key is
+opened as a bounded no-follow regular file and held by inode while OpenSSL loads
+it; private keys additionally require root/service ownership and no group or
+world permissions.
 
 Approved network policy must permit only:
 

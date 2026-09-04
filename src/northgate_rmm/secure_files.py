@@ -14,8 +14,14 @@ MAX_PRIVATE_KEY_BYTES = 65_536
 
 
 @contextmanager
-def private_key_reference(path: Path, *, label: str) -> Iterator[Path]:
-    """Hold a validated key inode open while OpenSSL loads it on Debian."""
+def regular_file_reference(
+    path: Path,
+    *,
+    label: str,
+    maximum_bytes: int,
+    private: bool,
+) -> Iterator[Path]:
+    """Hold one no-follow regular-file inode while a library loads it."""
 
     if path.is_symlink():
         raise ValidationError(f"{label} could not be opened safely")
@@ -29,12 +35,9 @@ def private_key_reference(path: Path, *, label: str) -> Iterator[Path]:
     try:
         descriptor = os.open(path, flags)
         metadata = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_size > MAX_PRIVATE_KEY_BYTES
-        ):
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > maximum_bytes:
             raise ValidationError(f"{label} is not a bounded regular file")
-        if os.name == "posix":
+        if private and os.name == "posix":
             get_effective_user = getattr(os, "geteuid", None)
             effective_user = get_effective_user() if get_effective_user else None
             if (
@@ -43,9 +46,8 @@ def private_key_reference(path: Path, *, label: str) -> Iterator[Path]:
                 or metadata.st_mode & 0o077
             ):
                 raise ValidationError(f"{label} permissions are too broad")
-            yield Path(f"/proc/self/fd/{descriptor}")
-        else:
-            yield path
+        reference = Path(f"/proc/self/fd/{descriptor}") if os.name == "posix" else path
+        yield reference
     except ValidationError:
         raise
     except OSError as error:
@@ -53,3 +55,16 @@ def private_key_reference(path: Path, *, label: str) -> Iterator[Path]:
     finally:
         if descriptor is not None:
             os.close(descriptor)
+
+
+@contextmanager
+def private_key_reference(path: Path, *, label: str) -> Iterator[Path]:
+    """Hold a permission-restricted private-key inode for OpenSSL."""
+
+    with regular_file_reference(
+        path,
+        label=label,
+        maximum_bytes=MAX_PRIVATE_KEY_BYTES,
+        private=True,
+    ) as reference:
+        yield reference

@@ -105,6 +105,26 @@ def test_enrollment_listener_rejects_symlinked_server_key(tmp_path: Path) -> Non
         )
 
 
+def test_enrollment_listener_rejects_symlinked_server_certificate(
+    tmp_path: Path,
+) -> None:
+    _root, certificate_path, key_path = _write_server_identity(tmp_path)
+    linked_certificate = tmp_path / "linked-server.pem"
+    try:
+        linked_certificate.symlink_to(certificate_path)
+    except OSError:
+        pytest.skip("test account cannot create symlinks")
+
+    with pytest.raises(ValidationError, match="opened safely"):
+        _build_server_context(
+            configuration(
+                tmp_path,
+                server_certificate=linked_certificate,
+                server_private_key=key_path,
+            )
+        )
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX permission contract")
 def test_enrollment_listener_rejects_broad_server_key_permissions(
     tmp_path: Path,

@@ -333,10 +333,12 @@ class PostgresControlPlane:
                         failure_reason = "token digest is unknown"
                     else:
                         grant = self._enrollment_grant_from_row(row)
-                        if now >= grant.expires_at:
-                            failure_reason = "grant is expired"
-                        elif grant.consumed_at is not None:
+                        if grant.consumed_at is not None:
                             failure_reason = "grant is already consumed"
+                        elif now < grant.created_at:
+                            failure_reason = "server time predates grant creation"
+                        elif now >= grant.expires_at:
+                            failure_reason = "grant is expired"
 
                 subject = (
                     f"enrollment_grant:{grant.grant_id}"

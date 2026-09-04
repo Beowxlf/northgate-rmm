@@ -320,6 +320,13 @@ def test_enrollment_grant_rejections_are_generic_and_audited(
         now=NOW,
         actor_id="release-operator",
     )
+    future, future_token = plane.create_enrollment_grant(
+        display_name="future-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW + timedelta(minutes=1),
+        actor_id="release-operator",
+    )
     plane.consume_enrollment_grant(
         token=used_token,
         public_key_fingerprint="sha256:" + "c" * 64,
@@ -332,6 +339,7 @@ def test_enrollment_grant_rejections_are_generic_and_audited(
         ("ngr1_" + "x" * 43, "sha256:" + "d" * 64),
         ("malformed", "sha256:" + "d" * 64),
         (invalid_key_token, "malformed-fingerprint"),
+        (future_token, "sha256:" + "d" * 64),
     )
     for token, fingerprint in attempts:
         with pytest.raises(
@@ -347,6 +355,7 @@ def test_enrollment_grant_rejections_are_generic_and_audited(
     assert plane.get_enrollment_grant(expired.grant_id).consumed_at is None
     assert plane.get_enrollment_grant(used.grant_id).consumed_at is not None
     assert plane.get_enrollment_grant(invalid_key.grant_id).consumed_at is None
+    assert plane.get_enrollment_grant(future.grant_id).consumed_at is None
     rejected = [
         event
         for event in plane.audit_events
@@ -358,7 +367,16 @@ def test_enrollment_grant_rejections_are_generic_and_audited(
         "token digest is unknown",
         "token format is invalid",
         "public key fingerprint format is invalid",
+        "server time predates grant creation",
     }
+
+    with pytest.raises(AuthorizationError, match="invalid or unavailable"):
+        plane.consume_enrollment_grant(
+            token=used_token,
+            public_key_fingerprint="sha256:" + "d" * 64,
+            now=NOW + timedelta(minutes=20),
+        )
+    assert plane.audit_events[-1].reason == "grant is already consumed"
 
 
 def test_concurrent_enrollment_grant_consumption_has_one_winner(

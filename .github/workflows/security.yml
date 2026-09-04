@@ -57,16 +57,24 @@ jobs:
       - name: Audit locked npm dependencies
         run: |
           npm ci --ignore-scripts
+          node --test scripts/classify-npm-audit-result.test.mjs
           audit_status=1
           for attempt in 1 2 3; do
+            audit_result="$RUNNER_TEMP/npm-audit-$attempt.json"
             if npm audit \
+              --json \
               --audit-level=high \
               --fetch-retries=0 \
-              --fetch-timeout=60000; then
+              --fetch-timeout=60000 > "$audit_result"; then
+              cat "$audit_result"
               audit_status=0
               break
             else
               audit_status=$?
+              cat "$audit_result"
+              if ! node scripts/classify-npm-audit-result.mjs "$audit_result"; then
+                exit "$audit_status"
+              fi
             fi
             if [ "$attempt" -lt 3 ]; then
               delay=$((attempt * 15))

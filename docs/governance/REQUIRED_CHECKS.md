@@ -15,8 +15,10 @@ CI, and external GitHub Actions are pinned to full commit SHAs.
 | Dependency review | npm audit and OSV-Scanner | Known vulnerable tooling dependencies        | Critical/high exploitable finding blocks |
 
 The npm advisory query makes at most three one-minute attempts with short,
-bounded backoff. Exhausted network attempts fail the check; they never convert
-an unavailable advisory service or a vulnerability result into a pass.
+bounded backoff. Only an explicitly classified registry transport failure is
+retried. A vulnerability report, malformed or unknown failure, and exhausted
+network attempts fail the check; a later response cannot erase a confirmed
+finding.
 
 ## Python control-plane checks
 

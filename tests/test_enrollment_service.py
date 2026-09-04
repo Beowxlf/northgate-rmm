@@ -10,6 +10,7 @@ import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 
 from northgate_rmm.enrollment_service import (
+    _validate_distinct_tls_identities,
     load_endpoint_issuer_trust_root,
     load_enrollment_service_configuration,
     main,
@@ -52,6 +53,24 @@ def test_enrollment_service_configuration_composes_separate_boundaries(
         != configuration.issuer.client_private_key
     )
     assert configuration.database_operation_timeout_seconds == 8.0
+
+
+def test_enrollment_service_rejects_equivalent_tls_identity_copies(
+    tmp_path: Path,
+) -> None:
+    material = issue_test_endpoint_credential(
+        UUID("11111111-1111-4111-8111-111111111111"),
+        now=datetime.now(UTC),
+    )
+    encoded = material.endpoint_certificate.public_bytes(serialization.Encoding.PEM)
+    (tmp_path / "server.crt").write_bytes(encoded)
+    (tmp_path / "issuer-client.crt").write_bytes(encoded)
+    config_path = tmp_path / "enrollment.json"
+    config_path.write_text(json.dumps(_configuration(tmp_path)), encoding="utf-8")
+    configuration = load_enrollment_service_configuration(config_path)
+
+    with pytest.raises(ValidationError, match="identities must be distinct"):
+        _validate_distinct_tls_identities(configuration)
 
 
 @pytest.mark.parametrize("change", ["extra", "missing", "zero_port"])
@@ -184,6 +203,11 @@ def test_enrollment_service_verifies_dependencies_and_closes(
 
     monkeypatch.setattr(service_module, "_require_unprivileged_process", lambda: None)
     monkeypatch.setattr(
+        service_module,
+        "_validate_distinct_tls_identities",
+        lambda _configuration: events.append("identity_separation"),
+    )
+    monkeypatch.setattr(
         service_module, "load_database_dsn", lambda _path: "validated-dsn"
     )
     monkeypatch.setattr(service_module, "PostgresControlPlane", FakeStore)
@@ -204,6 +228,7 @@ def test_enrollment_service_verifies_dependencies_and_closes(
     asyncio.run(exercise())
 
     assert events == [
+        "identity_separation",
         "schema",
         "issuer",
         "operation",

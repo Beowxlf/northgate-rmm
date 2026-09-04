@@ -39,6 +39,10 @@ MAX_ENROLLMENT_BODY_BYTES = 16_384
 ENROLLMENT_PATH = "/v1/enrollment"
 
 
+def _current_utc_time() -> datetime:
+    return datetime.now(UTC)
+
+
 @dataclass(frozen=True, slots=True)
 class EndpointIssuanceRequest:
     """Public facts sent to an issuer using the identity ID as idempotency key."""
@@ -214,12 +218,15 @@ class EnrollmentService:
             ),
             now=server_time,
         )
+        verification_time = _current_utc_time()
+        require_aware(verification_time, "verification time")
+        verification_time = verification_time.astimezone(UTC)
         try:
             leaf, intermediates = self._validate_issued_credential(
                 issued,
                 endpoint_id=endpoint.endpoint_id,
                 public_key_fingerprint=fingerprint,
-                now=server_time,
+                now=verification_time,
             )
         except ValidationError as error:
             raise ServiceUnavailableError(
@@ -232,7 +239,7 @@ class EnrollmentService:
                 certificate_issuer=leaf.issuer.rfc4514_string(),
                 certificate_not_before=leaf.not_valid_before_utc,
                 certificate_not_after=leaf.not_valid_after_utc,
-                now=server_time,
+                now=verification_time,
             )
         except (PsycopgError, TimeoutError, ValidationError) as error:
             raise ServiceUnavailableError("enrollment store is unavailable") from error

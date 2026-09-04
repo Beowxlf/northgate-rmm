@@ -33,6 +33,14 @@ from northgate_rmm.listener import validate_endpoint_certificate
 NOW = datetime(2026, 9, 3, 20, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def _fixed_enrollment_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "northgate_rmm.enrollment._current_utc_time",
+        lambda: NOW,
+    )
+
+
 @dataclass
 class RecordingEnrollmentStore:
     endpoint_id: UUID = field(default_factory=uuid4)
@@ -346,6 +354,56 @@ def test_enrollment_leaves_pending_state_when_issuer_binding_is_wrong() -> None:
         )
     assert store.fingerprint is not None
     assert store.activated is None
+
+
+def test_enrollment_rejects_certificate_expired_during_issuer_delay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, root_key = issue_root()
+    store = RecordingEnrollmentStore()
+    service = EnrollmentService(
+        store,
+        FakeIssuer(root, root_key),
+        issuer_trust_roots=(root,),
+    )
+    monkeypatch.setattr(
+        "northgate_rmm.enrollment._current_utc_time",
+        lambda: NOW + timedelta(hours=13),
+    )
+
+    with pytest.raises(ServiceUnavailableError, match="invalid endpoint credential"):
+        service.enroll(
+            token=grant_value(),
+            csr_der=csr_for(ec.generate_private_key(ec.SECP256R1())),
+            now=NOW,
+        )
+    assert store.activated is None
+
+
+def test_enrollment_records_post_issuer_verification_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, root_key = issue_root()
+    store = RecordingEnrollmentStore()
+    service = EnrollmentService(
+        store,
+        FakeIssuer(root, root_key),
+        issuer_trust_roots=(root,),
+    )
+    verified_at = NOW + timedelta(minutes=5)
+    monkeypatch.setattr(
+        "northgate_rmm.enrollment._current_utc_time",
+        lambda: verified_at,
+    )
+
+    service.enroll(
+        token=grant_value(),
+        csr_der=csr_for(ec.generate_private_key(ec.SECP256R1())),
+        now=NOW,
+    )
+
+    assert store.activated is not None
+    assert store.activated["now"] == verified_at
 
 
 def test_enrollment_requires_a_pinned_issuer_root() -> None:

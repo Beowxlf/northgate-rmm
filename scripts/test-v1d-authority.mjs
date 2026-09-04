@@ -400,6 +400,7 @@ function expectFailure(
     prerequisiteIntroductionTime = "2026-09-04T12:56:00Z",
     bindingsIntroductionTime = "2026-09-04T13:02:30Z",
     receiptIntroductionTime = "2026-09-04T13:01:30Z",
+    signatureIntroductionTime = "2026-09-04T13:01:30Z",
   } = {},
 ) {
   const config = clone();
@@ -474,6 +475,7 @@ function expectFailure(
       if (path === factoryTrustPath) return trustIntroductionTime;
       if (path === bindingPath) return bindingsIntroductionTime;
       if (path === factoryReceiptPath) return receiptIntroductionTime;
+      if (path === factorySignaturePath) return signatureIntroductionTime;
       return path in prerequisites ? prerequisiteIntroductionTime : null;
     },
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
@@ -1194,6 +1196,7 @@ assert.deepEqual(
       if (path === factoryTrustPath) return "2026-09-04T12:55:00Z";
       if (path === bindingPath) return "2026-09-04T13:02:30Z";
       if (path === factoryReceiptPath) return "2026-09-04T13:01:30Z";
+      if (path === factorySignaturePath) return "2026-09-04T13:01:30Z";
       return path in exactPrerequisites ? "2026-09-04T12:56:00Z" : null;
     },
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>

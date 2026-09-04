@@ -53,7 +53,8 @@ signer is rejected. Plan issuance and approval must both fall within the pinned
 certificate's validity interval. The protected-main introduction commit time must also
 precede the authenticated plan issue time. The receipt introduction commit must
 follow approval and remain within the signer certificate validity interval,
-preventing a newly signed backdated receipt after key retirement. Strict UTC
+and the signature introduction must follow the receipt and precede certificate
+expiry, preventing a newly signed backdated receipt after key retirement. Strict UTC
 calendar validation rejects normalized impossible
 dates and future-effective records; the authority is limited to 24 hours and
 its prior approved-bindings manifest to seven days. The manifest uses canonical

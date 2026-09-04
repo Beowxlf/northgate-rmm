@@ -56,7 +56,8 @@ separately owner-pinned Factory approval certificate. The trust record must
 be introduced in an earlier protected-main change and predate plan issuance.
 The authenticated plan issue and approval times must fall within the pinned
 certificate's validity interval. The receipt's protected-main introduction
-commit time must follow approval and precede certificate expiry.
+commit time must follow approval, and the detached signature's introduction
+must follow the receipt; both must precede certificate expiry.
 Its protected-main introduction commit time must also predate the authenticated
 plan issue time. The trust record, receipt, and signature each use an immutable,
 single-use protected-main path.

@@ -1049,6 +1049,7 @@ function validateFactoryPlanReceipt(fields, auditedCommit, options) {
         signatureText,
         trust.certificateSha256,
         pathIntroductionTime(receiptPath),
+        pathIntroductionTime(signaturePath),
       )
     )
       errors.push(

@@ -69,7 +69,9 @@ The receipt's authenticated plan issue and approval times must both fall within
 the pinned signer certificate's validity interval. Its protected-main
 introduction commit time must be no earlier than approval and no later than the
 certificate expiry, preventing a newly created backdated receipt from reviving
-a retired signer.
+a retired signer. The detached signature's own protected-main introduction must
+be no earlier than the receipt introduction and no later than certificate
+expiry; the receipt timestamp cannot hide a signature added after key retirement.
 The trust record must be introduced by an earlier protected-main change and
 both its approval time and protected-main introduction commit time must predate
 authenticated plan issuance. Like the receipt and signature, it has immutable

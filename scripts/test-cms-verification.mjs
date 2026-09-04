@@ -23,6 +23,9 @@ try {
   const introducedAt = new Date(Date.now() + 3000)
     .toISOString()
     .replace(".000Z", "Z");
+  const signatureIntroducedAt = new Date(Date.now() + 4000)
+    .toISOString()
+    .replace(".000Z", "Z");
   const content = `${JSON.stringify({ planId: "ngp-test", issuedAt, approvedAt })}\n`;
   fs.writeFileSync(contentPath, content, "utf8");
   assert.equal(
@@ -72,7 +75,13 @@ try {
     .toLowerCase()}`;
   const signature = fs.readFileSync(signaturePath, "utf8");
   assert.equal(
-    verifyCmsDetached(content, signature, fingerprint, introducedAt),
+    verifyCmsDetached(
+      content,
+      signature,
+      fingerprint,
+      introducedAt,
+      signatureIntroducedAt,
+    ),
     true,
   );
   assert.equal(
@@ -81,6 +90,7 @@ try {
       signature,
       fingerprint,
       introducedAt,
+      signatureIntroducedAt,
     ),
     false,
   );
@@ -90,6 +100,7 @@ try {
       signature,
       `sha256:${"0".repeat(64)}`,
       introducedAt,
+      signatureIntroducedAt,
     ),
     false,
   );
@@ -150,6 +161,7 @@ try {
       fs.readFileSync(weakSignaturePath, "utf8"),
       weakFingerprint,
       introducedAt,
+      signatureIntroducedAt,
     ),
     false,
   );
@@ -193,11 +205,18 @@ try {
       fs.readFileSync(outsideSignaturePath, "utf8"),
       fingerprint,
       "2100-01-01T00:02:00Z",
+      "2100-01-01T00:03:00Z",
     ),
     false,
   );
   assert.equal(
-    verifyCmsDetached(content, signature, fingerprint, "2100-01-01T00:00:00Z"),
+    verifyCmsDetached(
+      content,
+      signature,
+      fingerprint,
+      introducedAt,
+      "2100-01-01T00:00:00Z",
+    ),
     false,
   );
   console.log("Factory CMS verification tests: 6 passed.");

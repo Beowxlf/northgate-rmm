@@ -17,6 +17,8 @@ const closeoutPath =
   "docs/governance/authorizations/closeouts/V1D-SV-PLAN-CLOSEOUT.json";
 const cleanupEvidencePath =
   "docs/governance/authorizations/closeouts/evidence/V1D-SV-PLAN-CLEANUP.json";
+const g2AuthorizationPath =
+  "docs/governance/authorizations/G2-LINUX-CANARY-EXACT.md";
 const fixedNow = new Date("2026-09-04T14:00:00Z");
 const digest = `sha256:${"a".repeat(64)}`;
 const v1cPath = "docs/governance/authorizations/prerequisites/V1C-PASS.json";
@@ -186,20 +188,43 @@ function renderCloseout(
   });
 }
 
+function renderProductGateAuthorization(gateId = "G2", overrides = {}) {
+  return renderRecord({
+    Gate: gateId,
+    Status: "Authorized",
+    Approver: "Beowxlf",
+    "Audited commit": validFields["Audited commit"],
+    "Issued at": "2026-09-04T13:40:00Z",
+    "Expires at": "2026-09-04T14:30:00Z",
+    "Operation binding": digest,
+    "Target set binding": digest,
+    "Artifact set binding": digest,
+    "Identity set binding": digest,
+    "Network policy binding": digest,
+    "Rollback binding": digest,
+    "Evidence boundary binding": digest,
+    ...overrides,
+  });
+}
+
 function closeoutOptions(
   protectedMainGates,
   {
     closeoutText = renderCloseout(),
     evidenceText = renderCleanupEvidence(),
     artifactsOnProtectedMain = false,
+    productGateAuthorizationText = null,
   } = {},
 ) {
   return {
     isRegularFile: (path) =>
-      path === closeoutPath || path === cleanupEvidencePath,
+      path === closeoutPath ||
+      path === cleanupEvidencePath ||
+      (productGateAuthorizationText !== null && path === g2AuthorizationPath),
     readText: (path) => {
       if (path === closeoutPath) return closeoutText;
       if (path === cleanupEvidencePath) return evidenceText;
+      if (path === g2AuthorizationPath) return productGateAuthorizationText;
       return null;
     },
     readAtProtectedMain: (path) => {
@@ -223,6 +248,8 @@ function closeoutOptions(
         ? "2026-09-04T13:35:00Z"
         : null,
     authorityOpenIntroductionTime: () => "2026-09-04T13:10:00Z",
+    isCommit: (commit) => commit === validFields["Audited commit"],
+    isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
     now: fixedNow,
   };
 }
@@ -729,6 +756,13 @@ expectFailure(
       "docs/governance/authorizations/G1-PRODUCT-CODING.md";
   },
   "requires an immutable cleanup closeout receipt",
+);
+expectFailure(
+  "G2 cannot open without its own authorization",
+  (config) => {
+    config.gates.find((gate) => gate.id === "G2").status = "open";
+  },
+  "Open G2 lacks its exact gate-specific authorization file",
 );
 expectFailure(
   "prerequisite stripped",
@@ -1315,21 +1349,29 @@ passed += 1;
 
 const sameChangeG2 = structuredClone(closedWithCloseout);
 sameChangeG2.gates.find((gate) => gate.id === "G2").status = "open";
+sameChangeG2.gates.find((gate) => gate.id === "G2").authorization =
+  g2AuthorizationPath;
 assert(
-  validateV1dAuthority(sameChangeG2, closeoutOptions(priorOpen)).some((item) =>
-    item.includes("must be accepted once on protected main"),
-  ),
+  validateV1dAuthority(
+    sameChangeG2,
+    closeoutOptions(priorOpen, {
+      productGateAuthorizationText: renderProductGateAuthorization(),
+    }),
+  ).some((item) => item.includes("must be accepted once on protected main")),
   "same-change G2 opening did not require a prior protected-main closeout",
 );
 passed += 1;
 
 const g2AfterCloseout = structuredClone(closedWithCloseout);
 g2AfterCloseout.gates.find((gate) => gate.id === "G2").status = "open";
+g2AfterCloseout.gates.find((gate) => gate.id === "G2").authorization =
+  g2AuthorizationPath;
 assert.deepEqual(
   validateV1dAuthority(
     g2AfterCloseout,
     closeoutOptions(closedWithCloseout, {
       artifactsOnProtectedMain: true,
+      productGateAuthorizationText: renderProductGateAuthorization(),
     }),
   ),
   [],

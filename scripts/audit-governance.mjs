@@ -291,15 +291,12 @@ for (const artifact of gates.requiredPhase0Artifacts) {
 for (const gate of gates.gates) {
   if (!["open", "closed"].includes(gate.status))
     error(`Invalid status for ${gate.id}.`);
-  if (
-    gate.status === "open" &&
-    gate.authorization &&
-    !exists(gate.authorization)
-  ) {
+  if (gate.status === "open" && !gate.authorization)
+    error(`Open gate ${gate.id} lacks an authorization record.`);
+  else if (gate.status === "open" && !isRegularFile(gate.authorization))
     error(
-      `Open gate ${gate.id} lacks authorization record ${gate.authorization}.`,
+      `Open gate ${gate.id} lacks authorization file ${gate.authorization}.`,
     );
-  }
 }
 
 if (!gates.productCodeAuthorized) {

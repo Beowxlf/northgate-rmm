@@ -19,6 +19,30 @@ const REQUIRED_PROHIBITIONS = [
 ];
 
 const REQUIRED_CLOSED_GATES = ["G2", "G3", "G4", "G5", "G6", "G7", "G8"];
+const PRODUCT_GATE_AUTHORIZATION_FIELDS = [
+  "Gate",
+  "Status",
+  "Approver",
+  "Audited commit",
+  "Issued at",
+  "Expires at",
+  "Operation binding",
+  "Target set binding",
+  "Artifact set binding",
+  "Identity set binding",
+  "Network policy binding",
+  "Rollback binding",
+  "Evidence boundary binding",
+];
+const PRODUCT_GATE_DIGEST_FIELDS = [
+  "Operation binding",
+  "Target set binding",
+  "Artifact set binding",
+  "Identity set binding",
+  "Network policy binding",
+  "Rollback binding",
+  "Evidence boundary binding",
+];
 
 const REQUIRED_RECORD_FIELDS = [
   "Authority",
@@ -555,6 +579,69 @@ function validateReopen(
     errors.push(
       "Reopened V1D-SV requires a new authorization and Factory plan issued after prior closeout.",
     );
+  return errors;
+}
+
+function validateProductGateAuthorization(
+  gate,
+  { isRegularFile, readText, isCommit, isProtectedMainCommit, now },
+) {
+  const errors = [];
+  const authorizationPath = gate.authorization;
+  if (
+    typeof authorizationPath !== "string" ||
+    !new RegExp(
+      `^docs/governance/authorizations/${gate.id}-[A-Za-z0-9][A-Za-z0-9._-]*\\.md$`,
+    ).test(authorizationPath) ||
+    !isRegularFile(authorizationPath)
+  ) {
+    return [
+      `Open ${gate.id} lacks its exact gate-specific authorization file.`,
+    ];
+  }
+  const text = readText(authorizationPath);
+  if (typeof text !== "string" || text.trim() === "")
+    return [`Open ${gate.id} has an unreadable authorization record.`];
+  const { fields, duplicates } = parseRecord(text);
+  for (const field of duplicates) {
+    if (PRODUCT_GATE_AUTHORIZATION_FIELDS.includes(field))
+      errors.push(`${gate.id} authorization record duplicates ${field}.`);
+  }
+  for (const field of PRODUCT_GATE_AUTHORIZATION_FIELDS) {
+    const value = fields.get(field);
+    if (!value || /\b(?:TBD|TODO|CHANGEME|PLACEHOLDER)\b/i.test(value))
+      errors.push(`${gate.id} authorization record lacks exact ${field}.`);
+  }
+  if (fields.get("Gate") !== gate.id)
+    errors.push(`${gate.id} authorization record names the wrong gate.`);
+  if (fields.get("Status") !== "Authorized")
+    errors.push(`${gate.id} authorization record is not Authorized.`);
+  if (fields.get("Approver") !== "Beowxlf")
+    errors.push(`${gate.id} authorization record lacks owner approval.`);
+  for (const field of PRODUCT_GATE_DIGEST_FIELDS) {
+    if (!/^sha256:[a-f0-9]{64}$/.test(fields.get(field) ?? ""))
+      errors.push(`${gate.id} authorization record has an invalid ${field}.`);
+  }
+  const auditedCommit = fields.get("Audited commit") ?? "";
+  if (!/^[a-f0-9]{40}$/.test(auditedCommit) || !isCommit(auditedCommit))
+    errors.push(
+      `${gate.id} authorization record has an invalid audited commit.`,
+    );
+  else if (!isProtectedMainCommit(auditedCommit))
+    errors.push(
+      `${gate.id} authorization audited commit is not on protected main.`,
+    );
+  const issuedAt = validDate(fields.get("Issued at"));
+  const expiresAt = validDate(fields.get("Expires at"));
+  if (
+    issuedAt === null ||
+    expiresAt === null ||
+    expiresAt <= issuedAt ||
+    expiresAt - issuedAt > MAX_AUTHORITY_LIFETIME_MS ||
+    issuedAt > now.getTime() ||
+    expiresAt <= now.getTime()
+  )
+    errors.push(`${gate.id} authorization has an invalid active time window.`);
   return errors;
 }
 
@@ -1716,6 +1803,16 @@ export function validateV1dAuthority(
     const gate = gates.gates?.find((item) => item.id === gateId);
     if (authority.status === "open" && gate?.status !== "closed")
       errors.push(`V1D-SV and ${gateId} cannot be open at the same time.`);
+    if (gate?.status === "open")
+      errors.push(
+        ...validateProductGateAuthorization(gate, {
+          isRegularFile,
+          readText,
+          isCommit,
+          isProtectedMainCommit,
+          now,
+        }),
+      );
   }
 
   return errors;

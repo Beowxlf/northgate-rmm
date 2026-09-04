@@ -11,7 +11,9 @@ if (!gate) errors.push(`Unknown gate: ${requestedGate}`);
 else {
   if (gate.status !== "open")
     errors.push(`${requestedGate} is ${gate.status}.`);
-  if (gate.authorization && !fs.existsSync(gate.authorization))
+  if (!gate.authorization)
+    errors.push(`${requestedGate} lacks an authorization record.`);
+  else if (!fs.existsSync(gate.authorization))
     errors.push(`Missing authorization: ${gate.authorization}`);
   if (requestedGate === "G1" && !gates.productCodeAuthorized)
     errors.push("productCodeAuthorized is false.");

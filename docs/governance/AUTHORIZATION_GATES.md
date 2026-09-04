@@ -12,6 +12,16 @@ The machine-readable source is `governance/gates.json`. A gate is open only when
 
 A passing CI run is evidence, not authorization by itself.
 
+Every open product gate from G2 through G8 must name its own regular
+authorization file whose name begins with that exact gate ID. The record must
+be active, owner-approved, limited to 24 hours, anchored to an existing
+protected-main commit, and bind the exact operation, targets, artifacts,
+identities, network policy, rollback, and evidence boundary. Missing,
+cross-gate, duplicated, malformed, placeholder, expired, future, or unprotected
+records fail closed. Use the
+[product-gate authorization template](templates/PRODUCT-GATE-AUTHORIZATION-TEMPLATE.md)
+in addition to the gate-specific requirements below.
+
 Phase-specific source development may be authorized by a separate committed
 development record that states an exact non-deployment boundary. Such a record
 does not open the corresponding installation or capability gate. In particular,

@@ -369,6 +369,12 @@ def test_enrollment_grant_rejections_are_generic_and_audited(
         "public key fingerprint format is invalid",
         "server time predates grant creation",
     }
+    invalid_key_event = next(
+        event
+        for event in rejected
+        if event.reason == "public key fingerprint format is invalid"
+    )
+    assert invalid_key_event.subject == f"enrollment_grant:{invalid_key.grant_id}"
 
     with pytest.raises(AuthorizationError, match="invalid or unavailable"):
         plane.consume_enrollment_grant(

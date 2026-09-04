@@ -312,10 +312,6 @@ class PostgresControlPlane:
             with self._connect() as connection, connection.cursor() as cursor:
                 if token_sha256 is None:
                     failure_reason = "token format is invalid"
-                elif (
-                    re.fullmatch(r"sha256:[0-9a-f]{64}", public_key_fingerprint) is None
-                ):
-                    failure_reason = "public key fingerprint format is invalid"
                 else:
                     cursor.execute(
                         """
@@ -339,6 +335,11 @@ class PostgresControlPlane:
                             failure_reason = "server time predates grant creation"
                         elif now >= grant.expires_at:
                             failure_reason = "grant is expired"
+                        elif (
+                            re.fullmatch(r"sha256:[0-9a-f]{64}", public_key_fingerprint)
+                            is None
+                        ):
+                            failure_reason = "public key fingerprint format is invalid"
 
                 subject = (
                     f"enrollment_grant:{grant.grant_id}"

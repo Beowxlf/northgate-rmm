@@ -137,6 +137,47 @@ function protectedMainPathVersionCount(relativePath) {
   return history.stdout.trim().split(/\r?\n/).filter(Boolean).length;
 }
 
+function authorityOpenIntroductionTime() {
+  const history = spawnSync(
+    "git",
+    [
+      "log",
+      "--first-parent",
+      "--format=%H",
+      "origin/main",
+      "--",
+      "governance/gates.json",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  let transitionCommit = null;
+  let foundOpen = false;
+  for (const commit of history.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+    const snapshot = readAtCommit(commit, "governance/gates.json");
+    if (typeof snapshot !== "string") continue;
+    let status = null;
+    try {
+      status = JSON.parse(snapshot).boundedOperationalAuthorizations?.find(
+        (item) => item.id === "V1D-SV",
+      )?.status;
+    } catch {
+      return null;
+    }
+    if (status === "open") {
+      foundOpen = true;
+      transitionCommit = commit;
+    } else if (foundOpen) break;
+  }
+  if (!transitionCommit) return null;
+  const timestamp = spawnSync(
+    "git",
+    ["show", "-s", "--format=%cI", transitionCommit],
+    { cwd: root, encoding: "utf8" },
+  );
+  return timestamp.status === 0 ? timestamp.stdout.trim() : null;
+}
+
 function walk(directory) {
   if (!exists(directory)) return [];
   return fs
@@ -236,6 +277,7 @@ for (const authorityError of validateV1dAuthority(gates, {
   isCommit,
   isProtectedMainCommit,
   protectedMainPathVersionCount,
+  authorityOpenIntroductionTime,
 }))
   error(authorityError);
 

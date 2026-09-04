@@ -89,7 +89,9 @@ Pre-G2 V1D validation boundary:
 - `V1D-SV` must close in a separate protected-main change with immutable
   cleanup evidence proving service stop, service/database/operator/synthetic
   identity revocation, route blocking, temporary-access removal, secret
-  destruction, and rollback before G2 or any later product gate may open.
+  destruction, and rollback before G2 or any later product gate may open; the
+  evidence must postdate the actual protected-main opening, and the consumed
+  authorization and Factory plan cannot be replayed.
 
 Exit evidence:
 

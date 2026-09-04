@@ -166,6 +166,7 @@ function renderCloseout(
     approver: "Beowxlf",
     authorizationRecord: exactPath,
     authorizationRecordDigest: hash(authorizationText),
+    authorityOpenedAt: "2026-09-04T13:10:00Z",
     factoryPlanId: validFields["Factory plan ID"],
     serverBinding: validFields["Server binding"],
     signedReleaseDigest: validFields["Signed release digest"],
@@ -221,6 +222,7 @@ function closeoutOptions(
       (path === closeoutPath || path === cleanupEvidencePath)
         ? "2026-09-04T13:35:00Z"
         : null,
+    authorityOpenIntroductionTime: () => "2026-09-04T13:10:00Z",
     now: fixedNow,
   };
 }
@@ -506,6 +508,8 @@ function expectFailure(
     bindingsIntroductionTime = "2026-09-04T13:02:30Z",
     receiptIntroductionTime = "2026-09-04T13:01:30Z",
     signatureIntroductionTime = "2026-09-04T13:01:30Z",
+    protectedMainGates = null,
+    priorCloseoutText = null,
   } = {},
 ) {
   const config = clone();
@@ -539,6 +543,7 @@ function expectFailure(
         path === factoryReceiptPath ||
         path === factorySignaturePath ||
         path === factoryTrustPath ||
+        (priorCloseoutText !== null && path === closeoutPath) ||
         path in prerequisites),
     readText: (path) => {
       if (path === exactPath) return recordText ?? renderRecord(fields);
@@ -549,6 +554,7 @@ function expectFailure(
         return currentFactorySignatureText ?? priorFactorySignature;
       if (path === factoryTrustPath)
         return currentFactoryTrustText ?? priorFactoryTrust;
+      if (path === closeoutPath) return priorCloseoutText;
       if (path in prerequisites) return prerequisites[path];
       return null;
     },
@@ -563,12 +569,17 @@ function expectFailure(
     readAtProtectedMain: (path) => {
       if (Object.hasOwn(protectedMainTexts, path))
         return protectedMainTexts[path];
+      if (path === "governance/gates.json" && protectedMainGates)
+        return canonical(protectedMainGates);
+      if (path === closeoutPath) return priorCloseoutText;
       if (path === bindingPath) return priorApproval;
       if (path === factoryReceiptPath) return priorFactoryReceipt;
       if (path === factorySignaturePath) return priorFactorySignature;
       if (path === factoryTrustPath) return priorFactoryTrust;
       return prerequisites[path] ?? null;
     },
+    protectedMainPathVersionCount: (path) =>
+      path === closeoutPath && priorCloseoutText !== null ? 1 : null,
     isPathImmutableOnProtectedMain: (commit, path) =>
       commit === validFields["Audited commit"] &&
       !nonImmutablePaths.includes(path),
@@ -1264,6 +1275,41 @@ authority(closedWithCloseout).closeout = closeoutPath;
 assert.deepEqual(
   validateV1dAuthority(closedWithCloseout, closeoutOptions(priorOpen)),
   [],
+);
+passed += 1;
+
+expectFailure(
+  "closed authorization cannot be replayed",
+  open,
+  "cannot replay a consumed authorization record",
+  {
+    protectedMainGates: closedWithCloseout,
+    priorCloseoutText: renderCloseout(),
+  },
+);
+
+assert(
+  validateV1dAuthority(
+    closedWithCloseout,
+    closeoutOptions(priorOpen, { artifactsOnProtectedMain: true }),
+  ).some((item) =>
+    item.includes("must be created after the protected-main authority opening"),
+  ),
+  "cleanup artifacts staged before authority opening were accepted",
+);
+passed += 1;
+
+const unanchoredCloseout = renderCloseout(
+  renderRecord(),
+  renderCleanupEvidence(),
+  { authorityOpenedAt: "2026-09-04T13:09:00Z" },
+);
+assert(
+  validateV1dAuthority(
+    closedWithCloseout,
+    closeoutOptions(priorOpen, { closeoutText: unanchoredCloseout }),
+  ).some((item) => item.includes("invalid evidence time sequence")),
+  "closeout not anchored to the protected-main opening was accepted",
 );
 passed += 1;
 

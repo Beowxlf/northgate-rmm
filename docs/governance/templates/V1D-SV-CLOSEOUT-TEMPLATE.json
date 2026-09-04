@@ -6,6 +6,7 @@
   "approver": "Beowxlf",
   "authorizationRecord": "docs/governance/authorizations/V1D-SV-PLACEHOLDER.md",
   "authorizationRecordDigest": "sha256:PLACEHOLDER",
+  "authorityOpenedAt": "YYYY-MM-DDTHH:MM:SSZ",
   "factoryPlanId": "ngp-PLACEHOLDER",
   "serverBinding": "sha256:PLACEHOLDER",
   "signedReleaseDigest": "sha256:PLACEHOLDER",

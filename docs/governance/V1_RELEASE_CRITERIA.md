@@ -106,7 +106,8 @@ operational facts and dependencies are recorded in the
   endpoint routes defined in the authorization and server lifecycle contracts;
   and
 - the validation authority closes with immutable cleanup evidence in a
-  protected-main change that precedes any G2 opening.
+  protected-main change that follows the actual authority opening and precedes
+  any G2 opening; the closed authorization and Factory plan cannot be replayed.
 
 ### V1E — G2 canary
 

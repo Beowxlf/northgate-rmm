@@ -145,6 +145,7 @@ const CLOSEOUT_RECEIPT_FIELDS = [
   "approver",
   "authorizationRecord",
   "authorizationRecordDigest",
+  "authorityOpenedAt",
   "factoryPlanId",
   "serverBinding",
   "signedReleaseDigest",
@@ -270,6 +271,7 @@ function validateCloseout(
     readAtProtectedMain,
     protectedMainPathVersionCount,
     pathIntroductionTime,
+    authorityOpenIntroductionTime,
     now,
   },
 ) {
@@ -432,12 +434,18 @@ function validateCloseout(
   );
   const verifiedAt = validDate(evidence.verifiedAt);
   const closedAt = validDate(closeout.closedAt);
+  const authorityOpenedAt = validDate(closeout.authorityOpenedAt);
+  const protectedOpenTime = Date.parse(authorityOpenIntroductionTime() ?? "");
   if (
     issuedAt === null ||
     expiresAt === null ||
     planExpiresAt === null ||
     verifiedAt === null ||
     closedAt === null ||
+    authorityOpenedAt === null ||
+    !Number.isFinite(protectedOpenTime) ||
+    authorityOpenedAt !== protectedOpenTime ||
+    verifiedAt <= authorityOpenedAt ||
     verifiedAt < issuedAt ||
     closedAt < verifiedAt ||
     closedAt > expiresAt ||
@@ -447,6 +455,21 @@ function validateCloseout(
     errors.push(
       "V1D-SV cleanup closeout has an invalid evidence time sequence.",
     );
+
+  if (priorAuthority?.status === "open") {
+    for (const [label, recordPath] of [
+      ["closeout receipt", closeoutPath],
+      ["cleanup evidence", evidencePath],
+    ]) {
+      if (
+        readAtProtectedMain(recordPath) !== null ||
+        protectedMainPathVersionCount(recordPath) !== 0
+      )
+        errors.push(
+          `V1D-SV ${label} must be created after the protected-main authority opening.`,
+        );
+    }
+  }
 
   if (laterGateOpen) {
     for (const [label, recordPath, currentText, claimedAt] of [
@@ -472,6 +495,66 @@ function validateCloseout(
         "Later gates require the protected-main V1D-SV closeout reference.",
       );
   }
+  return errors;
+}
+
+function validateReopen(
+  authorizationPath,
+  authorizationText,
+  priorAuthority,
+  {
+    isRegularFile,
+    readText,
+    readAtProtectedMain,
+    protectedMainPathVersionCount,
+  },
+) {
+  if (priorAuthority?.status !== "closed" || !priorAuthority.closeout)
+    return [];
+  const errors = [];
+  const priorCloseoutPath = priorAuthority.closeout;
+  const priorCloseoutText = readAtProtectedMain(priorCloseoutPath);
+  const currentCloseoutText = readText(priorCloseoutPath);
+  const priorCloseout =
+    typeof priorCloseoutText === "string"
+      ? parseCanonicalJson(priorCloseoutText)
+      : null;
+  if (
+    !/^docs\/governance\/authorizations\/closeouts\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+      priorCloseoutPath,
+    ) ||
+    !isRegularFile(priorCloseoutPath) ||
+    !priorCloseout ||
+    typeof currentCloseoutText !== "string" ||
+    normalizeText(currentCloseoutText) !== normalizeText(priorCloseoutText) ||
+    protectedMainPathVersionCount(priorCloseoutPath) !== 1
+  ) {
+    return [
+      "V1D-SV cannot reopen without its immutable prior lifecycle closeout.",
+    ];
+  }
+
+  const { fields } = parseRecord(authorizationText);
+  if (
+    authorizationPath === priorCloseout.authorizationRecord ||
+    sha256(authorizationText) === priorCloseout.authorizationRecordDigest
+  )
+    errors.push("V1D-SV cannot replay a consumed authorization record.");
+  if (fields.get("Factory plan ID") === priorCloseout.factoryPlanId)
+    errors.push("V1D-SV cannot replay a consumed Factory plan.");
+  const priorClosedAt = validDate(priorCloseout.closedAt);
+  const planIssuedAt = validDate(fields.get("Factory plan issued at"));
+  const issuedAt = validDate(fields.get("Issued at"));
+  if (
+    priorClosedAt === null ||
+    planIssuedAt === null ||
+    issuedAt === null ||
+    planIssuedAt <= priorClosedAt ||
+    issuedAt <= priorClosedAt
+  )
+    errors.push(
+      "Reopened V1D-SV requires a new authorization and Factory plan issued after prior closeout.",
+    );
   return errors;
 }
 
@@ -1517,6 +1600,7 @@ export function validateV1dAuthority(
     isCommit = () => false,
     isProtectedMainCommit = () => false,
     protectedMainPathVersionCount = () => null,
+    authorityOpenIntroductionTime = () => null,
     now = new Date(),
   } = {},
 ) {
@@ -1565,6 +1649,11 @@ export function validateV1dAuthority(
       errors.push(`V1D-SV lacks required prohibition: ${prohibition}.`);
   }
 
+  const priorAuthority = protectedMainAuthority(readAtProtectedMain);
+  const laterGateOpen = REQUIRED_CLOSED_GATES.some(
+    (gateId) =>
+      gates.gates?.find((item) => item.id === gateId)?.status === "open",
+  );
   if (authority.status === "open") {
     if (Object.hasOwn(authority, "closeout"))
       errors.push("Open V1D-SV authority must not carry a prior closeout.");
@@ -1599,14 +1688,15 @@ export function validateV1dAuthority(
             isProtectedMainCommit,
             now,
           }),
+          ...validateReopen(authorization, record, priorAuthority, {
+            isRegularFile,
+            readText,
+            readAtProtectedMain,
+            protectedMainPathVersionCount,
+          }),
         );
     }
   }
-  const priorAuthority = protectedMainAuthority(readAtProtectedMain);
-  const laterGateOpen = REQUIRED_CLOSED_GATES.some(
-    (gateId) =>
-      gates.gates?.find((item) => item.id === gateId)?.status === "open",
-  );
   const requiresCloseout =
     authority.status === "closed" &&
     (priorAuthority?.status === "open" || laterGateOpen);
@@ -1618,6 +1708,7 @@ export function validateV1dAuthority(
         readAtProtectedMain,
         protectedMainPathVersionCount,
         pathIntroductionTime,
+        authorityOpenIntroductionTime,
         now,
       }),
     );

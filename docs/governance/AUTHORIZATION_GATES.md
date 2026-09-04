@@ -123,7 +123,12 @@ authorization and Factory-plan windows. The closeout change must keep G2
 through G8 closed. A later product gate may open only in a separate change after
 both closeout artifacts have been accepted exactly once on protected `main`;
 changed, deleted, recreated, future-dated, or same-change closeout evidence
-fails closed. Use the
+fails closed. Cleanup events and both artifacts must follow the protected-main
+commit that actually opened the authority; pre-staged closeout evidence is
+invalid. Once closed, that exact authorization record and Factory plan are
+consumed permanently. A later V1D-SV lifecycle requires a different
+authorization path and a fresh Factory plan issued after the prior closeout.
+Use the
 [cleanup-evidence template](templates/V1D-SV-CLEANUP-EVIDENCE-TEMPLATE.json)
 and [closeout template](templates/V1D-SV-CLOSEOUT-TEMPLATE.json).
 

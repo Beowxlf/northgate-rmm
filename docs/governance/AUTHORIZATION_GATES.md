@@ -51,6 +51,8 @@ the [V1D-SV authorization template](templates/V1D-SV-AUTHORIZATION-TEMPLATE.md).
 Its sanitized approved-bindings manifest must already exist at the audited
 commit; changing it in the authority-opening change or substituting any bound
 value fails validation.
+The manifest must also bind the exact authorization issuance and expiry; the
+authority window cannot be extended by editing the later authorization record.
 That manifest must hash and reference a protected-main V1C pass record and the
 seven separate external-dependency approval records. Each prerequisite record
 must be owner-approved, unexpired, evidence- and rollback-bound, unchanged from

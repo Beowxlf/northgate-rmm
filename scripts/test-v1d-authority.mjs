@@ -154,6 +154,8 @@ function renderApprovedBindings(
   prerequisiteRecords = buildPrerequisites(),
 ) {
   const bindingFields = [
+    "Issued at",
+    "Expires at",
     "Server binding",
     "Signed release digest",
     "Factory plan ID",
@@ -514,6 +516,15 @@ expectFailure(
   {
     mutateApproval: (approval) =>
       (approval.bindings["Server binding"] = `sha256:${"c".repeat(64)}`),
+  },
+);
+expectFailure(
+  "authorization window extended after approval",
+  open,
+  "Expires at mismatches its approved binding",
+  {
+    mutateApproval: (approval) =>
+      (approval.bindings["Expires at"] = "2026-09-04T23:00:00Z"),
   },
 );
 expectFailure("future bindings approval", open, "approval time is invalid", {

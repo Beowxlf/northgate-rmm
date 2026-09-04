@@ -6,6 +6,8 @@
   "approvedAt": "PLACEHOLDER",
   "expiresAt": "PLACEHOLDER",
   "bindings": {
+    "Issued at": "PLACEHOLDER",
+    "Expires at": "PLACEHOLDER",
     "Server binding": "sha256:PLACEHOLDER",
     "Signed release digest": "sha256:PLACEHOLDER",
     "Factory plan ID": "PLACEHOLDER",

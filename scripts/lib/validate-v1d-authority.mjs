@@ -59,6 +59,8 @@ const DIGEST_FIELDS = [
 ];
 
 const APPROVED_BINDING_FIELDS = [
+  "Issued at",
+  "Expires at",
   "Server binding",
   "Signed release digest",
   "Factory plan ID",

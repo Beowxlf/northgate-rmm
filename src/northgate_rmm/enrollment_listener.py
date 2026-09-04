@@ -180,17 +180,13 @@ class EnrollmentTLSListener:
                 tls_context,
                 ssl_handshake_timeout=self._configuration.request_timeout_seconds,
             )
-            self._release_handshake(source)
-            admitted = False
             await self._handle_connection(reader, writer)
         except (ConnectionError, OSError, TimeoutError, ValueError, ssl.SSLError):
             return
         finally:
+            await _close_writer(writer)
             if admitted:
                 self._release_handshake(source)
-            writer.close()
-            with suppress(ConnectionError, OSError, ssl.SSLError):
-                await writer.wait_closed()
 
     async def _handle_connection(
         self,
@@ -422,6 +418,15 @@ async def _write_error(
 ) -> None:
     body = ('{"error":"' + code + '"}').encode("ascii")
     await _write_raw(writer, status, body, ())
+
+
+async def _close_writer(writer: asyncio.StreamWriter) -> None:
+    writer.close()
+    try:
+        async with asyncio.timeout(1.0):
+            await writer.wait_closed()
+    except (ConnectionError, OSError, TimeoutError, ssl.SSLError):
+        writer.transport.abort()
 
 
 async def _write_response(

@@ -339,6 +339,48 @@ def test_incomplete_tls_handshakes_are_bounded_per_source(tmp_path: Path) -> Non
     asyncio.run(scenario())
 
 
+def test_completed_tls_sessions_remain_admitted_through_teardown(
+    tmp_path: Path,
+) -> None:
+    root_path, certificate_path, key_path = _write_server_identity(tmp_path)
+    config = configuration(
+        tmp_path,
+        authority="enroll.test",
+        server_certificate=certificate_path,
+        server_private_key=key_path,
+    )
+
+    async def scenario() -> None:
+        listener = EnrollmentTLSListener(config, RecordingOperation())
+        await listener.start()
+        writers: list[asyncio.StreamWriter] = []
+        try:
+            host, port = listener.addresses[0]
+            context = ssl.create_default_context(cafile=str(root_path))
+            first = await asyncio.open_connection(
+                host, port, ssl=context, server_hostname="enroll.test"
+            )
+            second = await asyncio.open_connection(
+                host, port, ssl=context, server_hostname="enroll.test"
+            )
+            writers.extend((first[1], second[1]))
+            assert listener._active_handshakes == {"127.0.0.1": 2}
+
+            with pytest.raises((ssl.SSLError, ConnectionError)):
+                await asyncio.open_connection(
+                    host,
+                    port,
+                    ssl=context,
+                    server_hostname="enroll.test",
+                )
+        finally:
+            for writer in writers:
+                writer.transport.abort()
+            await listener.close()
+
+    asyncio.run(scenario())
+
+
 async def _parse_request(encoded: bytes, *, port: int = 443) -> EnrollmentRequest:
     reader = asyncio.StreamReader(limit=2_052)
     reader.feed_data(encoded)

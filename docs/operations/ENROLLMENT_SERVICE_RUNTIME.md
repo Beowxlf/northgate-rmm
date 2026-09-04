@@ -32,8 +32,10 @@ closed.
 The inbound listener is TLS 1.3 server-authenticated because an endpoint has no
 client identity yet. Raw TCP connections enter a separate pre-TLS admission
 boundary limited to 16 handshakes globally and two per source before the process
-performs a bounded handshake. It then accepts only one exact HTTP/1.1 enrollment
-route, bounds headers and body, rejects ambiguous framing, permits four
+performs a bounded handshake. Each slot remains held through the TLS session and
+one-second bounded teardown; a peer that ignores shutdown is aborted. The
+service then accepts only one exact HTTP/1.1 enrollment route, bounds headers
+and body, rejects ambiguous framing, permits four
 concurrent operations globally and one per source, and applies source and global
 rate limits. A timed-out issuer or database worker retains its admission slot
 until it actually finishes, preventing abandoned work from bypassing the

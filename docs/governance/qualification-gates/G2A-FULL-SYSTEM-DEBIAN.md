@@ -1,6 +1,6 @@
 # G2A Full-System Debian Agent Qualification
 
-Status: Complete; [durable evidence](../qualification-evidence/G2A-2026-09-03.md)  
+Status: Pending evidence-complete requalification; [prior partial evidence](../qualification-evidence/G2A-2026-09-03.md)  
 Parent gate: G2 remains closed  
 Scope: Synthetic Debian 12 systemd sandbox only
 
@@ -52,8 +52,11 @@ G2A is complete only when the exact reviewed pull-request head passes:
 2. `Free-software security checks`; and
 3. `Pre-code governance audit`.
 
-The final evidence record must name the exact head, workflow run and job IDs,
-package hashes, measured resource results, review disposition, and merge commit.
+The final evidence record must name the exact qualification-source head,
+workflow run and job IDs, all three package hashes, measured resource results,
+review disposition, and qualification-source merge commit. Because that merge
+commit exists only after qualification, the final record may be added by a
+subsequent evidence-only pull request through protected `main`.
 
 ## Explicit exclusions
 

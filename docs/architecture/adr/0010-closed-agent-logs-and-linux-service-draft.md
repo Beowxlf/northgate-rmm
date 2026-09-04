@@ -31,6 +31,7 @@ The lifecycle and unit could initially be reviewed and mutation-tested without
 touching a host, but that did not prove Debian packaging or `systemd`
 compatibility. This decision introduced no executable package, installer,
 activation path, or operational revocation. The executable Debian package and
-service later passed isolated G2A qualification; publication and live
-installation still require G6 and a separate G2 authorization before the first
-disposable canary installation.
+service later passed isolated lifecycle tests; evidence-complete G2A/G2B
+requalification remains pending, and publication and live installation still
+require G6 and a separate G2 authorization before the first disposable canary
+installation.

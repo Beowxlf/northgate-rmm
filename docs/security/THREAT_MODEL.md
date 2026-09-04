@@ -119,15 +119,16 @@ observable rejection. Endpoint spool and result output have hard quotas.
 ## Residual risks
 
 - Phase 1 and Phase 2 source now exist, and the Debian 12 package and service
-  lifecycle passed isolated G2A qualification, but no operational agent has
-  been authorized, installed, or accepted as supported;
+  lifecycle passed prior isolated tests, but evidence-complete G2A/G2B
+  requalification remains pending and no operational agent has been authorized,
+  installed, or accepted as supported;
 - the current spool checksum detects accidental corruption but does not provide
   keyed integrity, encryption, or rollback resistance;
 - a permission-restricted create-once identity bundle and crash-durable per-boot
   message sequence store now exist, but enrollment, encrypted or hardware-backed
   identity protection, rotation, online status, externally rollback-protected
   sequence state and encrypted spool remain unimplemented; an executable Debian
-  package and service lifecycle are qualified only in isolated CI and remain
+  package and service lifecycle are tested only in isolated CI and remain
   blocked from publication and live installation by G6 and G2;
 - the mTLS sender and retry policy are source-tested only; endpoint certificate
   status, operational PKI, runtime logging integration, and live revocation

@@ -252,6 +252,7 @@ test "$(stat -c '%U:%G:%a' /var/lib/northgate-rmm-purge-transaction)" = root:roo
 
 base_sha256="$(sha256sum "$base_package" | cut -d' ' -f1)"
 upgrade_sha256="$(sha256sum "$upgrade_package" | cut -d' ' -f1)"
+failed_upgrade_sha256="$(sha256sum "$failed_upgrade_package" | cut -d' ' -f1)"
 cat >"$result_file" <<EOF
 {
   "schema_version": 1,
@@ -262,6 +263,7 @@ cat >"$result_file" <<EOF
   "network_interfaces": ["lo"],
   "base_package_sha256": "$base_sha256",
   "upgrade_package_sha256": "$upgrade_sha256",
+  "failed_upgrade_package_sha256": "$failed_upgrade_sha256",
   "service_user": "northgate-rmm",
   "memory_current_bytes": $memory_current,
   "memory_max_bytes": 134217728,

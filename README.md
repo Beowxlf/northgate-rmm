@@ -55,7 +55,7 @@ It remains a synthetic control-plane proof: no HTTP listener, real endpoint
 collector, job scheduler, or command-execution primitive is present.
 
 The executable Go agent includes strict non-secret configuration, bounded
-allowlisted Linux collectors, the Phase 1-compatible inventory envelope, an
+allowlisted Linux collectors, the Phase 1-compatible inventory envelope, a
 checksum-validated quota spool, a crash-durable per-boot sequence allocator,
 and an outbound-only transport interface. It also includes a source-tested TLS
 1.3 mutual-authentication sender with exact
@@ -64,11 +64,12 @@ identity store now validates the endpoint-bound certificate, key, and explicit
 server roots before publishing one permission-restricted bundle. A closed-schema
 JSON event logger rejects arbitrary fields and raw error text. A Debian 12 amd64
 lifecycle contract, executable entrypoint, installable package, and hardened,
-resource-bounded `systemd` unit have passed isolated Debian 12 qualification.
+resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
 Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
-test-only signature verification have also passed. The repository still has no
-deployable control-plane listener or live enrollment network flow, command
-runner, or privileged helper.
+test-only signature verification have also passed prior tests. G2A and G2B
+remain pending until corrected workflows retain every required digest. The
+repository still has no deployable control-plane listener or live enrollment
+network flow, command runner, or privileged helper.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.

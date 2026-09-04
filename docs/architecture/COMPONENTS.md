@@ -49,6 +49,23 @@ verifies the exact packaged migration set before socket bind, and owns graceful
 listener shutdown. Enrollment and operator routes use separate processes and
 credentials.
 
+## Enrollment issuer client
+
+Carries only the endpoint ID, pending identity ID, public-key fingerprint, CSR,
+and request time from the enrollment process to the separately operated issuer.
+It connects to one allowlisted private IP, verifies the issuer's DNS identity
+with TLS 1.3, presents a dedicated enrollment-workload client certificate,
+accepts no redirects, and bounds the returned public certificate chain. The RMM
+service never loads or receives the endpoint CA private key.
+
+## Enrollment service runtime
+
+Composes only grant/CSR enrollment, the PostgreSQL adapter, and the isolated
+issuer client. It refuses root, verifies schema and public issuer trust before
+binding, exposes one bounded server-authenticated TLS route, rate-limits
+pre-identity clients, and owns graceful listener shutdown. Its database,
+inbound-server, and issuer-workload credentials are separate.
+
 ## Audit writer
 
 Writes append-oriented structured events with actor, subject, action, decision,

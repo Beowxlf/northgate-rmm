@@ -42,6 +42,7 @@ The first executable lesson is
 - [Backup and restore](docs/operations/BACKUP_RESTORE.md)
 - [Linux package lifecycle](docs/operations/LINUX_PACKAGE_LIFECYCLE.md)
 - [Agent service runtime](docs/operations/AGENT_SERVICE_RUNTIME.md)
+- [Enrollment service runtime](docs/operations/ENROLLMENT_SERVICE_RUNTIME.md)
 
 The Phase 1 trustworthy vertical-slice simulation is complete. Separate,
 bounded authorizations permit **Phase 2 Linux-agent and control-plane source
@@ -66,9 +67,12 @@ single-request connections, bounded HTTP parsing, and generic fail-closed errors
 in real loopback socket tests. A source-only executable now composes that agent
 listener with PostgreSQL, reads the DSN from a protected credential file, refuses
 root execution, verifies the exact migration set before binding, and shuts down
-cleanly. Its JSON contract and hardened reference `systemd` unit are not activated
-or installed: no operational certificate issuer, approved network rule, job
-scheduler, or command-execution primitive is present.
+cleanly. A separate source-only executable now composes the one-time enrollment
+route, PostgreSQL grant state, and a fixed-route mTLS issuer client without
+loading the issuer signing key. Both JSON contracts and hardened reference
+`systemd` units remain disabled and uninstalled: no operational certificate
+issuer, approved network rule, job scheduler, or command-execution primitive is
+present.
 
 The executable Go agent includes strict non-secret configuration, bounded
 allowlisted Linux collectors, the Phase 1-compatible inventory envelope, a
@@ -84,7 +88,7 @@ resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
 Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
 test-only signature verification have also passed. Evidence-complete G2A and
 G2B qualification records retain every required digest. The repository still
-has no enrollment or operator network adapter, production issuer/IdP
+has no operator network adapter, production issuer/IdP
 integration, server package or approved deployment configuration, command
 runner, or privileged helper.
 Operational PKI, online certificate status, runtime logging integration,

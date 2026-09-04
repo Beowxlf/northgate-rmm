@@ -22,9 +22,14 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
+from psycopg import Error as PsycopgError
 
 from northgate_rmm.domain import Endpoint, EndpointIdentity, require_aware
-from northgate_rmm.errors import AuthorizationError, ValidationError
+from northgate_rmm.errors import (
+    AuthorizationError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from northgate_rmm.listener import validate_endpoint_certificate
 
 MAX_CSR_BYTES = 8_192
@@ -32,6 +37,10 @@ MAX_CERTIFICATE_BYTES = 16_384
 MAX_INTERMEDIATE_CERTIFICATES = 4
 MAX_ENROLLMENT_BODY_BYTES = 16_384
 ENROLLMENT_PATH = "/v1/enrollment"
+
+
+def _current_utc_time() -> datetime:
+    return datetime.now(UTC)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +160,8 @@ class EnrollmentApplication:
             )
         except AuthorizationError:
             return _http_error(403, "enrollment_unavailable")
+        except ServiceUnavailableError:
+            return _http_error(503, "enrollment_unavailable")
         except ValidationError:
             return _http_error(400, "invalid_enrollment")
         return _http_json(
@@ -190,11 +201,14 @@ class EnrollmentService:
         require_aware(now, "now")
         server_time = now.astimezone(UTC)
         canonical_csr, fingerprint = _validate_csr(csr_der)
-        endpoint, identity = self._store.begin_endpoint_enrollment(
-            token=token,
-            public_key_fingerprint=fingerprint,
-            now=server_time,
-        )
+        try:
+            endpoint, identity = self._store.begin_endpoint_enrollment(
+                token=token,
+                public_key_fingerprint=fingerprint,
+                now=server_time,
+            )
+        except (PsycopgError, TimeoutError) as error:
+            raise ServiceUnavailableError("enrollment store is unavailable") from error
         issued = self._issuer.issue_endpoint_certificate(
             EndpointIssuanceRequest(
                 identity_id=identity.identity_id,
@@ -204,20 +218,31 @@ class EnrollmentService:
             ),
             now=server_time,
         )
-        leaf, intermediates = self._validate_issued_credential(
-            issued,
-            endpoint_id=endpoint.endpoint_id,
-            public_key_fingerprint=fingerprint,
-            now=server_time,
-        )
-        self._store.record_issued_endpoint_identity(
-            identity.identity_id,
-            certificate_serial=format(leaf.serial_number, "x"),
-            certificate_issuer=leaf.issuer.rfc4514_string(),
-            certificate_not_before=leaf.not_valid_before_utc,
-            certificate_not_after=leaf.not_valid_after_utc,
-            now=server_time,
-        )
+        verification_time = _current_utc_time()
+        require_aware(verification_time, "verification time")
+        verification_time = verification_time.astimezone(UTC)
+        try:
+            leaf, intermediates = self._validate_issued_credential(
+                issued,
+                endpoint_id=endpoint.endpoint_id,
+                public_key_fingerprint=fingerprint,
+                now=verification_time,
+            )
+        except ValidationError as error:
+            raise ServiceUnavailableError(
+                "issuer returned an invalid endpoint credential"
+            ) from error
+        try:
+            self._store.record_issued_endpoint_identity(
+                identity.identity_id,
+                certificate_serial=format(leaf.serial_number, "x"),
+                certificate_issuer=leaf.issuer.rfc4514_string(),
+                certificate_not_before=leaf.not_valid_before_utc,
+                certificate_not_after=leaf.not_valid_after_utc,
+                now=verification_time,
+            )
+        except (PsycopgError, TimeoutError, ValidationError) as error:
+            raise ServiceUnavailableError("enrollment store is unavailable") from error
         return EnrollmentResult(
             endpoint_id=endpoint.endpoint_id,
             identity_id=identity.identity_id,

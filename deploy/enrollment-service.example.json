@@ -1,0 +1,18 @@
+{
+  "bind_address": "127.0.0.1",
+  "port": 8444,
+  "authority": "enroll.invalid",
+  "server_certificate": "/etc/northgate-rmm/tls/enrollment-service.crt",
+  "server_private_key": "/etc/northgate-rmm/tls/enrollment-service.key",
+  "database_dsn_credential": "/run/credentials/northgate-rmm-enrollment.service/database-dsn",
+  "issuer_connect_address": "127.0.0.1",
+  "issuer_port": 9443,
+  "issuer_authority": "issuer.invalid",
+  "issuer_ca_certificate": "/etc/northgate-rmm/tls/issuer-service-ca.crt",
+  "issuer_client_certificate": "/run/credentials/northgate-rmm-enrollment.service/issuer-client-cert",
+  "issuer_client_private_key": "/run/credentials/northgate-rmm-enrollment.service/issuer-client-key",
+  "endpoint_issuer_trust_root": "/etc/northgate-rmm/tls/endpoint-issuer-root.crt",
+  "request_timeout_seconds": 10,
+  "database_operation_timeout_seconds": 8,
+  "issuer_timeout_seconds": 10
+}

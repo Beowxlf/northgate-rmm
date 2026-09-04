@@ -37,11 +37,11 @@ from northgate_rmm.listener import (
 @dataclass(frozen=True, slots=True)
 class CertificateMaterial:
     root_certificate: x509.Certificate
-    root_key: Ed25519PrivateKey
+    root_key: Ed25519PrivateKey  # gitleaks:allow -- runtime-generated test object
     server_certificate: x509.Certificate
-    server_key: Ed25519PrivateKey
+    server_key: Ed25519PrivateKey  # gitleaks:allow -- runtime-generated test object
     client_certificate: x509.Certificate
-    client_key: Ed25519PrivateKey
+    client_key: Ed25519PrivateKey  # gitleaks:allow -- runtime-generated test object
     endpoint_id: UUID
 
 
@@ -768,7 +768,7 @@ def issue_client_certificate(
 def issue_leaf_certificate(
     root_certificate: x509.Certificate,
     root_key: Ed25519PrivateKey,
-    leaf_key: Ed25519PrivateKey | dsa.DSAPrivateKey,
+    leaf_key: Ed25519PrivateKey | dsa.DSAPrivateKey,  # gitleaks:allow -- test object
     now: datetime,
     purpose: x509.ObjectIdentifier,
     names: list[x509.GeneralName],

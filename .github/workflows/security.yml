@@ -193,4 +193,6 @@ jobs:
           .
       - name: Enforce npm advisory audit result
         if: ${{ always() }}
-        run: test "${{ steps.npm-audit.outcome }}" = "success"
+        env:
+          NPM_AUDIT_OUTCOME: ${{ steps.npm-audit.outcome }}
+        run: test "$NPM_AUDIT_OUTCOME" = "success"

@@ -110,6 +110,47 @@ def test_runtime_connections_enforce_database_deadlines(postgres_dsn: str) -> No
         PostgresControlPlane(postgres_dsn, operation_timeout_seconds=0.5)
 
 
+def test_runtime_schema_state_matches_every_packaged_migration(
+    postgres_dsn: str,
+) -> None:
+    plane = PostgresControlPlane(postgres_dsn)
+
+    applied = plane.verify_schema_state()
+
+    migration_source = (
+        Path(__file__).parents[1] / "src" / "northgate_rmm" / "migrations"
+    )
+    expected = tuple(
+        path.name
+        for path in sorted(migration_source.glob("[0-9][0-9][0-9][0-9]_*.sql"))
+    )
+    assert applied == expected
+
+
+def test_runtime_schema_state_rejects_packaged_checksum_disagreement(
+    postgres_dsn: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import northgate_rmm.persistence as persistence_module
+
+    migration_source = (
+        Path(__file__).parents[1] / "src" / "northgate_rmm" / "migrations"
+    )
+    changed_directory = tmp_path / "changed-migrations"
+    shutil.copytree(migration_source, changed_directory)
+    changed = max(changed_directory.glob("[0-9][0-9][0-9][0-9]_*.sql"))
+    changed.write_text(changed.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        persistence_module,
+        "_default_migration_directory",
+        lambda: changed_directory,
+    )
+
+    with pytest.raises(ValidationError, match="does not match"):
+        PostgresControlPlane(postgres_dsn).verify_schema_state()
+
+
 def test_restart_preserves_endpoint_observation_and_audit(postgres_dsn: str) -> None:
     plane, agent = enrolled_plane(postgres_dsn)
     message = agent.heartbeat(now=NOW)

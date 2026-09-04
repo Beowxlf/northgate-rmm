@@ -16,6 +16,9 @@ dependencies = [
   "psycopg[binary]==3.3.4",
 ]
 
+[project.scripts]
+northgate-rmm-agent-service = "northgate_rmm.agent_service:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

@@ -8,6 +8,7 @@ contains no mutation, job, shell, or remote-access operation.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
@@ -296,12 +297,13 @@ class OperatorApplication:
         now: datetime,
         correlation_id: UUID,
     ) -> OperatorPrincipal:
-        try:
-            encoded_authorization = (
-                authorization.encode("utf-8") if type(authorization) is str else b""
-            )
-        except UnicodeEncodeError:
-            encoded_authorization = b""
+        encoded_authorization = b""
+        if (
+            type(authorization) is str
+            and 1 <= len(authorization) <= MAX_AUTHORIZATION_HEADER_BYTES
+        ):
+            with suppress(UnicodeEncodeError):
+                encoded_authorization = authorization.encode("utf-8")
         if not 1 <= len(encoded_authorization) <= MAX_AUTHORIZATION_HEADER_BYTES:
             self._store.record_operator_access(
                 actor_id="unauthenticated",

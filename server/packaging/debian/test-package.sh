@@ -93,6 +93,8 @@ rm -rf -- /run/systemd/system
 printf '%s\n' 'retained endpoint agent configuration' > /etc/northgate-rmm/agent.json
 for receipt in .identity-revoked .evidence-exported .purge-approved; do
   printf '%s\n' "retained endpoint agent $receipt" > "/etc/northgate-rmm/$receipt"
+  chown root:root "/etc/northgate-rmm/$receipt"
+  chmod 0600 "/etc/northgate-rmm/$receipt"
 done
 if dpkg -r northgate-rmm-server >/dev/null 2>&1; then
   echo "server package removal ignored missing revocation/evidence receipts" >&2

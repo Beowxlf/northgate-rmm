@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import ssl
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -97,6 +98,30 @@ class RecordingStore:
         assert encoded_message_digest is not None
         self.inventories.append(message)
         return object()
+
+
+@dataclass
+class BlockingStore(RecordingStore):
+    entered: threading.Event = field(default_factory=threading.Event)
+    release: threading.Event = field(default_factory=threading.Event)
+
+    def authenticate_endpoint_certificate(
+        self,
+        *,
+        endpoint_id: UUID,
+        public_key_fingerprint: str,
+        authenticated_at: datetime,
+        correlation_id: UUID,
+    ) -> EndpointIdentity:
+        self.entered.set()
+        if not self.release.wait(timeout=5):
+            raise AssertionError("test did not release the blocking store")
+        return super().authenticate_endpoint_certificate(
+            endpoint_id=endpoint_id,
+            public_key_fingerprint=public_key_fingerprint,
+            authenticated_at=authenticated_at,
+            correlation_id=correlation_id,
+        )
 
 
 class SyntheticSSLObject:
@@ -355,6 +380,14 @@ def test_real_listener_accepts_only_profiled_mtls_messages(tmp_path: Path) -> No
     asyncio.run(run_listener_scenario(tmp_path))
 
 
+def test_listener_bounds_headers_body_readers_and_store_time(tmp_path: Path) -> None:
+    asyncio.run(run_listener_deadline_scenario(tmp_path))
+
+
+def test_listener_rate_limits_one_authenticated_identity(tmp_path: Path) -> None:
+    asyncio.run(run_listener_rate_limit_scenario(tmp_path))
+
+
 async def run_listener_scenario(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     material = issue_material(now)
@@ -462,6 +495,105 @@ async def run_listener_scenario(tmp_path: Path) -> None:
         await listener.close()
         await listener.close()
     assert len(listener.addresses) == 0
+
+
+async def run_listener_deadline_scenario(tmp_path: Path) -> None:
+    now = datetime.now(UTC)
+    material = issue_material(now)
+    paths = write_material(tmp_path, material)
+    fingerprint = public_key_fingerprint(material.client_key.public_key())
+    store = RecordingStore(material.endpoint_id, fingerprint)
+    listener = AgentTLSListener(
+        listener_configuration(paths, request_timeout_seconds=1.0), store
+    )
+    await listener.start()
+    partial_connections: list[tuple[asyncio.StreamReader, asyncio.StreamWriter]] = []
+    try:
+        host, port = listener.addresses[0]
+        client_context = client_ssl_context(paths)
+
+        header_reader, header_writer = await open_https_connection(
+            host, port, client_context
+        )
+        header_writer.write(b"POST /v1/agent/messages HTTP/1.1\r\nHost: rmm.test")
+        await header_writer.drain()
+        assert await asyncio.wait_for(header_reader.read(), timeout=2) == b""
+        header_writer.close()
+        await header_writer.wait_closed()
+
+        for _ in range(16):
+            reader, writer = await open_https_connection(host, port, client_context)
+            writer.write(
+                b"POST /v1/agent/messages HTTP/1.1\r\n"
+                b"Host: rmm.test\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: 1\r\n"
+                b"Connection: close\r\n\r\n"
+            )
+            await writer.drain()
+            partial_connections.append((reader, writer))
+        await asyncio.sleep(0.1)
+        busy = await raw_https_request(
+            host,
+            port,
+            client_context,
+            request_bytes(inventory_body(material.endpoint_id, now)),
+        )
+        assert busy.startswith(b"HTTP/1.1 503 Service Unavailable\r\n")
+    finally:
+        for _reader, writer in partial_connections:
+            writer.close()
+        await asyncio.gather(
+            *(writer.wait_closed() for _reader, writer in partial_connections),
+            return_exceptions=True,
+        )
+        await listener.close()
+
+    blocking_store = BlockingStore(material.endpoint_id, fingerprint)
+    blocking_listener = AgentTLSListener(
+        listener_configuration(paths, request_timeout_seconds=1.0), blocking_store
+    )
+    await blocking_listener.start()
+    try:
+        host, port = blocking_listener.addresses[0]
+        response = await raw_https_request(
+            host,
+            port,
+            client_ssl_context(paths),
+            request_bytes(inventory_body(material.endpoint_id, datetime.now(UTC))),
+        )
+        assert blocking_store.entered.is_set()
+        assert response.startswith(b"HTTP/1.1 408 Request Timeout\r\n")
+    finally:
+        blocking_store.release.set()
+        await asyncio.sleep(0.05)
+        await blocking_listener.close()
+
+
+async def run_listener_rate_limit_scenario(tmp_path: Path) -> None:
+    now = datetime.now(UTC)
+    material = issue_material(now)
+    paths = write_material(tmp_path, material)
+    fingerprint = public_key_fingerprint(material.client_key.public_key())
+    store = RecordingStore(material.endpoint_id, fingerprint)
+    listener = AgentTLSListener(listener_configuration(paths), store)
+    await listener.start()
+    try:
+        host, port = listener.addresses[0]
+        client_context = client_ssl_context(paths)
+        request = request_bytes(inventory_body(material.endpoint_id, now))
+        responses = [
+            await raw_https_request(host, port, client_context, request)
+            for _ in range(33)
+        ]
+        assert all(
+            response.startswith(b"HTTP/1.1 200 OK\r\n") for response in responses[:32]
+        )
+        assert responses[32].startswith(b"HTTP/1.1 429 Too Many Requests\r\n")
+        assert len(store.authentications) == 32
+        assert len(store.inventories) == 32
+    finally:
+        await listener.close()
 
 
 def issue_material(now: datetime) -> CertificateMaterial:
@@ -636,6 +768,7 @@ def listener_configuration(
     paths: dict[str, Path],
     *,
     bind_address: str = "127.0.0.1",
+    request_timeout_seconds: float = 10.0,
 ) -> AgentListenerConfiguration:
     return AgentListenerConfiguration(
         bind_address=bind_address,
@@ -644,6 +777,7 @@ def listener_configuration(
         server_certificate=paths["server_certificate"],
         server_private_key=paths["server_private_key"],
         endpoint_ca_certificate=paths["root_certificate"],
+        request_timeout_seconds=request_timeout_seconds,
     )
 
 
@@ -717,12 +851,7 @@ async def raw_https_request(
     context: ssl.SSLContext,
     request: bytes,
 ) -> bytes:
-    reader, writer = await asyncio.open_connection(
-        host,
-        port,
-        ssl=context,
-        server_hostname="rmm.test",
-    )
+    reader, writer = await open_https_connection(host, port, context)
     try:
         writer.write(request)
         await writer.drain()
@@ -733,6 +862,19 @@ async def raw_https_request(
     finally:
         writer.close()
         await writer.wait_closed()
+
+
+async def open_https_connection(
+    host: str,
+    port: int,
+    context: ssl.SSLContext,
+) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    return await asyncio.open_connection(
+        host,
+        port,
+        ssl=context,
+        server_hostname="rmm.test",
+    )
 
 
 def public_key_fingerprint(key: Ed25519PublicKey) -> str:

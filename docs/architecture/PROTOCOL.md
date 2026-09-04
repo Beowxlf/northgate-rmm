@@ -28,9 +28,13 @@ behind an agent-only listener adapter. The adapter requires TLS 1.3 mutual
 authentication, disables session tickets, accepts a private exact bind address
 and authority, validates the single canonical endpoint URI SAN and supported
 public key, and removes framework version headers even from parser failures.
-It bounds headers, body size, request time, backlog, and concurrent application
-handoffs. Real loopback tests prove successful profiled mTLS delivery and rejection
-of a missing client identity, TLS 1.2, duplicate headers, and wrong authority.
+It bounds header-read and whole-request time, body size, backlog, active body
+readers, database statement/lock time, global request rate, and per-identity
+request rate. Timed-out synchronous store work retains its admission slot until
+the worker actually exits. Real loopback tests prove successful profiled mTLS
+delivery and rejection of incomplete headers, excess concurrency, excess rate,
+a stalled store, a missing client identity, TLS 1.2, duplicate headers, and wrong
+authority.
 The application binds the extracted endpoint and public-key fingerprint to an
 active database identity and retains an encoded-message digest for exact retry.
 No listener is activated or configured for a NorthGate network by this source

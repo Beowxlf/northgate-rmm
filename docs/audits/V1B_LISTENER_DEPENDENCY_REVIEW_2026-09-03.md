@@ -44,7 +44,12 @@ SBOM from the exact built service artifact before V1C acceptance.
 - the exact version is pinned because the hardened malformed-request adapter
   intentionally tests a small internal protocol integration seam;
 - parser limits disable request decompression and bound header count, header
-  bytes, body bytes, backlog, and concurrent application handoffs;
+  bytes, body bytes, and backlog;
+- header and whole-request deadlines, pre-body admission control, per-identity
+  and global rate ceilings, and PostgreSQL connection/statement/lock timeouts
+  bound authenticated endpoint resource consumption;
+- timed-out synchronous store work keeps its admission slot until the worker
+  exits, preventing timeout-based concurrency bypass;
 - `cryptography` parses the TLS-verified leaf, exact URI SAN, certificate purpose,
   supported key profile, and DER SubjectPublicKeyInfo fingerprint;
 - TLS chain verification remains OpenSSL/Python `ssl` responsibility;

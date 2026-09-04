@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import ipaddress
 import ssl
+from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -42,6 +43,10 @@ MAX_HEADER_COUNT = 32
 MAX_HEADER_BYTES = 2_048
 MAX_CONCURRENT_REQUESTS = 16
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
+RATE_LIMIT_WINDOW_SECONDS = 10.0
+MAX_REQUESTS_PER_IDENTITY_WINDOW = 32
+MAX_GLOBAL_REQUESTS_PER_WINDOW = 160
+MAX_TRACKED_IDENTITIES = 4_096
 
 
 class PeerCertificate(Protocol):
@@ -132,6 +137,7 @@ def create_agent_web_application(
             "max_line_size": MAX_HEADER_BYTES,
             "max_field_size": MAX_HEADER_BYTES,
             "read_bufsize": MAX_ENCODED_MESSAGE_BYTES + 1,
+            "header_timeout_seconds": request_timeout_seconds,
         },
     )
     application.router.add_route("*", "/{path:.*}", adapter.handle)
@@ -206,6 +212,7 @@ class _AgentTLSAdapter:
         self._authority = authority
         self._request_timeout_seconds = request_timeout_seconds
         self._request_slots = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        self._rate_limiter = _AgentRateLimiter()
 
     async def handle(self, request: web.Request) -> web.Response:
         received_at = datetime.now(UTC)
@@ -213,47 +220,106 @@ class _AgentTLSAdapter:
             return _response(505, b'{"error":"http_version_not_supported"}')
         if _single_header(request, "Host") != self._authority:
             return _response(421, b'{"error":"misdirected_request"}')
-        ssl_object = (
-            request.transport.get_extra_info("ssl_object")
-            if request.transport
-            else None
-        )
-        try:
-            peer = extract_verified_client_certificate(ssl_object)
-        except ValidationError:
-            return _response(403, b'{"error":"unauthorized"}')
-        content_type = _single_header(request, "Content-Type")
-        content_encoding = _single_optional_header(request, "Content-Encoding")
-        if content_type is None or content_encoding is _DUPLICATE_HEADER:
-            return _response(400, b'{"error":"invalid_headers"}')
+        operation_task: asyncio.Task[AgentMessageResponse] | None = None
+        slot_acquired = False
         try:
             async with asyncio.timeout(self._request_timeout_seconds):
+                ssl_object = (
+                    request.transport.get_extra_info("ssl_object")
+                    if request.transport
+                    else None
+                )
+                try:
+                    peer = extract_verified_client_certificate(ssl_object)
+                except ValidationError:
+                    return _response(403, b'{"error":"unauthorized"}')
+                if not self._rate_limiter.allow(
+                    peer.endpoint_id, asyncio.get_running_loop().time()
+                ):
+                    return _response(429, b'{"error":"rate_limited"}')
+                content_type = _single_header(request, "Content-Type")
+                content_encoding = _single_optional_header(request, "Content-Encoding")
+                if content_type is None or content_encoding is _DUPLICATE_HEADER:
+                    return _response(400, b'{"error":"invalid_headers"}')
+                if self._request_slots.locked():
+                    return _response(503, b'{"error":"listener_busy"}')
+                await self._request_slots.acquire()
+                slot_acquired = True
                 body = await request.read()
+                operation_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        self._application.handle,
+                        AgentMessageRequest(
+                            method=request.method,
+                            path=request.raw_path,
+                            content_type=content_type,
+                            content_encoding=(
+                                None
+                                if content_encoding is None
+                                else str(content_encoding)
+                            ),
+                            body=body,
+                        ),
+                        peer=peer,
+                        received_at=received_at,
+                    )
+                )
+                result = await asyncio.shield(operation_task)
         except web.HTTPRequestEntityTooLarge:
             return _response(413, b'{"error":"request_too_large"}')
         except TimeoutError:
+            if operation_task is not None and not operation_task.done():
+                operation_task.add_done_callback(
+                    lambda _task: self._request_slots.release()
+                )
+                slot_acquired = False
             return _response(408, b'{"error":"request_timeout"}')
         except (ConnectionError, asyncio.CancelledError):
+            if operation_task is not None and not operation_task.done():
+                operation_task.add_done_callback(
+                    lambda _task: self._request_slots.release()
+                )
+                slot_acquired = False
             raise
+        finally:
+            if slot_acquired:
+                self._request_slots.release()
 
-        if self._request_slots.locked():
-            return _response(503, b'{"error":"listener_busy"}')
-        async with self._request_slots:
-            result = await asyncio.to_thread(
-                self._application.handle,
-                AgentMessageRequest(
-                    method=request.method,
-                    path=request.raw_path,
-                    content_type=content_type,
-                    content_encoding=(
-                        None if content_encoding is None else str(content_encoding)
-                    ),
-                    body=body,
-                ),
-                peer=peer,
-                received_at=received_at,
-            )
         return _application_response(result)
+
+
+class _AgentRateLimiter:
+    """Bound valid-certificate request rate without trusting database state."""
+
+    def __init__(self) -> None:
+        self._global: deque[float] = deque()
+        self._identities: OrderedDict[UUID, deque[float]] = OrderedDict()
+
+    def allow(self, endpoint_id: UUID, now: float) -> bool:
+        cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+        _discard_before(self._global, cutoff)
+        identity = self._identities.get(endpoint_id)
+        if identity is None:
+            if len(self._identities) >= MAX_TRACKED_IDENTITIES:
+                self._identities.popitem(last=False)
+            identity = deque()
+            self._identities[endpoint_id] = identity
+        else:
+            self._identities.move_to_end(endpoint_id)
+        _discard_before(identity, cutoff)
+        if (
+            len(self._global) >= MAX_GLOBAL_REQUESTS_PER_WINDOW
+            or len(identity) >= MAX_REQUESTS_PER_IDENTITY_WINDOW
+        ):
+            return False
+        self._global.append(now)
+        identity.append(now)
+        return True
+
+
+def _discard_before(values: deque[float], cutoff: float) -> None:
+    while values and values[0] <= cutoff:
+        values.popleft()
 
 
 def extract_verified_client_certificate(
@@ -435,6 +501,41 @@ class _NoServerResponse(web.Response):
 
 class _HardenedRequestHandler(RequestHandler):
     """Return bounded generic parser errors without framework version headers."""
+
+    def __init__(
+        self,
+        *args: object,
+        header_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self._header_timeout_seconds = header_timeout_seconds
+        self._header_timeout_handle: asyncio.TimerHandle | None = None
+
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        super().connection_made(transport)
+        self._header_timeout_handle = self._loop.call_later(
+            self._header_timeout_seconds, self._expire_incomplete_headers
+        )
+
+    def data_received(self, data: bytes) -> None:
+        super().data_received(data)
+        if self._messages:
+            self._cancel_header_timeout()
+
+    def connection_lost(self, exc: BaseException | None) -> None:
+        self._cancel_header_timeout()
+        super().connection_lost(exc)
+
+    def _expire_incomplete_headers(self) -> None:
+        self._header_timeout_handle = None
+        if not self._messages and self.transport is not None:
+            self.force_close()
+
+    def _cancel_header_timeout(self) -> None:
+        if self._header_timeout_handle is not None:
+            self._header_timeout_handle.cancel()
+            self._header_timeout_handle = None
 
     def handle_error(
         self,

@@ -29,7 +29,11 @@ MAX_INVENTORY_VALUE_LENGTH = 512
 def require_aware(value: datetime, field_name: str) -> None:
     """Reject naive timestamps so state derivation is deterministic."""
 
-    if value.tzinfo is None or value.utcoffset() is None:
+    try:
+        offset = value.utcoffset()
+    except (AttributeError, OverflowError, TypeError, ValueError) as error:
+        raise ValidationError(f"{field_name} must include a valid timezone") from error
+    if value.tzinfo is None or offset is None:
         raise ValidationError(f"{field_name} must include a timezone")
 
 

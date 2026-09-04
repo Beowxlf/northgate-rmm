@@ -34,14 +34,30 @@ class UndefinedOffsetTimezone(tzinfo):
         return "undefined-offset"
 
 
+class InvalidOffsetTimezone(tzinfo):
+    """Malformed timezone whose offset violates datetime's allowed range."""
+
+    def utcoffset(self, _value: datetime | None) -> timedelta:
+        return timedelta(hours=24)
+
+    def dst(self, _value: datetime | None) -> None:
+        return None
+
+    def tzname(self, _value: datetime | None) -> str:
+        return "invalid-offset"
+
+
 @dataclass
 class RecordingVerifier:
     principal: OperatorPrincipal
     rejection: bool = False
+    failure: Exception | None = None
     calls: list[tuple[str, datetime]] = field(default_factory=list)
 
     def verify(self, authorization: str, *, now: datetime) -> OperatorPrincipal:
         self.calls.append((authorization, now))
+        if self.failure is not None:
+            raise self.failure
         if self.rejection:
             raise AuthorizationError("external session is not current")
         return self.principal
@@ -184,6 +200,24 @@ def test_external_verifier_rejection_is_generic_and_does_not_log_credential() ->
     assert AUTHORIZATION not in repr(plane.audit_events[-1])
 
 
+@pytest.mark.parametrize("failure", [TimeoutError(), OSError(), ValueError()])
+def test_native_external_verifier_failures_are_generic_and_audited(
+    failure: Exception,
+) -> None:
+    app, plane, verifier, _agent = application()
+    verifier.failure = failure
+
+    response = app.handle(
+        OperatorRequest("GET", "/endpoints", AUTHORIZATION),
+        received_at=NOW,
+    )
+
+    assert response.status == 401
+    assert response.body == b'{"error":"unauthorized"}'
+    assert plane.audit_events[-1].action == "operator.authenticate"
+    assert plane.audit_events[-1].decision == "rejected"
+
+
 def test_external_verifier_must_return_exact_validated_principal() -> None:
     app, plane, verifier, _agent = application()
     verifier.principal = cast(OperatorPrincipal, object())
@@ -270,6 +304,10 @@ def test_operator_identity_scope_assurance_and_time_fail_closed(
         OperatorRequest("POST", "/endpoints", AUTHORIZATION),
         OperatorRequest("GET", "/endpoints", AUTHORIZATION, "page=1"),
         OperatorRequest("GET", "/unknown", AUTHORIZATION),
+        OperatorRequest("GET", cast(str, 123), AUTHORIZATION),
+        OperatorRequest("GET", cast(str, b"/endpoints"), AUTHORIZATION),
+        OperatorRequest(cast(str, 1), "/endpoints", AUTHORIZATION),
+        OperatorRequest("GET", "/endpoints", AUTHORIZATION, cast(str, b"unexpected")),
         OperatorRequest("GET", "/endpoints/NOT-A-UUID", AUTHORIZATION),
         OperatorRequest(
             "GET",
@@ -337,6 +375,11 @@ def test_operator_models_reject_invalid_sessions_and_policy() -> None:
         replace(
             principal(),
             authenticated_at=NOW.replace(tzinfo=UndefinedOffsetTimezone()),
+        )
+    with pytest.raises(ValidationError, match="valid timezone"):
+        replace(
+            principal(),
+            authenticated_at=NOW.replace(tzinfo=InvalidOffsetTimezone()),
         )
     with pytest.raises(ValidationError, match="issuer"):
         replace(policy(), issuer=cast(str, ["not", "a", "string"]))

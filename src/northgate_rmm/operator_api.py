@@ -209,9 +209,13 @@ class OperatorApplication:
             )
             return _error(403, "forbidden")
         if (
-            request.method != "GET"
+            type(request.method) is not str
+            or request.method != "GET"
+            or type(request.query_string) is not str
             or request.query_string
+            or type(request.path) is not str
             or not 1 <= len(request.path) <= MAX_OPERATOR_PATH_LENGTH
+            or not request.path.isprintable()
         ):
             self._audit(
                 principal,
@@ -302,7 +306,7 @@ class OperatorApplication:
             if type(principal) is not OperatorPrincipal:
                 raise ValidationError("external verifier returned an invalid principal")
             return principal
-        except (AuthorizationError, ValidationError):
+        except Exception:
             self._store.record_operator_access(
                 actor_id="unauthenticated",
                 subject="operator:endpoint-views",

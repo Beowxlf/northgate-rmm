@@ -71,3 +71,16 @@ def test_server_package_is_qualified_with_the_endpoint_package_installed() -> No
     assert 'dpkg -i "$agent_package"' in package_test
     assert "dpkg-query -W" in package_test
     assert "retained endpoint agent configuration" in package_test
+    assert "retained server credential" in package_test
+    assert "dpkg --purge northgate-rmm-agent" in package_test
+
+
+def test_endpoint_purge_preserves_the_shared_server_configuration_root() -> None:
+    endpoint_postrm = (ROOT / "agent" / "packaging" / "debian" / "postrm").read_text(
+        encoding="utf-8"
+    )
+
+    assert "rm -rf -- /etc/northgate-rmm" not in endpoint_postrm
+    assert "/etc/northgate-rmm/agent.json" in endpoint_postrm
+    assert "rmdir -- /etc/northgate-rmm" in endpoint_postrm
+    assert "symlinked configuration path" in endpoint_postrm

@@ -70,4 +70,6 @@ loopback. It verifies exact runtime versions and systemd units, imports every
 service as its dedicated identity, proves configuration is not writable,
 exercises receipt-gated removal and purge, confirms no server identity remains,
 and proves the endpoint-agent package, unit, configuration, and receipts survive
-approved server purge.
+approved server purge. It then reinstalls the server package, purges the
+endpoint package, and proves the server package, unit, configuration,
+credentials, TLS material, identities, and state survive the reverse order.

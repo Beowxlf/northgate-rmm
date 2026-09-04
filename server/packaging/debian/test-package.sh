@@ -137,3 +137,31 @@ for service in agent enrollment operator; do
     exit 1
   fi
 done
+
+mv /var/lib/northgate-rmm-server-purge-transaction \
+  /tmp/northgate-rmm-server-purge-transaction.archived
+dpkg -i "$package" >/dev/null
+printf '%s\n' '{"retained":"server config"}' > \
+  /etc/northgate-rmm/agent-service.json
+printf '%s\n' 'retained server credential' > \
+  /etc/northgate-rmm/secrets/database-dsn
+printf '%s\n' 'retained server trust material' > \
+  /etc/northgate-rmm/tls/endpoint-ca.crt
+
+dpkg --purge northgate-rmm-agent >/dev/null
+test "$(cat /etc/northgate-rmm/agent-service.json)" = \
+  '{"retained":"server config"}'
+test "$(cat /etc/northgate-rmm/secrets/database-dsn)" = \
+  'retained server credential'
+test "$(cat /etc/northgate-rmm/tls/endpoint-ca.crt)" = \
+  'retained server trust material'
+test -e /usr/lib/systemd/system/northgate-rmm-agent-ingress.service
+test -e /usr/libexec/northgate-rmm-server/northgate-rmm-agent-service
+test -d /var/lib/northgate-rmm-server
+test "$(dpkg-query -W -f='${Status}' northgate-rmm-server)" = \
+  "install ok installed"
+for service in agent enrollment operator; do
+  getent passwd "northgate-rmm-$service" >/dev/null
+done
+
+printf '%s\n' "isolated server and endpoint package lifecycles passed"

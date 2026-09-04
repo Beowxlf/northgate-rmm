@@ -65,8 +65,16 @@ if [ "$action" = "remove" ] || [ "$action" = "purge" ]; then
     /run/northgate-rmm-agent.was-enabled-remove
 fi
 if [ "$action" = "purge" ]; then
-  rm -rf -- /etc/northgate-rmm
-  test ! -e /etc/northgate-rmm
+  if [ -L /etc/northgate-rmm ]; then
+    echo "refusing endpoint purge through a symlinked configuration path" >&2
+    exit 64
+  fi
+  rm -f -- \
+    /etc/northgate-rmm/agent.json \
+    /etc/northgate-rmm/.identity-revoked \
+    /etc/northgate-rmm/.evidence-exported \
+    /etc/northgate-rmm/.purge-approved
+  rmdir -- /etc/northgate-rmm 2>/dev/null || true
 fi
 
 exit 0

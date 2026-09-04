@@ -68,7 +68,9 @@ cannot reuse an earlier spool position.
    partial config deletion. The transaction remains as recovery evidence until
    the next configure lifecycle invalidates it. The systemd manager reload and
    temporary runtime-marker cleanup complete before the original receipts are
-   deleted.
+   deleted. Purge removes only endpoint-agent-owned configuration and receipts;
+   it preserves server-package configuration, credentials, TLS material, and
+   lifecycle receipts under the shared `/etc/northgate-rmm` root.
 
 A temporary restart marker is valid only for the upgrade generation that created
 it. Repeated upgrade preparation preserves an existing marker. Fresh

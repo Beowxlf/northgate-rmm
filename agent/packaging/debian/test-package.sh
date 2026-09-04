@@ -241,7 +241,7 @@ mv /usr/bin/rm.real /usr/bin/rm
 mv /usr/bin/rm /usr/bin/rm.real
 printf '%s\n' '#!/bin/sh' \
   'for target in "$@"; do' \
-  '  if [ "$target" = /etc/northgate-rmm ]; then' \
+  '  if [ "$target" = /etc/northgate-rmm/.identity-revoked ]; then' \
   '    /usr/bin/rm.real -f -- /etc/northgate-rmm/.identity-revoked /etc/northgate-rmm/.evidence-exported /etc/northgate-rmm/.purge-approved' \
   '    exit 75' \
   '  fi' \

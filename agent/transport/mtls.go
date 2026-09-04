@@ -152,7 +152,8 @@ func validateOrigin(origin string) (*url.URL, error) {
 		(parsed.Path != "" && parsed.Path != "/") || strings.HasSuffix(parsed.Host, ":") {
 		return nil, errors.New("control-plane origin contains unsupported components")
 	}
-	if !validAuthorityHostname(parsed.Hostname()) {
+	hostname := parsed.Hostname()
+	if hostname != strings.ToLower(hostname) || !validAuthorityHostname(hostname) {
 		return nil, errors.New("control-plane origin contains an invalid hostname")
 	}
 	if port := parsed.Port(); port != "" {

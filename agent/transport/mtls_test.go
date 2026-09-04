@@ -367,6 +367,7 @@ func TestNewMTLSSenderRejectsIncompleteInputs(t *testing.T) {
 		{name: "legacy numeric host", origin: "https://0177.0.0.1", credentials: Credentials{Certificate: pki.client, ServerRoots: pki.roots}, timeout: time.Second},
 		{name: "out of range port", origin: "https://127.0.0.1:65536", credentials: Credentials{Certificate: pki.client, ServerRoots: pki.roots}, timeout: time.Second},
 		{name: "Unicode host", origin: "https://example\u200d.test", credentials: Credentials{Certificate: pki.client, ServerRoots: pki.roots}, timeout: time.Second},
+		{name: "uppercase host", origin: "https://RMM.invalid", credentials: Credentials{Certificate: pki.client, ServerRoots: pki.roots}, timeout: time.Second},
 		{name: "missing roots", origin: "https://127.0.0.1", credentials: Credentials{Certificate: pki.client}, timeout: time.Second},
 		{name: "missing certificate", origin: "https://127.0.0.1", credentials: Credentials{ServerRoots: pki.roots}, timeout: time.Second},
 		{name: "short timeout", origin: "https://127.0.0.1", credentials: Credentials{Certificate: pki.client, ServerRoots: pki.roots}, timeout: time.Second - 1},

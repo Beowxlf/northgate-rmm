@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 
-import { validateV1dAuthority } from "./lib/validate-v1d-authority.mjs";
+import {
+  validateProductGateAuthorization,
+  validateV1dAuthority,
+} from "./lib/validate-v1d-authority.mjs";
 
 const baseline = JSON.parse(fs.readFileSync("governance/gates.json", "utf8"));
 const exactPath = "docs/governance/authorizations/V1D-SV-EXACT.md";
@@ -220,7 +223,12 @@ function buildProductGateFixture({
     EvidenceBoundary: ["repository:protected-main-records-only"],
     ...scopeOverrides,
   };
-  const targetScopeDigest = hash(canonical(exactScopes.TargetSet));
+  const scopeDigestByType = Object.fromEntries(
+    Object.entries(exactScopes).map(([bindingType, scope]) => [
+      bindingType,
+      hash(canonical(scope)),
+    ]),
+  );
   const requiredEvidence = [
     "data-collection-inventory-approved",
     "endpoint-target-approved",
@@ -243,7 +251,13 @@ function buildProductGateFixture({
         status: "Verified",
         approver: "Beowxlf",
         verifiedAt: "2026-09-04T13:00:00Z",
-        targetBinding: targetScopeDigest,
+        operationBinding: scopeDigestByType.Operation,
+        targetBinding: scopeDigestByType.TargetSet,
+        artifactBinding: scopeDigestByType.ArtifactSet,
+        identityBinding: scopeDigestByType.IdentitySet,
+        networkPolicyBinding: scopeDigestByType.NetworkPolicy,
+        rollbackBinding: scopeDigestByType.Rollback,
+        evidenceBoundaryBinding: scopeDigestByType.EvidenceBoundary,
         result,
         resultBinding: hash(canonical(result)),
       });
@@ -2142,6 +2156,92 @@ assert(
     }),
   ).some((item) => item.includes("has invalid proof data")),
   "opaque product-gate evidence result digest was accepted",
+);
+passed += 1;
+
+const detachedScopeEvidenceFixture = buildProductGateFixture();
+const detachedEvidence = JSON.parse(
+  detachedScopeEvidenceFixture.records[resultEvidencePath],
+);
+detachedEvidence.artifactBinding = `sha256:${"f".repeat(64)}`;
+detachedScopeEvidenceFixture.records[resultEvidencePath] =
+  canonical(detachedEvidence);
+const detachedEvidenceBoundary = JSON.parse(
+  detachedScopeEvidenceFixture.records[evidenceBoundaryPath],
+);
+detachedEvidenceBoundary.evidence.find(
+  (item) => item.id === "linux-package-qualified",
+).digest = hash(detachedScopeEvidenceFixture.records[resultEvidencePath]);
+detachedScopeEvidenceFixture.records[evidenceBoundaryPath] = canonical(
+  detachedEvidenceBoundary,
+);
+detachedScopeEvidenceFixture.authorizationText =
+  detachedScopeEvidenceFixture.authorizationText.replace(
+    /^Evidence boundary binding:.*$/m,
+    `Evidence boundary binding: ${hash(detachedScopeEvidenceFixture.records[evidenceBoundaryPath])}`,
+  );
+assert(
+  validateV1dAuthority(
+    g2AfterCloseout,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: detachedScopeEvidenceFixture,
+    }),
+  ).some((item) =>
+    item.includes("evidence linux-package-qualified has invalid proof data"),
+  ),
+  "product-gate evidence detached from its artifact scope was accepted",
+);
+passed += 1;
+
+const replayedRecordsFixture = withG2Closeout(buildProductGateFixture());
+const freshG2AuthorizationPath =
+  "docs/governance/authorizations/G2-LINUX-CANARY-FRESH.md";
+const freshG2AuthorizationText = replayedRecordsFixture.authorizationText
+  .replace("Issued at: 2026-09-04T13:40:00Z", "Issued at: 2026-09-04T13:41:00Z")
+  .replace(
+    "Expires at: 2026-09-04T14:30:00Z",
+    "Expires at: 2026-09-04T14:31:00Z",
+  );
+const replayedRecordMap = {
+  ...replayedRecordsFixture.records,
+  [g2AuthorizationPath]: replayedRecordsFixture.authorizationText,
+  [freshG2AuthorizationPath]: freshG2AuthorizationText,
+};
+const replayErrors = validateProductGateAuthorization(
+  {
+    id: "G2",
+    status: "open",
+    authorization: freshG2AuthorizationPath,
+    closeouts: [g2CloseoutPath],
+  },
+  {
+    isRegularFile: (path) => Object.hasOwn(replayedRecordMap, path),
+    readText: (path) => replayedRecordMap[path] ?? null,
+    readAtCommit: (commit, path) =>
+      commit === validFields["Audited commit"]
+        ? (replayedRecordMap[path] ?? null)
+        : null,
+    readAtProtectedMain: (path) => replayedRecordMap[path] ?? null,
+    isPathImmutableOnProtectedMain: () => true,
+    isPathIntroducedBefore: (_earlierPath, laterPath) =>
+      laterPath === freshG2AuthorizationPath,
+    pathIntroductionTime: (path) =>
+      path === freshG2AuthorizationPath
+        ? "2026-09-04T13:42:00Z"
+        : path.includes("/evidence/")
+          ? "2026-09-04T13:05:00Z"
+          : "2026-09-04T13:25:00Z",
+    protectedMainPathVersionCount: () => 1,
+    isCommit: (commit) => commit === validFields["Audited commit"],
+    isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
+    now: fixedNow,
+  },
+);
+assert(
+  replayErrors.some((item) => item.includes("cannot reuse a scope")) &&
+    replayErrors.some((item) => item.includes("cannot reuse evidence")),
+  `product gate reused consumed scope or evidence: ${replayErrors.join(" | ")}`,
 );
 passed += 1;
 

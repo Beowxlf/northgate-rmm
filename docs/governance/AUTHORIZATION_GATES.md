@@ -26,8 +26,12 @@ canonical, separately owner-approved, digest-matched, single-use, unchanged on
 protected `main`, and present at the audited commit before the authorization is
 accepted. A scope digest must recompute from the record's embedded, non-empty
 exact scope, and an evidence result digest must recompute from its embedded,
-non-empty exact result; opaque unchecked digests fail closed. The exact required
-evidence IDs are enforced as follows:
+non-empty exact result. Every evidence record must also bind the resolved
+operation, target, artifact, identity, network-policy, rollback, and evidence-
+boundary scope digests. Opaque or scope-detached proofs fail closed. After a
+gate closes, neither a consumed scope nor evidence path or digest may be reused
+by a later authorization. The exact required evidence IDs are enforced as
+follows:
 
 Each gate also permits exactly one operation string and one target string. The
 machine validator enforces these semantic prefixes so a correctly hashed scope

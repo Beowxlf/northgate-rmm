@@ -69,9 +69,24 @@ const PRODUCT_GATE_EVIDENCE_FIELDS = [
   "status",
   "approver",
   "verifiedAt",
+  "operationBinding",
   "targetBinding",
+  "artifactBinding",
+  "identityBinding",
+  "networkPolicyBinding",
+  "rollbackBinding",
+  "evidenceBoundaryBinding",
   "result",
   "resultBinding",
+];
+const PRODUCT_GATE_EVIDENCE_SCOPE_BINDINGS = [
+  ["Operation", "operationBinding"],
+  ["TargetSet", "targetBinding"],
+  ["ArtifactSet", "artifactBinding"],
+  ["IdentitySet", "identityBinding"],
+  ["NetworkPolicy", "networkPolicyBinding"],
+  ["Rollback", "rollbackBinding"],
+  ["EvidenceBoundary", "evidenceBoundaryBinding"],
 ];
 const PRODUCT_GATE_CLOSEOUT_FIELDS = [
   "schemaVersion",
@@ -1367,6 +1382,10 @@ export function validateProductGateAuthorization(
   if (typeof text !== "string" || text.trim() === "")
     return [`Open ${gate.id} has an unreadable authorization record.`];
   const authorizationDigest = sha256(text);
+  const consumedScopePaths = new Set();
+  const consumedScopeDigests = new Set();
+  const consumedEvidencePaths = new Set();
+  const consumedEvidenceDigests = new Set();
   for (const closeoutPath of gate.closeouts ?? []) {
     const closeoutText = readAtProtectedMain(closeoutPath);
     const closeout =
@@ -1380,6 +1399,34 @@ export function validateProductGateAuthorization(
       errors.push(
         `${gate.id} cannot reuse an authorization consumed by a prior closeout.`,
       );
+    const consumedAuthorizationText =
+      typeof closeout?.authorizationRecord === "string"
+        ? readAtProtectedMain(closeout.authorizationRecord)
+        : null;
+    if (typeof consumedAuthorizationText !== "string") continue;
+    const { fields: consumedFields } = parseRecord(consumedAuthorizationText);
+    for (const [, pathField, digestField] of PRODUCT_GATE_SCOPE_BINDINGS) {
+      const consumedScopePath = consumedFields.get(pathField);
+      const consumedScopeDigest = consumedFields.get(digestField);
+      if (typeof consumedScopePath === "string")
+        consumedScopePaths.add(consumedScopePath);
+      if (typeof consumedScopeDigest === "string")
+        consumedScopeDigests.add(consumedScopeDigest);
+      const consumedScopeText =
+        typeof consumedScopePath === "string"
+          ? readAtProtectedMain(consumedScopePath)
+          : null;
+      const consumedScope =
+        typeof consumedScopeText === "string"
+          ? parseCanonicalJson(consumedScopeText)
+          : null;
+      for (const descriptor of consumedScope?.evidence ?? []) {
+        if (typeof descriptor?.record === "string")
+          consumedEvidencePaths.add(descriptor.record);
+        if (typeof descriptor?.digest === "string")
+          consumedEvidenceDigests.add(descriptor.digest);
+      }
+    }
   }
   const protectedAuthorization = readAtProtectedMain(authorizationPath);
   if (
@@ -1433,7 +1480,7 @@ export function validateProductGateAuthorization(
     errors.push(`${gate.id} authorization has an invalid active time window.`);
 
   const evidenceIds = [];
-  let targetSetScopeDigest = null;
+  const resolvedScopeDigests = new Map();
   for (const [
     bindingType,
     pathField,
@@ -1441,6 +1488,13 @@ export function validateProductGateAuthorization(
   ] of PRODUCT_GATE_SCOPE_BINDINGS) {
     const recordPath = fields.get(pathField) ?? "";
     const expectedDigest = fields.get(digestField) ?? "";
+    if (
+      consumedScopePaths.has(recordPath) ||
+      consumedScopeDigests.has(expectedDigest)
+    )
+      errors.push(
+        `${gate.id} cannot reuse a scope consumed by a prior closeout.`,
+      );
     if (
       !new RegExp(
         `^docs/governance/authorizations/product-gates/scopes/${gate.id}-[A-Za-z0-9][A-Za-z0-9._-]*\\.json$`,
@@ -1504,11 +1558,8 @@ export function validateProductGateAuthorization(
       errors.push(
         `${gate.id} ${bindingType} scope does not resolve its exact approved content.`,
       );
-    if (
-      bindingType === "TargetSet" &&
-      resolvedScopeDigest === scope.scopeDigest
-    )
-      targetSetScopeDigest = resolvedScopeDigest;
+    if (resolvedScopeDigest === scope.scopeDigest)
+      resolvedScopeDigests.set(bindingType, resolvedScopeDigest);
     const scopePolicy = PRODUCT_GATE_SCOPE_POLICY[gate.id];
     if (
       (bindingType === "Operation" &&
@@ -1550,6 +1601,13 @@ export function validateProductGateAuthorization(
       const evidenceId = descriptor?.id;
       const evidencePath = descriptor?.record;
       const evidenceDigest = descriptor?.digest;
+      if (
+        consumedEvidencePaths.has(evidencePath) ||
+        consumedEvidenceDigests.has(evidenceDigest)
+      )
+        errors.push(
+          `${gate.id} cannot reuse evidence consumed by a prior closeout.`,
+        );
       if (
         typeof evidenceId !== "string" ||
         !new RegExp(
@@ -1609,15 +1667,19 @@ export function validateProductGateAuthorization(
       const resolvedResultDigest = exactResultIsValid
         ? canonicalJsonDigest(exactResult)
         : null;
+      const scopeBindingsAreExact = PRODUCT_GATE_EVIDENCE_SCOPE_BINDINGS.every(
+        ([scopeType, evidenceField]) =>
+          /^sha256:[a-f0-9]{64}$/.test(evidence[evidenceField] ?? "") &&
+          evidence[evidenceField] === resolvedScopeDigests.get(scopeType),
+      );
       if (
         evidence.schemaVersion !== 1 ||
         evidence.gate !== gate.id ||
         evidence.evidenceId !== evidenceId ||
         evidence.status !== "Verified" ||
         evidence.approver !== "Beowxlf" ||
-        !/^sha256:[a-f0-9]{64}$/.test(evidence.targetBinding ?? "") ||
         !/^sha256:[a-f0-9]{64}$/.test(evidence.resultBinding ?? "") ||
-        evidence.targetBinding !== targetSetScopeDigest ||
+        !scopeBindingsAreExact ||
         evidence.resultBinding !== resolvedResultDigest
       )
         errors.push(

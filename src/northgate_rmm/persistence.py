@@ -323,6 +323,7 @@ class PostgresControlPlane:
             now=now,
             actor_id=actor_id,
             identity_status="active",
+            allow_exact_retry=False,
         )
 
     def begin_endpoint_enrollment(
@@ -341,6 +342,7 @@ class PostgresControlPlane:
             now=now,
             actor_id=actor_id,
             identity_status="pending",
+            allow_exact_retry=True,
         )
 
     def _consume_enrollment_grant(
@@ -351,6 +353,7 @@ class PostgresControlPlane:
         now: datetime,
         actor_id: str,
         identity_status: str,
+        allow_exact_retry: bool,
     ) -> tuple[Endpoint, EndpointIdentity]:
         """Atomically exchange one valid grant for one endpoint identity."""
 
@@ -390,9 +393,7 @@ class PostgresControlPlane:
                         failure_reason = "token digest is unknown"
                     else:
                         grant = self._enrollment_grant_from_row(row)
-                        if grant.consumed_at is not None:
-                            failure_reason = "grant is already consumed"
-                        elif server_time < grant.created_at:
+                        if server_time < grant.created_at:
                             failure_reason = "server time predates grant creation"
                         elif server_time >= grant.expires_at:
                             failure_reason = "grant is expired"
@@ -401,6 +402,38 @@ class PostgresControlPlane:
                             is None
                         ):
                             failure_reason = "public key fingerprint format is invalid"
+                        elif grant.consumed_at is not None:
+                            if allow_exact_retry:
+                                cursor.execute(
+                                    """
+                                    SELECT e.endpoint_id, e.display_name, e.platform,
+                                           e.architecture, e.identity_id, e.enrolled_at,
+                                           e.last_receipt_at, e.last_heartbeat_at,
+                                           i.public_key_fingerprint, i.created_at,
+                                           i.revoked_at, i.revocation_reason,
+                                           i.identity_status
+                                    FROM endpoint_identities AS i
+                                    JOIN endpoints AS e
+                                      ON e.endpoint_id = i.endpoint_id
+                                     AND e.identity_id = i.identity_id
+                                    WHERE i.identity_id = %s
+                                      AND i.identity_status IN ('pending', 'issued')
+                                    FOR UPDATE OF i, e
+                                    """,
+                                    (grant.consumed_identity_id,),
+                                )
+                                retry_row = cursor.fetchone()
+                                if (
+                                    retry_row is not None
+                                    and retry_row["public_key_fingerprint"]
+                                    == public_key_fingerprint
+                                ):
+                                    endpoint = self._endpoint_from_row(retry_row)
+                                    identity = self._identity_from_row(retry_row)
+                                else:
+                                    failure_reason = "grant is already consumed"
+                            else:
+                                failure_reason = "grant is already consumed"
 
                 subject = (
                     f"enrollment_grant:{grant.grant_id}"
@@ -418,6 +451,22 @@ class PostgresControlPlane:
                         decision="rejected",
                         reason=failure_reason,
                         correlation_id=correlation_id,
+                    )
+                elif endpoint is not None and identity is not None:
+                    self._insert_audit(
+                        cursor,
+                        server_time=server_time,
+                        actor_type="service",
+                        actor_id=actor_id,
+                        subject=subject,
+                        action="enrollment_grant.consume",
+                        decision="no_change",
+                        reason="exact enrollment retry resumed",
+                        correlation_id=correlation_id,
+                        metadata=(
+                            ("endpoint_id", str(endpoint.endpoint_id)),
+                            ("identity_id", str(identity.identity_id)),
+                        ),
                     )
                 elif grant is not None:
                     endpoint_id = uuid4()

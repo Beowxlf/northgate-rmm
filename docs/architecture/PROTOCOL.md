@@ -75,6 +75,10 @@ again before any future job or remote-session dispatch.
 6. The control plane independently validates the pinned issuer chain, client
    purpose, exact endpoint URI, CSR public-key binding, validity, and lifetime
    before recording the current identity as issued and returning the credential.
+   If that response is lost, the original grant may resume only the same pending
+   or issued identity, with the exact CSR key, before the grant's original expiry.
+   The issuer's identity-ID idempotency key then recovers the same credential;
+   another key, an expired grant, or an active/retired/revoked identity is denied.
 7. Agent protects key material using supported OS permissions or secure storage.
 8. The issued identity may authenticate only to send its first heartbeat;
    inventory remains denied. Accepting that heartbeat atomically marks the current

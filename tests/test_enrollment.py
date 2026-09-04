@@ -10,7 +10,7 @@ import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
-from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID, NameOID
 
 from northgate_rmm.domain import Endpoint, EndpointIdentity, Platform
 from northgate_rmm.enrollment import (
@@ -96,6 +96,9 @@ class FakeIssuer:
     root_key: ec.EllipticCurvePrivateKey
     wrong_endpoint: bool = False
     requests: list[EndpointIssuanceRequest] = field(default_factory=list)
+    issued_by_identity: dict[
+        UUID, tuple[EndpointIssuanceRequest, IssuedEndpointCredential]
+    ] = field(default_factory=dict)
 
     def issue_endpoint_certificate(
         self,
@@ -104,6 +107,10 @@ class FakeIssuer:
         now: datetime,
     ) -> IssuedEndpointCredential:
         self.requests.append(request)
+        prior = self.issued_by_identity.get(request.identity_id)
+        if prior is not None:
+            assert prior[0] == request
+            return prior[1]
         csr = x509.load_der_x509_csr(request.csr_der)
         endpoint_id = uuid4() if self.wrong_endpoint else request.endpoint_id
         leaf = (
@@ -148,9 +155,11 @@ class FakeIssuer:
             )
             .sign(self.root_key, algorithm=hashes.SHA256())
         )
-        return IssuedEndpointCredential(
+        credential = IssuedEndpointCredential(
             leaf_certificate_der=leaf.public_bytes(serialization.Encoding.DER)
         )
+        self.issued_by_identity[request.identity_id] = (request, credential)
+        return credential
 
 
 @dataclass
@@ -210,6 +219,25 @@ def test_enrollment_proves_key_possession_and_activates_external_credential() ->
     peer = validate_endpoint_certificate(leaf)
     assert peer.endpoint_id == store.endpoint_id
     assert peer.public_key_fingerprint == store.fingerprint
+
+
+def test_enrollment_retry_recovers_the_same_issued_credential() -> None:
+    root, root_key = issue_root()
+    store = RecordingEnrollmentStore()
+    issuer = FakeIssuer(root, root_key)
+    service = EnrollmentService(store, issuer, issuer_trust_roots=(root,))
+    csr_der = csr_for(ec.generate_private_key(ec.SECP256R1()))
+
+    first = service.enroll(token=grant_value(), csr_der=csr_der, now=NOW)
+    retry = service.enroll(
+        token=grant_value(),
+        csr_der=csr_der,
+        now=NOW + timedelta(seconds=1),
+    )
+
+    assert retry == first
+    assert len(issuer.requests) == 2
+    assert issuer.requests[0] == issuer.requests[1]
 
 
 def test_enrollment_rejects_csr_claims_before_consuming_a_grant() -> None:
@@ -405,6 +433,38 @@ def test_enrollment_rejects_malformed_or_unsupported_csrs(
 
     with pytest.raises(ValidationError, match=match):
         service.enroll(token=grant_value(), csr_der=csr_der, now=NOW)
+    assert store.fingerprint is None
+
+
+def test_enrollment_normalizes_lazy_csr_decoding_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class LazyMalformedCsr:
+        @property
+        def is_signature_valid(self) -> bool:
+            return True
+
+        @property
+        def subject(self) -> x509.Name:
+            raise x509.DuplicateExtension(
+                "duplicate extension",
+                ExtensionOID.SUBJECT_ALTERNATIVE_NAME,
+            )
+
+    monkeypatch.setattr(
+        "northgate_rmm.enrollment.x509.load_der_x509_csr",
+        lambda _encoded: LazyMalformedCsr(),
+    )
+    root, root_key = issue_root()
+    store = RecordingEnrollmentStore()
+    service = EnrollmentService(
+        store,
+        FakeIssuer(root, root_key),
+        issuer_trust_roots=(root,),
+    )
+
+    with pytest.raises(ValidationError, match="CSR is invalid"):
+        service.enroll(token=grant_value(), csr_der=b"signed", now=NOW)
     assert store.fingerprint is None
 
 

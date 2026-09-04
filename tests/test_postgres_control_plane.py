@@ -357,6 +357,19 @@ def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
         public_key_fingerprint="sha256:" + "8" * 64,
         now=NOW + timedelta(seconds=1),
     )
+    retry_endpoint, retry_identity = plane.begin_endpoint_enrollment(
+        token=token,
+        public_key_fingerprint="sha256:" + "8" * 64,
+        now=NOW + timedelta(seconds=2),
+    )
+    assert retry_endpoint == endpoint
+    assert retry_identity == identity
+    with pytest.raises(AuthorizationError, match="unavailable"):
+        plane.begin_endpoint_enrollment(
+            token=token,
+            public_key_fingerprint="sha256:" + "9" * 64,
+            now=NOW + timedelta(seconds=2),
+        )
     with pytest.raises(AuthorizationError, match="unauthorized"):
         plane.authenticate_endpoint_certificate(
             endpoint_id=endpoint.endpoint_id,
@@ -419,6 +432,12 @@ def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
         message=pending_agent.heartbeat(now=NOW + timedelta(seconds=8)),
         received_at=NOW + timedelta(seconds=9),
     )
+    with pytest.raises(AuthorizationError, match="unavailable"):
+        plane.begin_endpoint_enrollment(
+            token=token,
+            public_key_fingerprint=identity.public_key_fingerprint,
+            now=NOW + timedelta(seconds=10),
+        )
     with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
         cursor.execute(
             """
@@ -444,6 +463,12 @@ def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
         if event.action == "identity.issue"
     ]
     assert activation_decisions == ["accepted", "no_change"]
+    grant_decisions = [
+        event.decision
+        for event in plane.audit_events
+        if event.action == "enrollment_grant.consume"
+    ]
+    assert grant_decisions == ["accepted", "no_change", "rejected", "rejected"]
     endpoint_activations = [
         event
         for event in plane.audit_events

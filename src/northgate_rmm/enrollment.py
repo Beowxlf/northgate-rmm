@@ -188,7 +188,7 @@ class EnrollmentService:
     def enroll(self, *, token: str, csr_der: bytes, now: datetime) -> EnrollmentResult:
         require_aware(now, "now")
         server_time = now.astimezone(UTC)
-        csr, fingerprint = _validate_csr(csr_der)
+        canonical_csr, fingerprint = _validate_csr(csr_der)
         endpoint, identity = self._store.begin_endpoint_enrollment(
             token=token,
             public_key_fingerprint=fingerprint,
@@ -199,7 +199,7 @@ class EnrollmentService:
                 identity_id=identity.identity_id,
                 endpoint_id=endpoint.endpoint_id,
                 public_key_fingerprint=fingerprint,
-                csr_der=csr.public_bytes(serialization.Encoding.DER),
+                csr_der=canonical_csr,
             ),
             now=server_time,
         )
@@ -340,25 +340,30 @@ def _http_json(status: int, value: dict[str, object]) -> EnrollmentResponse:
     )
 
 
-def _validate_csr(csr_der: bytes) -> tuple[x509.CertificateSigningRequest, str]:
+def _validate_csr(csr_der: bytes) -> tuple[bytes, str]:
     if not 1 <= len(csr_der) <= MAX_CSR_BYTES:
         raise ValidationError("endpoint CSR size is invalid")
     try:
         csr = x509.load_der_x509_csr(csr_der)
-    except ValueError as error:
+        if not csr.is_signature_valid:
+            raise ValidationError("endpoint CSR proof of possession is invalid")
+        if (
+            len(csr.subject) != 0
+            or len(csr.extensions) != 0
+            or len(csr.attributes) != 0
+        ):
+            raise ValidationError("endpoint CSR contains unauthorized claims")
+        public_key = csr.public_key()
+        if not _supported_public_key(public_key):
+            raise ValidationError("endpoint CSR public key is unsupported")
+        subject_public_key = public_key.public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        canonical_csr = csr.public_bytes(serialization.Encoding.DER)
+    except (ValueError, x509.DuplicateExtension) as error:
         raise ValidationError("endpoint CSR is invalid") from error
-    if not csr.is_signature_valid:
-        raise ValidationError("endpoint CSR proof of possession is invalid")
-    if len(csr.subject) != 0 or len(csr.extensions) != 0 or len(csr.attributes) != 0:
-        raise ValidationError("endpoint CSR contains unauthorized claims")
-    public_key = csr.public_key()
-    if not _supported_public_key(public_key):
-        raise ValidationError("endpoint CSR public key is unsupported")
-    subject_public_key = public_key.public_bytes(
-        serialization.Encoding.DER,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
-    )
-    return csr, "sha256:" + hashlib.sha256(subject_public_key).hexdigest()
+    return canonical_csr, "sha256:" + hashlib.sha256(subject_public_key).hexdigest()
 
 
 def _supported_public_key(key: object) -> bool:

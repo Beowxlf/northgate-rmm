@@ -6,7 +6,9 @@ ID and authenticated state hash. Replace every placeholder. The governance
 audit rejects an open `V1D-SV` authority if any required field is missing,
 duplicated, malformed, expired, or still contains a placeholder.
 The audited commit must resolve to an existing protected `main` commit. All
-timestamps use UTC `YYYY-MM-DDTHH:MM:SSZ` form.
+timestamps use real UTC calendar values in `YYYY-MM-DDTHH:MM:SSZ` form. The
+authorization lifetime cannot exceed 24 hours, and the prior binding approval
+lifetime cannot exceed seven days.
 
 Exact private infrastructure facts remain in the protected evidence system.
 Public fields ending in `binding` contain SHA-256 digests of the canonical

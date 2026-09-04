@@ -290,6 +290,12 @@ expectFailure(
 expectFailure("future authorization", open, "issue time is in the future", {
   mutateFields: (fields) => (fields["Issued at"] = "2026-09-04T15:03:00Z"),
 });
+expectFailure("impossible calendar date", open, "invalid expiry", {
+  mutateFields: (fields) => (fields["Expires at"] = "2026-09-31T00:00:00Z"),
+});
+expectFailure("excessive authority lifetime", open, "24-hour lifetime", {
+  mutateFields: (fields) => (fields["Expires at"] = "2026-09-06T13:03:01Z"),
+});
 expectFailure("future plan approval", open, "approval time is in the future", {
   mutateFields: (fields) =>
     (fields["Factory plan approved at"] = "2026-09-04T15:01:00Z"),
@@ -308,6 +314,9 @@ expectFailure(
 );
 expectFailure("future bindings approval", open, "approval time is invalid", {
   mutateApproval: (approval) => (approval.approvedAt = "2026-09-04T15:02:00Z"),
+});
+expectFailure("excessive bindings lifetime", open, "seven-day lifetime", {
+  mutateApproval: (approval) => (approval.expiresAt = "2026-09-12T13:02:01Z"),
 });
 
 const exactOpen = clone();

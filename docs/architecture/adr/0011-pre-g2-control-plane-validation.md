@@ -41,7 +41,9 @@ and rejects missing, duplicate, placeholder, malformed, expired, future-dated,
 or mismatched authority, owner, commit, time, server, release, plan, state-hash,
 dependency, identity, network, rollback, recovery, and evidence values. Plan
 approval must follow plan issuance, and the V1D-SV record must be issued after
-that approval.
+that approval. Strict UTC calendar validation rejects normalized impossible
+dates and future-effective records; the authority is limited to 24 hours and
+its prior approved-bindings manifest to seven days.
 
 V1D-SV cannot install an endpoint package, issue an endpoint-usable grant or
 identity, admit endpoint traffic, publish or update artifacts, expand the plan,

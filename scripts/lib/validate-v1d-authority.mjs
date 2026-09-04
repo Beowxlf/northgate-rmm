@@ -88,11 +88,15 @@ function parseRecord(text) {
 }
 
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+const MAX_AUTHORITY_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const MAX_BINDINGS_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
 function validDate(value) {
   if (!ISO_TIMESTAMP.test(value ?? "")) return null;
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : null;
+  if (!Number.isFinite(timestamp)) return null;
+  const normalized = new Date(timestamp).toISOString().replace(".000Z", "Z");
+  return normalized === value ? timestamp : null;
 }
 
 function validateApprovedBindings(
@@ -147,6 +151,14 @@ function validateApprovedBindings(
     errors.push("V1D-SV bindings approval time is invalid or in the future.");
   if (bindingsExpireAt === null || bindingsExpireAt <= now.getTime())
     errors.push("V1D-SV approved bindings are invalid or expired.");
+  if (
+    approvedAt !== null &&
+    bindingsExpireAt !== null &&
+    bindingsExpireAt - approvedAt > MAX_BINDINGS_LIFETIME_MS
+  )
+    errors.push(
+      "V1D-SV approved bindings exceed the seven-day lifetime limit.",
+    );
   if (approvedAt !== null && issuedAt !== null && approvedAt > issuedAt)
     errors.push("V1D-SV authorization predates its approved bindings.");
   if (
@@ -225,6 +237,12 @@ function validateRecord(text, options) {
     errors.push("V1D-SV Factory plan has an invalid approval time.");
   if (issuedAt !== null && expiresAt !== null && expiresAt <= issuedAt)
     errors.push("V1D-SV authorization expiry must follow issuance.");
+  if (
+    issuedAt !== null &&
+    expiresAt !== null &&
+    expiresAt - issuedAt > MAX_AUTHORITY_LIFETIME_MS
+  )
+    errors.push("V1D-SV authorization exceeds the 24-hour lifetime limit.");
   if (expiresAt !== null && expiresAt <= now.getTime())
     errors.push("V1D-SV authorization record is expired.");
   if (issuedAt !== null && issuedAt > now.getTime())

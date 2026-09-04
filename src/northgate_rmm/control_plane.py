@@ -75,6 +75,47 @@ class ControlPlane:
         except KeyError as exc:
             raise NotFoundError("identity does not exist") from exc
 
+    def record_operator_access(
+        self,
+        *,
+        actor_id: str,
+        subject: str,
+        action: str,
+        decision: str,
+        reason: str,
+        correlation_id: UUID,
+        now: datetime,
+        metadata: tuple[tuple[str, str], ...] = (),
+    ) -> None:
+        """Append a synthetic operator read or denial decision."""
+
+        require_aware(now, "now")
+        if not actor_id or len(actor_id) > 512:
+            raise ValidationError("operator audit actor is invalid")
+        if not subject or len(subject) > 512:
+            raise ValidationError("operator audit subject is invalid")
+        if not action or len(action) > 128:
+            raise ValidationError("operator audit action is invalid")
+        if decision not in {"accepted", "rejected"}:
+            raise ValidationError("operator audit decision is invalid")
+        if not reason or len(reason) > 512:
+            raise ValidationError("operator audit reason is invalid")
+        if len(metadata) > 8 or any(
+            not key or len(key) > 64 or len(value) > 512 for key, value in metadata
+        ):
+            raise ValidationError("operator audit metadata is invalid")
+        self._audit(
+            server_time=now,
+            actor_type="human_operator",
+            actor_id=actor_id,
+            subject=subject,
+            action=action,
+            decision=decision,
+            reason=reason,
+            correlation_id=correlation_id,
+            metadata=metadata,
+        )
+
     def enroll_synthetic_endpoint(
         self,
         *,

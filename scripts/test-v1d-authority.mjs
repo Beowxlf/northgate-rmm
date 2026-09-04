@@ -397,6 +397,7 @@ function expectFailure(
     nonImmutablePaths = [],
     trustPredatesReceipt = true,
     trustIntroductionTime = "2026-09-04T12:53:00Z",
+    prerequisiteIntroductionTime = "2026-09-04T12:30:00Z",
   } = {},
 ) {
   const config = clone();
@@ -467,8 +468,10 @@ function expectFailure(
       trustPredatesReceipt &&
       earlierPath === factoryTrustPath &&
       laterPath === factoryReceiptPath,
-    pathIntroductionTime: (path) =>
-      path === factoryTrustPath ? trustIntroductionTime : null,
+    pathIntroductionTime: (path) => {
+      if (path === factoryTrustPath) return trustIntroductionTime;
+      return path in prerequisites ? prerequisiteIntroductionTime : null;
+    },
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
       signature === renderFactorySignature(content, certificateSha256),
     isCommit: (commit) => commit === validFields["Audited commit"],
@@ -714,6 +717,12 @@ expectFailure(
   open,
   "introduction must predate authenticated plan issuance",
   { trustIntroductionTime: validFields["Factory plan issued at"] },
+);
+expectFailure(
+  "prerequisites merged at plan issuance",
+  open,
+  "protected-main introduction must predate Factory plan issuance",
+  { prerequisiteIntroductionTime: validFields["Factory plan issued at"] },
 );
 expectFailure(
   "Factory receipt changed after approval",
@@ -1153,8 +1162,10 @@ assert.deepEqual(
       commit === validFields["Audited commit"],
     isPathIntroducedBefore: (earlierPath, laterPath) =>
       earlierPath === factoryTrustPath && laterPath === factoryReceiptPath,
-    pathIntroductionTime: (path) =>
-      path === factoryTrustPath ? "2026-09-04T12:53:00Z" : null,
+    pathIntroductionTime: (path) => {
+      if (path === factoryTrustPath) return "2026-09-04T12:53:00Z";
+      return path in exactPrerequisites ? "2026-09-04T12:30:00Z" : null;
+    },
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
       signature === renderFactorySignature(content, certificateSha256),
     isCommit: (commit) => commit === validFields["Audited commit"],

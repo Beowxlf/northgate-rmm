@@ -105,7 +105,10 @@ The authorization expiry must not exceed the expiry of the binding manifest,
 the Factory plan, the V1C pass record, or any external-dependency approval
 record.
 Every prerequisite record must be approved before Factory plan issuance and
-before binding-manifest approval.
+before binding-manifest approval. Its protected-main introduction commit, and
+the introduction commit of every referenced evidence, rollback, and network
+artifact, must also predate Factory plan issuance; backdated record timestamps
+do not qualify an already-issued plan.
 The plan must be no more than two hours old at governance validation, the
 authority must expire no later than two hours after plan issuance, and the
 plan's issue-to-expiry lifetime must not exceed 24 hours. G2 through G8 must all

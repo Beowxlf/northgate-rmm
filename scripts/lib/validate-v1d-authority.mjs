@@ -215,6 +215,24 @@ function validateProtectedMainContinuity(
   return [];
 }
 
+function validatePathPredatesPlan(
+  label,
+  recordPath,
+  planIssuedAt,
+  pathIntroductionTime,
+) {
+  const introducedAt = Date.parse(pathIntroductionTime(recordPath) ?? "");
+  if (
+    !Number.isFinite(introducedAt) ||
+    planIssuedAt === null ||
+    introducedAt >= planIssuedAt
+  )
+    return [
+      `${label} protected-main introduction must predate Factory plan issuance.`,
+    ];
+  return [];
+}
+
 const NETWORK_EVIDENCE_ARTIFACTS = [
   ["changeApprovalRecord", "changeApprovalBinding", "ChangeApproved"],
   ["applyReceiptRecord", "applyReceiptDigest", "ChangeApplied"],
@@ -235,6 +253,8 @@ function validateNetworkEvidenceArtifacts(
     readAtCommit,
     readAtProtectedMain,
     isPathImmutableOnProtectedMain,
+    pathIntroductionTime,
+    planIssuedAt,
     now,
   } = options;
   const recordedAtByEvent = new Map();
@@ -267,6 +287,12 @@ function validateNetworkEvidenceArtifacts(
         readAtProtectedMain,
         isPathImmutableOnProtectedMain,
         auditedCommit,
+      ),
+      ...validatePathPredatesPlan(
+        `V1D-SV network ${event} record`,
+        recordPath,
+        planIssuedAt,
+        pathIntroductionTime,
       ),
     );
     if (sha256(approvedText) !== receipt[digestField])
@@ -335,6 +361,8 @@ function validatePrerequisiteEvidence(
     readAtCommit,
     readAtProtectedMain,
     isPathImmutableOnProtectedMain,
+    pathIntroductionTime,
+    planIssuedAt,
     now,
   } = options;
   const isEvidence = kind === "evidence";
@@ -371,6 +399,12 @@ function validatePrerequisiteEvidence(
       readAtProtectedMain,
       isPathImmutableOnProtectedMain,
       auditedCommit,
+    ),
+    ...validatePathPredatesPlan(
+      `V1D-SV ${expectedId} prerequisite ${label}`,
+      recordPath,
+      planIssuedAt,
+      pathIntroductionTime,
     ),
   );
   if (sha256(approvedText) !== record[digestField])
@@ -464,6 +498,7 @@ function validatePrerequisite(
     readAtCommit,
     readAtProtectedMain,
     isPathImmutableOnProtectedMain,
+    pathIntroductionTime,
     now,
     authorityExpiresAt,
     planIssuedAt,
@@ -496,6 +531,12 @@ function validatePrerequisite(
       readAtProtectedMain,
       isPathImmutableOnProtectedMain,
       auditedCommit,
+    ),
+    ...validatePathPredatesPlan(
+      `V1D-SV ${expectedId} prerequisite`,
+      recordPath,
+      planIssuedAt,
+      pathIntroductionTime,
     ),
   );
   if (sha256(approvedText) !== descriptor.digest)
@@ -763,6 +804,7 @@ function validateApprovedBindings(
       readAtCommit,
       readAtProtectedMain,
       isPathImmutableOnProtectedMain,
+      pathIntroductionTime,
       now,
       authorityExpiresAt: authorizationExpiresAt,
       planIssuedAt: validDate(fields.get("Factory plan issued at")),

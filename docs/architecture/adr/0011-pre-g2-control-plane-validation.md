@@ -64,8 +64,9 @@ green check and forces merge-time revalidation.
 
 V1D-SV cannot install an endpoint package, issue an endpoint-usable grant or
 identity, admit endpoint traffic, publish or update artifacts, expand the plan,
-or change any gate. G2 remains the separate exact authorization for the single
-disposable Linux canary and cannot be open concurrently with V1D-SV.
+or change any gate. G2 through G8 must all remain closed while V1D-SV is open.
+G2 remains the separate exact authorization for the single disposable Linux
+canary.
 
 ## Consequences
 

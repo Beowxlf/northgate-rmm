@@ -39,7 +39,7 @@ const validFields = {
   "Audited commit": "b".repeat(40),
   "Approved bindings record": bindingPath,
   "Issued at": "2026-09-04T13:03:00Z",
-  "Expires at": "2026-09-05T00:00:00Z",
+  "Expires at": "2026-09-04T14:59:59Z",
   "Server binding": digest,
   "Signed release digest": digest,
   "Factory plan ID": "plan-v1d-0001",
@@ -419,14 +419,14 @@ expectFailure(
   (config) => {
     authority(config).requiresClosedGates = [];
   },
-  "require G2 to remain closed",
+  "require G2 through G8 to remain closed",
 );
 expectFailure(
   "closed-gate constraint is not an array",
   (config) => {
     authority(config).requiresClosedGates = "G2";
   },
-  "require G2 to remain closed",
+  "require G2 through G8 to remain closed",
 );
 expectFailure(
   "invalid status",
@@ -474,6 +474,14 @@ expectFailure(
     config.gates.find((gate) => gate.id === "G2").status = "open";
   },
   "cannot be open at the same time",
+);
+expectFailure(
+  "concurrent G3",
+  (config) => {
+    open(config);
+    config.gates.find((gate) => gate.id === "G3").status = "open";
+  },
+  "V1D-SV and G3 cannot be open at the same time",
 );
 expectFailure(
   "prerequisite stripped",
@@ -572,6 +580,14 @@ expectFailure("stale Factory plan", open, "Factory plan is stale", {
   mutateFields: (fields) =>
     (fields["Factory plan issued at"] = "2026-09-04T11:59:59Z"),
 });
+expectFailure(
+  "authority outlives Factory plan freshness",
+  open,
+  "outlives the Factory plan freshness window",
+  {
+    mutateFields: (fields) => (fields["Expires at"] = "2026-09-04T15:00:01Z"),
+  },
+);
 expectFailure("excessive Factory plan lifetime", open, "24-hour lifetime", {
   mutateFields: (fields) =>
     (fields["Factory plan expires at"] = "2026-09-05T13:00:01Z"),
@@ -586,7 +602,7 @@ expectFailure(
   "outlives its Factory plan",
   {
     mutateFields: (fields) =>
-      (fields["Factory plan expires at"] = "2026-09-04T23:59:59Z"),
+      (fields["Factory plan expires at"] = "2026-09-04T14:30:00Z"),
   },
 );
 expectFailure("changed approved bindings", open, "changed after the audited", {
@@ -700,7 +716,7 @@ expectFailure(
   {
     mutatePrerequisites: (records) => {
       const record = JSON.parse(records[v1cPath]);
-      record.expiresAt = "2026-09-04T23:59:59Z";
+      record.expiresAt = "2026-09-04T14:30:00Z";
       records[v1cPath] = canonical(record);
     },
   },

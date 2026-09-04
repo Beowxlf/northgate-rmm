@@ -35,7 +35,8 @@ pre-code audit. Evidence record:
 `V1D-SV` is the only recognized bounded operational authority. Unknown
 authority IDs fail governance validation. Its closed-gate requirements,
 prerequisites, and prohibitions must be exact unique arrays; alternate types,
-duplicates, omissions, and additions fail closed.
+duplicates, omissions, and additions fail closed. Every endpoint-capable gate
+from G2 through G8 must remain closed while V1D-SV is open.
 
 This is an exact, bounded change authorization, not an opened product gate. It
 may be issued only after V1C passes and the required external V1D dependencies
@@ -82,6 +83,8 @@ The Factory plan expiry must cover the full authorization lifetime.
 At every governance validation, the plan must be no more than two hours old and
 its issue-to-expiry lifetime must not exceed 24 hours; older or longer-lived
 plans fail closed and require a fresh host state validation and plan.
+The V1D-SV authorization itself must expire no later than two hours after plan
+issuance, preventing later execution after the freshness window has elapsed.
 
 The authorization permits installation and operation of the named private
 control-plane server only to complete V1D backup/restore, telemetry-outage,

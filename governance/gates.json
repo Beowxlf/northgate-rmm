@@ -17,7 +17,7 @@
       "phase": 2,
       "status": "closed",
       "opensGate": false,
-      "requiresClosedGates": ["G2"],
+      "requiresClosedGates": ["G2", "G3", "G4", "G5", "G6", "G7", "G8"],
       "requirements": [
         "V1C production release trust pass",
         "separately approved and verified external V1D dependencies",
@@ -31,7 +31,7 @@
         "endpoint-usable enrollment grant or identity",
         "canary or other endpoint traffic",
         "artifact publication or update",
-        "opening G2"
+        "opening G2 through G8"
       ]
     }
   ],

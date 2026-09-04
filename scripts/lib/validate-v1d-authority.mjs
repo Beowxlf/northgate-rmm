@@ -14,8 +14,10 @@ const REQUIRED_PROHIBITIONS = [
   "endpoint-usable enrollment grant or identity",
   "canary or other endpoint traffic",
   "artifact publication or update",
-  "opening G2",
+  "opening G2 through G8",
 ];
+
+const REQUIRED_CLOSED_GATES = ["G2", "G3", "G4", "G5", "G6", "G7", "G8"];
 
 const REQUIRED_RECORD_FIELDS = [
   "Authority",
@@ -804,6 +806,14 @@ function validateRecord(text, options) {
     errors.push("V1D-SV Factory plan approval must precede authority expiry.");
   if (expiresAt !== null && planExpiresAt !== null && expiresAt > planExpiresAt)
     errors.push("V1D-SV authorization outlives its Factory plan.");
+  if (
+    expiresAt !== null &&
+    planIssuedAt !== null &&
+    expiresAt > planIssuedAt + MAX_PLAN_AGE_MS
+  )
+    errors.push(
+      "V1D-SV authorization outlives the Factory plan freshness window.",
+    );
 
   if (
     /^[a-f0-9]{40}$/.test(auditedCommit) &&
@@ -847,8 +857,10 @@ export function validateV1dAuthority(
   if (authority.phase !== 2) errors.push("V1D-SV must remain within Phase 2.");
   if (authority.opensGate !== false)
     errors.push("V1D-SV must not open a product gate.");
-  if (!hasExactUniqueEntries(authority.requiresClosedGates, ["G2"]))
-    errors.push("V1D-SV must require G2 to remain closed.");
+  if (
+    !hasExactUniqueEntries(authority.requiresClosedGates, REQUIRED_CLOSED_GATES)
+  )
+    errors.push("V1D-SV must require G2 through G8 to remain closed.");
   if (!["open", "closed"].includes(authority.status))
     errors.push("Invalid status for V1D-SV.");
 
@@ -903,9 +915,11 @@ export function validateV1dAuthority(
         );
     }
   }
-  const g2 = gates.gates?.find((gate) => gate.id === "G2");
-  if (authority.status === "open" && g2?.status !== "closed")
-    errors.push("V1D-SV and G2 cannot be open at the same time.");
+  for (const gateId of REQUIRED_CLOSED_GATES) {
+    const gate = gates.gates?.find((item) => item.id === gateId);
+    if (authority.status === "open" && gate?.status !== "closed")
+      errors.push(`V1D-SV and ${gateId} cannot be open at the same time.`);
+  }
 
   return errors;
 }

@@ -80,5 +80,7 @@ the Factory plan, the V1C pass record, or any external-dependency approval
 record.
 Every prerequisite record must be approved before Factory plan issuance and
 before binding-manifest approval.
-The plan must be no more than two hours old at governance validation and its
-issue-to-expiry lifetime must not exceed 24 hours.
+The plan must be no more than two hours old at governance validation, the
+authority must expire no later than two hours after plan issuance, and the
+plan's issue-to-expiry lifetime must not exceed 24 hours. G2 through G8 must all
+remain closed for the full authority window.

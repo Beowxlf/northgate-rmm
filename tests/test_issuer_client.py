@@ -230,7 +230,7 @@ def test_issuer_client_maps_service_failure_generically(
 
 @pytest.mark.parametrize(
     ("response_status", "content_length"),
-    [(200, "0"), (201, "invalid")],
+    [(200, "0"), (201, "invalid"), (201, "9" * 4_301)],
 )
 def test_issuer_client_maps_invalid_upstream_response_to_service_failure(
     response_status: int,

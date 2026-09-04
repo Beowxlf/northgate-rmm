@@ -129,6 +129,7 @@ class MTLSIssuerClient:
             if content_length is not None and (
                 not content_length.isascii()
                 or not content_length.isdigit()
+                or len(content_length) > len(str(MAX_ISSUER_RESPONSE_BYTES))
                 or int(content_length) > MAX_ISSUER_RESPONSE_BYTES
             ):
                 raise ServiceUnavailableError("issuer response is invalid")

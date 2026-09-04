@@ -108,7 +108,7 @@ def test_agent_service_configuration_rejects_fifo_without_blocking(
 
 
 def test_database_dsn_is_loaded_without_entering_configuration(tmp_path: Path) -> None:
-    dsn = "postgresql://service:synthetic@database.test/northgate"
+    dsn = "postgresql://service:synthetic@10.30.0.10/northgate"
     path = tmp_path / "database-dsn"
     path.write_text(dsn, encoding="utf-8")
     if os.name == "posix":
@@ -124,6 +124,13 @@ def test_database_dsn_is_loaded_without_entering_configuration(tmp_path: Path) -
         " postgresql://database.test/northgate",
         "postgresql://database.test/northgate\n",
         "postgresql://database.test/northgate\x00tail",
+        "postgresql://database.test/northgate",
+        "postgresql://10.30.0.10,10.30.0.11/northgate",
+        "postgresql://10.30.0.10:5432,10.30.0.11:5432/northgate",
+        "postgresql://10.30.0.10/northgate?host=10.30.0.10%2C10.30.0.11",
+        "postgresql://10.30.0.10/northgate?hostaddr=10.30.0.10",
+        "postgresql://10.30.0.10/northgate?service=northgate",
+        "postgresql://8.8.8.8/northgate",
     ],
 )
 def test_database_dsn_rejects_ambiguous_format(tmp_path: Path, value: str) -> None:
@@ -139,7 +146,7 @@ def test_database_dsn_rejects_ambiguous_format(tmp_path: Path, value: str) -> No
 @pytest.mark.skipif(os.name != "posix", reason="POSIX permission contract")
 def test_database_dsn_rejects_group_or_world_access(tmp_path: Path) -> None:
     path = tmp_path / "database-dsn"
-    path.write_text("postgresql://database.test/northgate", encoding="utf-8")
+    path.write_text("postgresql://10.30.0.10/northgate", encoding="utf-8")
     path.chmod(0o640)
 
     with pytest.raises(ValidationError, match="permissions"):
@@ -163,7 +170,7 @@ def test_agent_service_verifies_schema_and_closes_listener(
 
     class FakeStore:
         def __init__(self, dsn: str, *, operation_timeout_seconds: float) -> None:
-            assert dsn == "postgresql://database.test/northgate"
+            assert dsn == "postgresql://10.30.0.10/northgate"
             assert operation_timeout_seconds == 6.0
 
         def verify_schema_state(self) -> tuple[str, ...]:
@@ -186,7 +193,7 @@ def test_agent_service_verifies_schema_and_closes_listener(
     monkeypatch.setattr(service_module, "PostgresControlPlane", FakeStore)
     monkeypatch.setattr(service_module, "AgentTLSListener", FakeListener)
     dsn_path = tmp_path / "database-dsn"
-    dsn_path.write_text("postgresql://database.test/northgate", encoding="utf-8")
+    dsn_path.write_text("postgresql://10.30.0.10/northgate", encoding="utf-8")
     if os.name == "posix":
         dsn_path.chmod(0o600)
     runtime_user_id = dsn_path.stat().st_uid if os.name == "posix" else 1_000

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ipaddress
 import json
 import os
 import signal
@@ -18,6 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from northgate_rmm.errors import ValidationError
 from northgate_rmm.listener import AgentListenerConfiguration, AgentTLSListener
@@ -123,12 +125,33 @@ def load_database_dsn(path: Path) -> str:
         value = encoded.decode("utf-8")
     except UnicodeDecodeError as error:
         raise ValidationError("database DSN credential is not UTF-8") from error
+    if value != value.strip() or "\x00" in value or "\r" in value or "\n" in value:
+        raise ValidationError("database DSN credential has an invalid format")
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        _port = parsed.port
+        query_fields = {
+            unquote(name).lower()
+            for name, _field_value in parse_qsl(
+                parsed.query,
+                keep_blank_values=True,
+                strict_parsing=True,
+            )
+        }
+        address = ipaddress.ip_address(unquote(hostname or ""))
+    except ValueError as error:
+        raise ValidationError(
+            "database DSN credential has an invalid format"
+        ) from error
     if (
-        not value.startswith("postgresql://")
-        or value != value.strip()
-        or "\x00" in value
-        or "\r" in value
-        or "\n" in value
+        parsed.scheme != "postgresql"
+        or hostname is None
+        or not parsed.path.startswith("/")
+        or parsed.path == "/"
+        or parsed.fragment
+        or query_fields & {"host", "hostaddr", "service"}
+        or not (address.is_private or address.is_loopback)
     ):
         raise ValidationError("database DSN credential has an invalid format")
     return value

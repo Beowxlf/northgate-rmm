@@ -35,6 +35,11 @@ world permission. It is never placed in the JSON configuration or command line.
 The reference systemd unit uses `LoadCredential=` so the service receives the
 DSN beneath its private runtime credential directory.
 
+The v1 DSN names one private or loopback IP literal. DNS names, public
+addresses, libpq multi-host authorities, and `host`, `hostaddr`, or `service`
+query overrides fail closed so the configured connection timeout is an overall
+connection-attempt bound rather than a per-target multiplier.
+
 Before opening a socket, startup verifies that every migration packaged with the
 service is present in PostgreSQL with the exact expected checksum. Migration is
 a separate administrative action and identity; the runtime never applies or

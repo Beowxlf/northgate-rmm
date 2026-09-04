@@ -196,6 +196,11 @@ its issue-to-expiry lifetime must not exceed 24 hours; older or longer-lived
 plans fail closed and require a fresh host state validation and plan.
 The V1D-SV authorization itself must expire no later than two hours after plan
 issuance, preventing later execution after the freshness window has elapsed.
+Every operational consumption must run `node scripts/check-gate.mjs V1D-SV`
+from a clean checkout exactly at the freshly fetched protected-main tip. The
+checker rereads the protected authority and performs the complete current-clock,
+signature, plan, scope, history, and evidence validation; an authorization that
+expires without a repository event therefore becomes non-consumable.
 
 Closing `V1D-SV` after it has opened is a two-change fail-closed sequence. The
 first change moves it from `open` to `closing` while preserving the exact
@@ -210,7 +215,8 @@ service stopped; service, database, operator-validation, and synthetic
 identities were revoked; endpoint routes stayed blocked; temporary network
 access and secrets were removed; and rollback was verified. Cleanup may finish
 after authorization or plan expiry, but it must follow the protected-main
-opening, and every claimed event must be no later than the audit clock. The
+`closing` transition, and every claimed event must be no later than the audit
+clock. The
 closing and closeout changes must keep G2
 through G8 closed and must preserve the active authorization file byte for byte.
 That same first closing change must also preserve every transitively referenced
@@ -219,10 +225,11 @@ evidence record, and rollback artifact byte for byte from protected `main`.
 A later product gate may open only in a separate change after
 both closeout artifacts have been accepted exactly once on protected `main`;
 changed, deleted, recreated, future-dated, or same-change closeout evidence
-fails closed. Cleanup events and both artifacts must follow the protected-main
-commit that actually opened the authority; pre-staged closeout evidence is
-invalid. Direct `open` to `closed` transitions are rejected. Once closed, that
-exact authorization record and Factory plan are
+fails closed. Cleanup events must occur strictly after the protected-main
+`closing` transition, and both artifacts must follow the protected-main opening;
+pre-freeze or pre-staged closeout evidence is invalid. Direct `open` to `closed`
+transitions are rejected. Once closed, that exact authorization record and
+Factory plan are
 consumed permanently. Every later closed state must preserve the exact
 single-use closeout reference and artifacts as a monotonic tombstone. A later
 V1D-SV lifecycle requires a different authorization path and a fresh Factory

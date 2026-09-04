@@ -178,6 +178,47 @@ function authorityOpenIntroductionTime() {
   return timestamp.status === 0 ? timestamp.stdout.trim() : null;
 }
 
+function authorityClosingIntroductionTime() {
+  const history = spawnSync(
+    "git",
+    [
+      "log",
+      "--first-parent",
+      "--format=%H",
+      "origin/main",
+      "--",
+      "governance/gates.json",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  let transitionCommit = null;
+  let foundClosing = false;
+  for (const commit of history.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+    const snapshot = readAtCommit(commit, "governance/gates.json");
+    if (typeof snapshot !== "string") continue;
+    let status = null;
+    try {
+      status = JSON.parse(snapshot).boundedOperationalAuthorizations?.find(
+        (item) => item.id === "V1D-SV",
+      )?.status;
+    } catch {
+      return null;
+    }
+    if (status === "closing") {
+      foundClosing = true;
+      transitionCommit = commit;
+    } else if (foundClosing) break;
+  }
+  if (!transitionCommit) return null;
+  const timestamp = spawnSync(
+    "git",
+    ["show", "-s", "--format=%cI", transitionCommit],
+    { cwd: root, encoding: "utf8" },
+  );
+  return timestamp.status === 0 ? timestamp.stdout.trim() : null;
+}
+
 function gateOpenIntroductionTime(
   gateId,
   authorizationPath,
@@ -324,6 +365,7 @@ for (const authorityError of validateV1dAuthority(gates, {
   isProtectedMainCommit,
   protectedMainPathVersionCount,
   authorityOpenIntroductionTime,
+  authorityClosingIntroductionTime,
   gateOpenIntroductionTime,
 }))
   error(authorityError);

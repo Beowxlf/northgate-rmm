@@ -118,7 +118,8 @@ the services, revokes synthetic and workload identities, restores the prior
 network policy, preserves database and protected audit evidence, and proves
 there is no endpoint grant, identity, traffic, reachable endpoint path, or
 residual V1D-SV authority. Expired records remain valid only for this teardown
-validation. Failure to prove cleanup keeps V1D-SV closing and G2 closed.
+validation. Cleanup evidence must postdate the protected-main `closing`
+transition. Failure to prove cleanup keeps V1D-SV closing and G2 closed.
 
 ## Alternatives rejected
 

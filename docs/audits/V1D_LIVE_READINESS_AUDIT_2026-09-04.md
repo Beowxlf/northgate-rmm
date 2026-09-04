@@ -92,8 +92,9 @@ and evidence records.
    the exact authorization, then merge the immutable cleanup evidence and
    closeout receipt while G2 through G8 remain closed. Expiry cannot return the
    authority to service or strand teardown. The cleanup evidence must be
-   created after the protected-main V1D-SV opening; the closed authorization and
-   Factory plan are single-use and cannot authorize another execution.
+   created after the protected-main V1D-SV `closing` transition; the closed
+   authorization and Factory plan are single-use and cannot authorize another
+   execution.
 9. Only after V1D passes and the owner accepts the hardened-server and recovery
    evidence, and only after the closeout artifacts exist unchanged on protected
    `main`, open G2 for only the disposable canary while binding the exact

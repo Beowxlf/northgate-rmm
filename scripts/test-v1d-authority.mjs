@@ -442,6 +442,7 @@ function closeoutOptions(
       return null;
     },
     authorityOpenIntroductionTime: () => "2026-09-04T13:10:00Z",
+    authorityClosingIntroductionTime: () => "2026-09-04T13:15:00Z",
     gateOpenIntroductionTime: (
       gateId,
       authorizationPath,
@@ -1743,6 +1744,25 @@ assert(
     closeoutOptions(priorClosing, { closeoutText: unanchoredCloseout }),
   ).some((item) => item.includes("invalid evidence time sequence")),
   "closeout not anchored to the protected-main opening was accepted",
+);
+passed += 1;
+
+const preFreezeCleanupEvidence = renderCleanupEvidence({
+  verifiedAt: "2026-09-04T13:12:00Z",
+});
+const preFreezeCloseout = renderCloseout(
+  renderRecord(),
+  preFreezeCleanupEvidence,
+);
+assert(
+  validateV1dAuthority(
+    closedWithCloseout,
+    closeoutOptions(priorClosing, {
+      closeoutText: preFreezeCloseout,
+      evidenceText: preFreezeCleanupEvidence,
+    }),
+  ).some((item) => item.includes("invalid evidence time sequence")),
+  "V1D-SV cleanup evidence predating the protected-main freeze was accepted",
 );
 passed += 1;
 

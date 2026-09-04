@@ -527,6 +527,7 @@ function validateCloseout(
     protectedMainPathVersionCount,
     pathIntroductionTime,
     authorityOpenIntroductionTime,
+    authorityClosingIntroductionTime,
     now,
   },
 ) {
@@ -713,6 +714,9 @@ function validateCloseout(
   const closedAt = validDate(closeout.closedAt);
   const authorityOpenedAt = validDate(closeout.authorityOpenedAt);
   const protectedOpenTime = Date.parse(authorityOpenIntroductionTime() ?? "");
+  const protectedClosingTime = Date.parse(
+    authorityClosingIntroductionTime() ?? "",
+  );
   if (
     issuedAt === null ||
     expiresAt === null ||
@@ -721,7 +725,10 @@ function validateCloseout(
     closedAt === null ||
     authorityOpenedAt === null ||
     !Number.isFinite(protectedOpenTime) ||
+    !Number.isFinite(protectedClosingTime) ||
     authorityOpenedAt !== protectedOpenTime ||
+    protectedClosingTime <= authorityOpenedAt ||
+    verifiedAt <= protectedClosingTime ||
     verifiedAt <= authorityOpenedAt ||
     verifiedAt < issuedAt ||
     closedAt < verifiedAt ||
@@ -2773,6 +2780,7 @@ export function validateV1dAuthority(
     isProtectedMainCommit = () => false,
     protectedMainPathVersionCount = () => null,
     authorityOpenIntroductionTime = () => null,
+    authorityClosingIntroductionTime = () => null,
     gateOpenIntroductionTime = () => null,
     now = new Date(),
   } = {},
@@ -2959,6 +2967,7 @@ export function validateV1dAuthority(
         protectedMainPathVersionCount,
         pathIntroductionTime,
         authorityOpenIntroductionTime,
+        authorityClosingIntroductionTime,
         now,
       }),
     );

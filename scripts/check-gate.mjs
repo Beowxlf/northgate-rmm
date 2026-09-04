@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { validateProductGateAuthorization } from "./lib/validate-v1d-authority.mjs";
+import {
+  validateProductGateAuthorization,
+  validateV1dAuthority,
+} from "./lib/validate-v1d-authority.mjs";
+import { verifyCmsDetached } from "./lib/verify-cms.mjs";
 
 const root = process.cwd();
 
@@ -87,6 +91,39 @@ function pathIntroductionTime(relativePath) {
     : null;
 }
 
+function authorityStateIntroductionTime(expectedStatus) {
+  const output = gitOutput([
+    "log",
+    "--first-parent",
+    "--format=%H",
+    "origin/main",
+    "--",
+    "governance/gates.json",
+  ]);
+  if (output === null) return null;
+  let transitionCommit = null;
+  let foundState = false;
+  for (const commit of output.split(/\r?\n/).filter(Boolean)) {
+    const snapshot = readAtCommit(commit, "governance/gates.json");
+    if (typeof snapshot !== "string") continue;
+    let status = null;
+    try {
+      status = JSON.parse(snapshot).boundedOperationalAuthorizations?.find(
+        (item) => item.id === "V1D-SV",
+      )?.status;
+    } catch {
+      return null;
+    }
+    if (status === expectedStatus) {
+      foundState = true;
+      transitionCommit = commit;
+    } else if (foundState) break;
+  }
+  return transitionCommit
+    ? gitOutput(["show", "-s", "--format=%cI", transitionCommit])
+    : null;
+}
+
 function isCommit(commit) {
   return (
     spawnSync("git", ["cat-file", "-e", `${commit}^{commit}`], {
@@ -111,9 +148,12 @@ if (!requestedGate)
 
 const errors = [];
 const productGateRequested = /^G[2-8]$/.test(requestedGate);
+const v1dAuthorityRequested = requestedGate === "V1D-SV";
+const protectedAuthorizationRequested =
+  productGateRequested || v1dAuthorityRequested;
 let verifiedProtectedMain = null;
 let gatesText = read("governance/gates.json");
-if (productGateRequested) {
+if (protectedAuthorizationRequested) {
   const fetch = spawnSync(
     "git",
     [
@@ -153,7 +193,11 @@ try {
 } catch {
   errors.push("Gate configuration is unreadable.");
 }
-const gate = gates?.gates?.find((candidate) => candidate.id === requestedGate);
+const gate = v1dAuthorityRequested
+  ? gates?.boundedOperationalAuthorizations?.find(
+      (candidate) => candidate.id === requestedGate,
+    )
+  : gates?.gates?.find((candidate) => candidate.id === requestedGate);
 if (!gate) errors.push(`Unknown gate: ${requestedGate}`);
 else {
   if (gate.status !== "open")
@@ -164,7 +208,29 @@ else {
     errors.push(`Missing authorization: ${gate.authorization}`);
   if (requestedGate === "G1" && !gates.productCodeAuthorized)
     errors.push("productCodeAuthorized is false.");
-  if (productGateRequested && gate.status === "open") {
+  if (v1dAuthorityRequested && gate.status === "open") {
+    errors.push(
+      ...validateV1dAuthority(gates, {
+        isRegularFile,
+        readText: (relativePath) =>
+          readAtCommit(verifiedProtectedMain, relativePath),
+        readAtCommit,
+        readAtProtectedMain,
+        isPathImmutableOnProtectedMain,
+        isPathIntroducedBefore,
+        pathIntroductionTime,
+        verifyFactoryReceiptSignature: verifyCmsDetached,
+        isCommit,
+        isProtectedMainCommit,
+        protectedMainPathVersionCount,
+        authorityOpenIntroductionTime: () =>
+          authorityStateIntroductionTime("open"),
+        authorityClosingIntroductionTime: () =>
+          authorityStateIntroductionTime("closing"),
+        now: new Date(),
+      }),
+    );
+  } else if (productGateRequested && gate.status === "open") {
     errors.push(
       ...validateProductGateAuthorization(gate, {
         isRegularFile,

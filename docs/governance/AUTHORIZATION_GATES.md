@@ -39,25 +39,25 @@ evidence IDs are enforced as follows:
 | G7   | `break-glass-tested`, `consent-policy-approved`, `exact-target-approved`, `jit-expiry-tested`, `operator-identity-approved`, `protocol-reviewed`, `recording-audit-verified`                                                                 |
 | G8   | `backup-recovery-verified`, `capacity-slo-verified`, `data-retention-approved`, `incident-response-ready`, `multi-tenant-isolation-verified`, `public-exposure-approved`, `topology-approved`                                                |
 
-Every G2 through G8 gate carries an ordered `closeouts` history. Closing an
-open gate or replacing its authorization must append exactly one canonical
-cleanup closeout and name it as `closeout`. The closeout binds the consumed
-authorization and separate cleanup evidence proving targets and identities were
-revoked, network access was removed, artifacts were withdrawn, and rollback was
-verified. Cleanup events and both artifacts must follow the start of the exact
-authorization's active protected-main run—either closed-to-open or an
-open-to-open rescope—not merely authorization staging or an earlier scope's
-opening. A consumed authorization path or digest can never reopen a gate. Later
-closed, reopened, or unchanged-open states must preserve every closeout and its
-referenced records byte for byte with single-use protected-main history. Use the
-adjacent product-gate closeout and cleanup-evidence templates.
+Every G2 through G8 gate carries an ordered `closeouts` history and uses a
+three-change cleanup state machine. First, `open` transitions to `closing` with
+the exact authorization unchanged and no cleanup artifact; `closing` is
+non-consumable and remains valid even after the authorization expires. Second,
+after cleanup, a later `closing` change adds `pendingCloseout` and the canonical
+closeout plus separate evidence proving targets and identities were revoked,
+network access was removed, artifacts were withdrawn, and rollback was verified.
+Third, a later change consumes that exact protected-main pending record, appends
+it to `closeouts`, names it as `closeout`, and moves to `closed` or opens a newly
+authorized scope. Direct open-to-closed and open-to-open rescope transitions
+fail closed.
 
-The cleanup evidence and closeout are first committed as separate immutable
-owner-accepted records while the gate still reflects its active scope, after
-cleanup actually completes. Only a later protected change may append that exact
-closeout to the gate history and close or rescope the gate. Current bytes must
-match the protected-main records exactly; same-change or rewritten evidence
-fails closed.
+Cleanup events must follow the start of the exact authorization's frozen
+`closing` run. Finalization requires the pending closeout and evidence to match
+their owner-accepted protected-main bytes with one immutable history entry. A
+consumed authorization path or digest can never reopen a gate. Later states
+must preserve every closeout, consumed authorization, transitively referenced
+scope and proof record, and cleanup evidence byte for byte. Use the adjacent
+product-gate closeout and cleanup-evidence templates.
 
 Phase-specific source development may be authorized by a separate committed
 development record that states an exact non-deployment boundary. Such a record

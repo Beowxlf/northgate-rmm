@@ -178,7 +178,11 @@ function authorityOpenIntroductionTime() {
   return timestamp.status === 0 ? timestamp.stdout.trim() : null;
 }
 
-function gateOpenIntroductionTime(gateId, authorizationPath) {
+function gateOpenIntroductionTime(
+  gateId,
+  authorizationPath,
+  expectedStatus = "open",
+) {
   const history = spawnSync(
     "git",
     [
@@ -203,7 +207,10 @@ function gateOpenIntroductionTime(gateId, authorizationPath) {
     } catch {
       return null;
     }
-    if (gate?.status === "open" && gate.authorization === authorizationPath) {
+    if (
+      gate?.status === expectedStatus &&
+      gate.authorization === authorizationPath
+    ) {
       foundOpen = true;
       transitionCommit = commit;
     } else if (foundOpen) break;
@@ -329,13 +336,18 @@ for (const artifact of gates.requiredPhase0Artifacts) {
 }
 
 for (const gate of gates.gates) {
-  if (!["open", "closed"].includes(gate.status))
+  if (!["open", "closing", "closed"].includes(gate.status))
     error(`Invalid status for ${gate.id}.`);
-  if (gate.status === "open" && !gate.authorization)
-    error(`Open gate ${gate.id} lacks an authorization record.`);
-  else if (gate.status === "open" && !isRegularFile(gate.authorization))
+  if (gate.status === "closing" && !/^G[2-8]$/.test(gate.id))
+    error(`Closing state is not valid for ${gate.id}.`);
+  if (["open", "closing"].includes(gate.status) && !gate.authorization)
+    error(`Active or closing gate ${gate.id} lacks an authorization record.`);
+  else if (
+    ["open", "closing"].includes(gate.status) &&
+    !isRegularFile(gate.authorization)
+  )
     error(
-      `Open gate ${gate.id} lacks authorization file ${gate.authorization}.`,
+      `Active or closing gate ${gate.id} lacks authorization file ${gate.authorization}.`,
     );
 }
 

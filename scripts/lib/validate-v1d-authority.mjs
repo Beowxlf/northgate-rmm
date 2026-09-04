@@ -863,10 +863,15 @@ function validateProductGateLifecycle(
   {
     isRegularFile,
     readText,
+    readAtCommit,
     readAtProtectedMain,
+    isPathImmutableOnProtectedMain,
+    isPathIntroducedBefore,
     pathIntroductionTime,
     gateOpenIntroductionTime,
     protectedMainPathVersionCount,
+    isCommit,
+    isProtectedMainCommit,
     now,
   },
 ) {
@@ -906,17 +911,62 @@ function validateProductGateLifecycle(
     priorGate?.status === "open" &&
     gate.status === "open" &&
     gate.authorization !== priorGate.authorization;
-  const requiresNewCloseout =
-    priorGate?.status === "open" && (gate.status !== "open" || scopeChanged);
+  const enteringClosing =
+    priorGate?.status === "open" && gate.status === "closing";
+  const stagingCleanup =
+    priorGate?.status === "closing" &&
+    gate.status === "closing" &&
+    !Object.hasOwn(priorGate, "pendingCloseout") &&
+    Object.hasOwn(gate, "pendingCloseout");
+  const finalizingCloseout =
+    priorGate?.status === "closing" && gate.status !== "closing";
   if (
-    requiresNewCloseout &&
+    priorGate?.status === "open" &&
+    (scopeChanged || (!enteringClosing && gate.status !== "open"))
+  )
+    errors.push(
+      `${gate.id} must enter a non-consumable closing state before cleanup or rescope.`,
+    );
+  if (
+    enteringClosing &&
+    (gate.authorization !== priorGate.authorization ||
+      Object.hasOwn(gate, "pendingCloseout"))
+  )
+    errors.push(
+      `${gate.id} closing transition must freeze the active authorization before cleanup.`,
+    );
+  if (
+    priorGate?.status === "closing" &&
+    gate.status === "closing" &&
+    gate.authorization !== priorGate.authorization
+  )
+    errors.push(`${gate.id} closing state cannot change authorization scope.`);
+  if (
+    priorGate?.status === "closing" &&
+    Object.hasOwn(priorGate, "pendingCloseout") &&
+    ((gate.status === "closing" &&
+      gate.pendingCloseout !== priorGate.pendingCloseout) ||
+      (gate.status !== "closing" &&
+        gate.closeout !== priorGate.pendingCloseout))
+  )
+    errors.push(
+      `${gate.id} must preserve and consume its exact pending closeout.`,
+    );
+  if (finalizingCloseout && !Object.hasOwn(priorGate, "pendingCloseout"))
+    errors.push(
+      `${gate.id} cannot finalize before cleanup evidence is frozen.`,
+    );
+  if (gate.status !== "closing" && Object.hasOwn(gate, "pendingCloseout"))
+    errors.push(`${gate.id} pending closeout is valid only while closing.`);
+  if (
+    finalizingCloseout &&
     (currentHistory.length !== priorHistory.length + 1 ||
       gate.closeout !== currentHistory.at(-1))
   )
     errors.push(
       `${gate.id} cannot close or replace scope without appending one cleanup closeout.`,
     );
-  if (!requiresNewCloseout && currentHistory.length !== priorHistory.length)
+  if (!finalizingCloseout && currentHistory.length !== priorHistory.length)
     errors.push(
       `${gate.id} lifecycle history may change only during cleanup closeout.`,
     );
@@ -967,11 +1017,87 @@ function validateProductGateLifecycle(
       )
         errors.push(`${gate.id} must preserve every prior ${label}.`);
     }
+
+    const consumedAuthorizationText = readAtProtectedMain(
+      closeout.authorizationRecord,
+    );
+    if (typeof consumedAuthorizationText !== "string") return;
+    const { fields } = parseRecord(consumedAuthorizationText);
+    for (const [
+      bindingType,
+      pathField,
+      digestField,
+    ] of PRODUCT_GATE_SCOPE_BINDINGS) {
+      const scopePath = fields.get(pathField);
+      const scopeDigest = fields.get(digestField);
+      const protectedScopeText =
+        typeof scopePath === "string" ? readAtProtectedMain(scopePath) : null;
+      const currentScopeText =
+        typeof scopePath === "string" ? readText(scopePath) : null;
+      if (
+        typeof scopePath !== "string" ||
+        !isRegularFile(scopePath) ||
+        typeof protectedScopeText !== "string" ||
+        typeof currentScopeText !== "string" ||
+        normalizeText(currentScopeText) !== normalizeText(protectedScopeText) ||
+        protectedMainPathVersionCount(scopePath) !== 1 ||
+        sha256(protectedScopeText) !== scopeDigest
+      ) {
+        errors.push(`${gate.id} must preserve prior ${bindingType} scope.`);
+        continue;
+      }
+      const scope = parseCanonicalJson(protectedScopeText);
+      if (!scope || !Array.isArray(scope.evidence)) continue;
+      for (const descriptor of scope.evidence) {
+        const evidencePath = descriptor?.record;
+        const protectedEvidenceText =
+          typeof evidencePath === "string"
+            ? readAtProtectedMain(evidencePath)
+            : null;
+        const currentEvidenceText =
+          typeof evidencePath === "string" ? readText(evidencePath) : null;
+        if (
+          typeof evidencePath !== "string" ||
+          !isRegularFile(evidencePath) ||
+          typeof protectedEvidenceText !== "string" ||
+          typeof currentEvidenceText !== "string" ||
+          normalizeText(currentEvidenceText) !==
+            normalizeText(protectedEvidenceText) ||
+          protectedMainPathVersionCount(evidencePath) !== 1 ||
+          sha256(protectedEvidenceText) !== descriptor.digest
+        )
+          errors.push(`${gate.id} must preserve every prior evidence record.`);
+      }
+    }
   };
   for (const closeoutPath of priorHistory) preserveLifecycle(closeoutPath);
 
-  if (!requiresNewCloseout) return errors;
-  const closeoutPath = gate.closeout;
+  const validatePendingCloseout =
+    stagingCleanup ||
+    (priorGate?.status === "closing" &&
+      Object.hasOwn(priorGate, "pendingCloseout"));
+  if (!validatePendingCloseout && !finalizingCloseout) return errors;
+  const requireProtectedEvidence = !stagingCleanup;
+  if (finalizingCloseout)
+    errors.push(
+      ...validateProductGateAuthorization(priorGate, {
+        isRegularFile,
+        readText,
+        readAtCommit,
+        readAtProtectedMain,
+        isPathImmutableOnProtectedMain,
+        isPathIntroducedBefore,
+        pathIntroductionTime,
+        protectedMainPathVersionCount,
+        isCommit,
+        isProtectedMainCommit,
+        allowExpired: true,
+        now,
+      }),
+    );
+  const closeoutPath = stagingCleanup
+    ? gate.pendingCloseout
+    : (priorGate?.pendingCloseout ?? gate.closeout);
   const closeoutText =
     typeof closeoutPath === "string" ? readText(closeoutPath) : null;
   const protectedCloseoutText =
@@ -988,9 +1114,11 @@ function validateProductGateLifecycle(
     return errors;
   }
   if (
-    typeof protectedCloseoutText !== "string" ||
-    normalizeText(closeoutText) !== normalizeText(protectedCloseoutText) ||
-    protectedMainPathVersionCount(closeoutPath) !== 1
+    (requireProtectedEvidence && typeof protectedCloseoutText !== "string") ||
+    (requireProtectedEvidence &&
+      normalizeText(closeoutText) !== normalizeText(protectedCloseoutText)) ||
+    (requireProtectedEvidence &&
+      protectedMainPathVersionCount(closeoutPath) !== 1)
   )
     errors.push(
       `${gate.id} cleanup closeout is not exact owner-accepted protected-main evidence.`,
@@ -1041,9 +1169,11 @@ function validateProductGateLifecycle(
     return errors;
   }
   if (
-    typeof protectedCleanupText !== "string" ||
-    normalizeText(cleanupText) !== normalizeText(protectedCleanupText) ||
-    protectedMainPathVersionCount(cleanupPath) !== 1
+    (requireProtectedEvidence && typeof protectedCleanupText !== "string") ||
+    (requireProtectedEvidence &&
+      normalizeText(cleanupText) !== normalizeText(protectedCleanupText)) ||
+    (requireProtectedEvidence &&
+      protectedMainPathVersionCount(cleanupPath) !== 1)
   )
     errors.push(
       `${gate.id} cleanup evidence is not exact owner-accepted protected-main evidence.`,
@@ -1065,8 +1195,8 @@ function validateProductGateLifecycle(
     errors.push(`${gate.id} cleanup evidence leaves active capability behind.`);
   const verifiedAt = validDate(cleanup.verifiedAt);
   const closedAt = validDate(closeout.closedAt);
-  const openedAt = Date.parse(
-    gateOpenIntroductionTime(gate.id, authorizationPath) ?? "",
+  const frozenAt = Date.parse(
+    gateOpenIntroductionTime(gate.id, authorizationPath, "closing") ?? "",
   );
   const cleanupIntroducedAt = Date.parse(
     pathIntroductionTime(cleanupPath) ?? "",
@@ -1077,14 +1207,16 @@ function validateProductGateLifecycle(
   if (
     verifiedAt === null ||
     closedAt === null ||
-    !Number.isFinite(openedAt) ||
-    !Number.isFinite(cleanupIntroducedAt) ||
-    !Number.isFinite(closeoutIntroducedAt) ||
-    verifiedAt <= openedAt ||
+    !Number.isFinite(frozenAt) ||
+    verifiedAt <= frozenAt ||
     closedAt < verifiedAt ||
     closedAt > now.getTime() ||
-    verifiedAt > cleanupIntroducedAt ||
-    closedAt > closeoutIntroducedAt
+    (requireProtectedEvidence &&
+      (!Number.isFinite(cleanupIntroducedAt) ||
+        verifiedAt > cleanupIntroducedAt)) ||
+    (requireProtectedEvidence &&
+      (!Number.isFinite(closeoutIntroducedAt) ||
+        closedAt > closeoutIntroducedAt))
   )
     errors.push(`${gate.id} cleanup closeout has an invalid event sequence.`);
   return errors;
@@ -1103,6 +1235,7 @@ export function validateProductGateAuthorization(
     protectedMainPathVersionCount = () => null,
     isCommit = () => false,
     isProtectedMainCommit = () => false,
+    allowExpired = false,
     now = new Date(),
   } = {},
 ) {
@@ -1182,7 +1315,7 @@ export function validateProductGateAuthorization(
     expiresAt <= issuedAt ||
     expiresAt - issuedAt > MAX_AUTHORITY_LIFETIME_MS ||
     issuedAt > now.getTime() ||
-    expiresAt <= now.getTime() ||
+    (!allowExpired && expiresAt <= now.getTime()) ||
     !Number.isFinite(authorizationIntroducedAt) ||
     issuedAt > authorizationIntroducedAt
   )
@@ -2608,16 +2741,21 @@ export function validateV1dAuthority(
         ...validateProductGateLifecycle(gate, priorGate, {
           isRegularFile,
           readText,
+          readAtCommit,
           readAtProtectedMain,
+          isPathImmutableOnProtectedMain,
+          isPathIntroducedBefore,
           pathIntroductionTime,
           gateOpenIntroductionTime,
           protectedMainPathVersionCount,
+          isCommit,
+          isProtectedMainCommit,
           now,
         }),
       );
     if (authority.status === "open" && gate?.status !== "closed")
       errors.push(`V1D-SV and ${gateId} cannot be open at the same time.`);
-    if (gate?.status === "open")
+    if (gate?.status === "open" || gate?.status === "closing")
       errors.push(
         ...validateProductGateAuthorization(gate, {
           isRegularFile,
@@ -2630,6 +2768,7 @@ export function validateV1dAuthority(
           protectedMainPathVersionCount,
           isCommit,
           isProtectedMainCommit,
+          allowExpired: gate.status === "closing",
           now,
         }),
       );

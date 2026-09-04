@@ -396,9 +396,15 @@ function closeoutOptions(
       return null;
     },
     authorityOpenIntroductionTime: () => "2026-09-04T13:10:00Z",
-    gateOpenIntroductionTime: (gateId, authorizationPath) =>
+    gateOpenIntroductionTime: (
+      gateId,
+      authorizationPath,
+      expectedStatus = "open",
+    ) =>
       gateId === "G2" && authorizationPath === g2AuthorizationPath
-        ? "2026-09-04T13:46:00Z"
+        ? expectedStatus === "closing"
+          ? "2026-09-04T13:47:00Z"
+          : "2026-09-04T13:46:00Z"
         : null,
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
@@ -1650,17 +1656,39 @@ assert.deepEqual(
 );
 passed += 1;
 
-const g2ClosedWithCleanup = structuredClone(g2AfterCloseout);
-const closedG2 = g2ClosedWithCleanup.gates.find((gate) => gate.id === "G2");
-closedG2.status = "closed";
-closedG2.closeout = g2CloseoutPath;
-closedG2.closeouts = [g2CloseoutPath];
-delete closedG2.authorization;
 const g2CloseoutFixture = withG2Closeout(g2Fixture);
+const g2ClosingFrozen = structuredClone(g2AfterCloseout);
+g2ClosingFrozen.gates.find((gate) => gate.id === "G2").status = "closing";
 assert.deepEqual(
   validateV1dAuthority(
-    g2ClosedWithCleanup,
+    g2ClosingFrozen,
     closeoutOptions(g2AfterCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2Fixture,
+    }),
+  ),
+  [],
+);
+passed += 1;
+
+const expiredClosingOptions = closeoutOptions(g2AfterCloseout, {
+  artifactsOnProtectedMain: true,
+  productGateFixture: g2Fixture,
+});
+expiredClosingOptions.now = new Date("2026-09-04T14:31:00Z");
+assert.deepEqual(
+  validateV1dAuthority(g2ClosingFrozen, expiredClosingOptions),
+  [],
+);
+passed += 1;
+
+const g2ClosingWithEvidence = structuredClone(g2ClosingFrozen);
+g2ClosingWithEvidence.gates.find((gate) => gate.id === "G2").pendingCloseout =
+  g2CloseoutPath;
+assert.deepEqual(
+  validateV1dAuthority(
+    g2ClosingWithEvidence,
+    closeoutOptions(g2ClosingFrozen, {
       artifactsOnProtectedMain: true,
       productGateFixture: g2CloseoutFixture,
     }),
@@ -1669,7 +1697,41 @@ assert.deepEqual(
 );
 passed += 1;
 
-const forgedCleanupOptions = closeoutOptions(g2AfterCloseout, {
+const g2ClosedWithCleanup = structuredClone(g2ClosingWithEvidence);
+const closedG2 = g2ClosedWithCleanup.gates.find((gate) => gate.id === "G2");
+closedG2.status = "closed";
+closedG2.closeout = g2CloseoutPath;
+closedG2.closeouts = [g2CloseoutPath];
+delete closedG2.pendingCloseout;
+delete closedG2.authorization;
+assert.deepEqual(
+  validateV1dAuthority(
+    g2ClosedWithCleanup,
+    closeoutOptions(g2ClosingWithEvidence, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2CloseoutFixture,
+    }),
+  ),
+  [],
+);
+passed += 1;
+
+const finalizationOperationScopePath =
+  "docs/governance/authorizations/product-gates/scopes/G2-exact-operation.json";
+assert(
+  validateV1dAuthority(
+    g2ClosedWithCleanup,
+    closeoutOptions(g2ClosingWithEvidence, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2CloseoutFixture,
+      missingPaths: [finalizationOperationScopePath],
+    }),
+  ).some((item) => item.includes("Operation scope")),
+  "G2 finalization deleted scope evidence from its consumed authorization",
+);
+passed += 1;
+
+const forgedCleanupOptions = closeoutOptions(g2ClosingWithEvidence, {
   artifactsOnProtectedMain: true,
   productGateFixture: g2CloseoutFixture,
 });
@@ -1711,8 +1773,8 @@ prestagedG2CloseoutFixture.records[g2CloseoutPath] =
   canonical(prestagedG2Closeout);
 assert(
   validateV1dAuthority(
-    g2ClosedWithCleanup,
-    closeoutOptions(g2AfterCloseout, {
+    g2ClosingWithEvidence,
+    closeoutOptions(g2ClosingFrozen, {
       artifactsOnProtectedMain: true,
       productGateFixture: prestagedG2CloseoutFixture,
     }),
@@ -1723,7 +1785,7 @@ assert(
 );
 passed += 1;
 
-const rescopeActivationOptions = closeoutOptions(g2AfterCloseout, {
+const rescopeActivationOptions = closeoutOptions(g2ClosingFrozen, {
   artifactsOnProtectedMain: true,
   productGateFixture: g2CloseoutFixture,
 });
@@ -1735,7 +1797,7 @@ rescopeActivationOptions.gateOpenIntroductionTime = (
     ? "2026-09-04T13:50:00Z"
     : null;
 assert(
-  validateV1dAuthority(g2ClosedWithCleanup, rescopeActivationOptions).some(
+  validateV1dAuthority(g2ClosingWithEvidence, rescopeActivationOptions).some(
     (item) => item.includes("cleanup closeout has an invalid event sequence"),
   ),
   "G2 cleanup staged before the current authorization activation was accepted",
@@ -1761,6 +1823,36 @@ assert(
 );
 passed += 1;
 
+const consumedOperationScopePath =
+  "docs/governance/authorizations/product-gates/scopes/G2-exact-operation.json";
+assert(
+  validateV1dAuthority(
+    g2ClosedWithCleanup,
+    closeoutOptions(g2ClosedWithCleanup, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2CloseoutFixture,
+      missingPaths: [consumedOperationScopePath],
+    }),
+  ).some((item) => item.includes("must preserve prior Operation scope")),
+  "closed G2 lifecycle deleted a consumed authorization scope record",
+);
+passed += 1;
+
+const consumedEvidencePath =
+  "docs/governance/authorizations/product-gates/evidence/G2-linux-package-qualified.json";
+assert(
+  validateV1dAuthority(
+    g2ClosedWithCleanup,
+    closeoutOptions(g2ClosedWithCleanup, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2CloseoutFixture,
+      missingPaths: [consumedEvidencePath],
+    }),
+  ).some((item) => item.includes("must preserve every prior evidence record")),
+  "closed G2 lifecycle deleted a consumed proof record",
+);
+passed += 1;
+
 const g2ClosedWithoutCleanup = structuredClone(g2AfterCloseout);
 const closingG2 = g2ClosedWithoutCleanup.gates.find((gate) => gate.id === "G2");
 closingG2.status = "closed";
@@ -1772,7 +1864,7 @@ assert(
       artifactsOnProtectedMain: true,
       productGateFixture: g2Fixture,
     }),
-  ).some((item) => item.includes("cannot close or replace scope")),
+  ).some((item) => item.includes("must enter a non-consumable closing state")),
   "an open G2 gate closed without a cleanup closeout",
 );
 passed += 1;
@@ -1787,7 +1879,7 @@ assert(
       artifactsOnProtectedMain: true,
       productGateFixture: g2Fixture,
     }),
-  ).some((item) => item.includes("cannot close or replace scope")),
+  ).some((item) => item.includes("must enter a non-consumable closing state")),
   "an open G2 gate replaced scope without a cleanup closeout",
 );
 passed += 1;

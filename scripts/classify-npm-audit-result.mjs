@@ -8,12 +8,21 @@ const RETRYABLE_PREFIXES = [
   "504 Gateway Time-out -",
   "request to ",
 ];
+const NPM_ADVISORY_ENDPOINT =
+  "https://registry.npmjs.org/-/npm/v1/security/advisories/";
 
 export function isRetryableAuditFailure(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
-  if (!("error" in value) || typeof value.message !== "string") {
+  if (
+    !("error" in value) ||
+    value.error === null ||
+    typeof value.error !== "object" ||
+    Array.isArray(value.error) ||
+    typeof value.message !== "string" ||
+    !value.message.includes(NPM_ADVISORY_ENDPOINT)
+  ) {
     return false;
   }
   return RETRYABLE_PREFIXES.some((prefix) => value.message.startsWith(prefix));

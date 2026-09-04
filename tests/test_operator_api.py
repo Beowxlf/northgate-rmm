@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from typing import cast
 
 import pytest
@@ -19,6 +19,19 @@ from northgate_rmm.simulator import SyntheticAgent
 
 NOW = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
 AUTHORIZATION = "Bearer synthetic-operator-session"  # gitleaks:allow
+
+
+class UndefinedOffsetTimezone(tzinfo):
+    """Malformed timezone used to prove undefined offsets fail closed."""
+
+    def utcoffset(self, _value: datetime | None) -> None:
+        return None
+
+    def dst(self, _value: datetime | None) -> None:
+        return None
+
+    def tzname(self, _value: datetime | None) -> str:
+        return "undefined-offset"
 
 
 @dataclass
@@ -133,7 +146,10 @@ def test_operator_detail_is_read_only_escaped_and_audited() -> None:
     assert plane.audit_events[-1].subject == f"endpoint:{agent.endpoint_id}"
 
 
-@pytest.mark.parametrize("authorization", [None, "", "x" * 4_097, "\ud800"])
+@pytest.mark.parametrize(
+    "authorization",
+    [None, "", "x" * 4_097, "\ud800", cast(str | None, 123)],
+)
 def test_operator_authentication_failures_are_generic_and_audited(
     authorization: str | None,
 ) -> None:
@@ -166,6 +182,20 @@ def test_external_verifier_rejection_is_generic_and_does_not_log_credential() ->
     assert response.status == 401
     assert verifier.calls == [(AUTHORIZATION, NOW)]
     assert AUTHORIZATION not in repr(plane.audit_events[-1])
+
+
+def test_external_verifier_must_return_exact_validated_principal() -> None:
+    app, plane, verifier, _agent = application()
+    verifier.principal = cast(OperatorPrincipal, object())
+
+    response = app.handle(
+        OperatorRequest("GET", "/endpoints", AUTHORIZATION),
+        received_at=NOW,
+    )
+
+    assert response.status == 401
+    assert plane.audit_events[-1].action == "operator.authenticate"
+    assert plane.audit_events[-1].decision == "rejected"
 
 
 def test_operator_session_is_revalidated_on_every_request() -> None:
@@ -303,6 +333,11 @@ def test_operator_models_reject_invalid_sessions_and_policy() -> None:
         replace(principal(), issuer=cast(str, 1))
     with pytest.raises(ValidationError, match="session times"):
         replace(principal(), authenticated_at=cast(datetime, "not-a-time"))
+    with pytest.raises(ValidationError, match="authenticated_at"):
+        replace(
+            principal(),
+            authenticated_at=NOW.replace(tzinfo=UndefinedOffsetTimezone()),
+        )
     with pytest.raises(ValidationError, match="issuer"):
         replace(policy(), issuer=cast(str, ["not", "a", "string"]))
     with pytest.raises(ValidationError, match="maximum session age"):

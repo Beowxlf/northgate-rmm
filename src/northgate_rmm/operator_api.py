@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
 from uuid import UUID, uuid4
 
+from northgate_rmm.domain import require_aware
 from northgate_rmm.errors import AuthorizationError, NotFoundError, ValidationError
 from northgate_rmm.views import (
     EndpointReader,
@@ -76,10 +77,10 @@ class OperatorPrincipal:
         if (
             type(self.authenticated_at) is not datetime
             or type(self.expires_at) is not datetime
-            or self.authenticated_at.tzinfo is None
-            or self.expires_at.tzinfo is None
         ):
             raise ValidationError("operator session times must be timezone-aware")
+        require_aware(self.authenticated_at, "operator authenticated_at")
+        require_aware(self.expires_at, "operator expires_at")
         if self.expires_at <= self.authenticated_at:
             raise ValidationError("operator session lifetime is invalid")
 
@@ -175,8 +176,7 @@ class OperatorApplication:
     def handle(
         self, request: OperatorRequest, *, received_at: datetime
     ) -> OperatorResponse:
-        if received_at.tzinfo is None:
-            raise ValidationError("received_at must be timezone-aware")
+        require_aware(received_at, "received_at")
         now = received_at.astimezone(UTC)
         correlation_id = uuid4()
         try:
@@ -282,7 +282,9 @@ class OperatorApplication:
     ) -> OperatorPrincipal:
         try:
             encoded_authorization = (
-                authorization.encode("utf-8") if authorization is not None else b""
+                authorization.encode("utf-8")
+                if type(authorization) is str
+                else b""
             )
         except UnicodeEncodeError:
             encoded_authorization = b""
@@ -298,7 +300,10 @@ class OperatorApplication:
             )
             raise AuthorizationError("operator authentication failed")
         try:
-            return self._verifier.verify(cast(str, authorization), now=now)
+            principal = self._verifier.verify(cast(str, authorization), now=now)
+            if type(principal) is not OperatorPrincipal:
+                raise ValidationError("external verifier returned an invalid principal")
+            return principal
         except (AuthorizationError, ValidationError):
             self._store.record_operator_access(
                 actor_id="unauthenticated",

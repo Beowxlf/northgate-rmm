@@ -66,10 +66,10 @@ JSON event logger rejects arbitrary fields and raw error text. A Debian 12 amd64
 lifecycle contract, executable entrypoint, installable package, and hardened,
 resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
 Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
-test-only signature verification have also passed prior tests. G2A and G2B
-remain pending until corrected workflows retain every required digest. The
-repository still has no deployable control-plane listener or live enrollment
-network flow, command runner, or privileged helper.
+test-only signature verification have also passed. Evidence-complete G2A and
+G2B qualification records retain every required digest. The repository still
+has no deployable control-plane listener or live enrollment network flow,
+command runner, or privileged helper.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.

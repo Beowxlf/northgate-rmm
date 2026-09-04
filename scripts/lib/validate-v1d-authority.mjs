@@ -1045,7 +1045,9 @@ function validateProductGateLifecycle(
     errors.push(`${gate.id} cleanup evidence leaves active capability behind.`);
   const verifiedAt = validDate(cleanup.verifiedAt);
   const closedAt = validDate(closeout.closedAt);
-  const openedAt = Date.parse(gateOpenIntroductionTime(gate.id) ?? "");
+  const openedAt = Date.parse(
+    gateOpenIntroductionTime(gate.id, authorizationPath) ?? "",
+  );
   const cleanupIntroducedAt = Date.parse(
     pathIntroductionTime(cleanupPath) ?? "",
   );

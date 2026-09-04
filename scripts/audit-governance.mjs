@@ -178,7 +178,7 @@ function authorityOpenIntroductionTime() {
   return timestamp.status === 0 ? timestamp.stdout.trim() : null;
 }
 
-function gateOpenIntroductionTime(gateId) {
+function gateOpenIntroductionTime(gateId, authorizationPath) {
   const history = spawnSync(
     "git",
     [
@@ -197,15 +197,13 @@ function gateOpenIntroductionTime(gateId) {
   for (const commit of history.stdout.trim().split(/\r?\n/).filter(Boolean)) {
     const snapshot = readAtCommit(commit, "governance/gates.json");
     if (typeof snapshot !== "string") continue;
-    let status = null;
+    let gate = null;
     try {
-      status = JSON.parse(snapshot).gates?.find(
-        (item) => item.id === gateId,
-      )?.status;
+      gate = JSON.parse(snapshot).gates?.find((item) => item.id === gateId);
     } catch {
       return null;
     }
-    if (status === "open") {
+    if (gate?.status === "open" && gate.authorization === authorizationPath) {
       foundOpen = true;
       transitionCommit = commit;
     } else if (foundOpen) break;

@@ -396,8 +396,10 @@ function closeoutOptions(
       return null;
     },
     authorityOpenIntroductionTime: () => "2026-09-04T13:10:00Z",
-    gateOpenIntroductionTime: (gateId) =>
-      gateId === "G2" ? "2026-09-04T13:46:00Z" : null,
+    gateOpenIntroductionTime: (gateId, authorizationPath) =>
+      gateId === "G2" && authorizationPath === g2AuthorizationPath
+        ? "2026-09-04T13:46:00Z"
+        : null,
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
     now: fixedNow,
@@ -1694,6 +1696,25 @@ assert(
     item.includes("cleanup closeout has an invalid event sequence"),
   ),
   "G2 cleanup staged before the actual gate opening was accepted",
+);
+passed += 1;
+
+const rescopeActivationOptions = closeoutOptions(g2AfterCloseout, {
+  artifactsOnProtectedMain: true,
+  productGateFixture: g2CloseoutFixture,
+});
+rescopeActivationOptions.gateOpenIntroductionTime = (
+  gateId,
+  authorizationPath,
+) =>
+  gateId === "G2" && authorizationPath === g2AuthorizationPath
+    ? "2026-09-04T13:50:00Z"
+    : null;
+assert(
+  validateV1dAuthority(g2ClosedWithCleanup, rescopeActivationOptions).some(
+    (item) => item.includes("cleanup closeout has an invalid event sequence"),
+  ),
+  "G2 cleanup staged before the current authorization activation was accepted",
 );
 passed += 1;
 

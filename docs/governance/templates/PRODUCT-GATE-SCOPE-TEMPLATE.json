@@ -6,6 +6,7 @@
   "approver": "Beowxlf",
   "approvedAt": "YYYY-MM-DDTHH:MM:SSZ",
   "expiresAt": "YYYY-MM-DDTHH:MM:SSZ",
+  "scope": ["PLACEHOLDER"],
   "scopeDigest": "sha256:PLACEHOLDER",
   "evidence": [
     {

@@ -24,7 +24,10 @@ in addition to the gate-specific requirements below.
 Each of the seven bound scope records and every evidence record must be
 canonical, separately owner-approved, digest-matched, single-use, unchanged on
 protected `main`, and present at the audited commit before the authorization is
-accepted. The exact required evidence IDs are enforced as follows:
+accepted. A scope digest must recompute from the record's embedded, non-empty
+exact scope, and an evidence result digest must recompute from its embedded,
+non-empty exact result; opaque unchecked digests fail closed. The exact required
+evidence IDs are enforced as follows:
 
 | Gate | Required evidence IDs                                                                                                                                                                                                                        |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -86,7 +89,9 @@ After `V1D-SV` opens, every later open state must preserve the exact
 authorization path and bytes from protected `main`. Changing the server,
 release, plan, identities, network, expiry, or any other authorization content
 requires closing and cleaning the current lifecycle, then beginning a
-separately approved lifecycle with a new plan and authorization.
+separately approved lifecycle with a new plan and authorization. Reopening must
+preserve the prior closeout, consumed authorization, and cleanup-evidence files
+byte for byte with their complete single-use protected-main history.
 Its protected-main introduction commit time must also predate the authenticated
 plan issue time. The trust record, receipt, and signature each use an immutable,
 single-use protected-main path.

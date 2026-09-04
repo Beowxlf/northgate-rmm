@@ -58,6 +58,7 @@ const PRODUCT_GATE_SCOPE_FIELDS = [
   "approver",
   "approvedAt",
   "expiresAt",
+  "scope",
   "scopeDigest",
   "evidence",
 ];
@@ -69,6 +70,7 @@ const PRODUCT_GATE_EVIDENCE_FIELDS = [
   "approver",
   "verifiedAt",
   "targetBinding",
+  "result",
   "resultBinding",
 ];
 const PRODUCT_GATE_REQUIRED_EVIDENCE = {
@@ -663,6 +665,45 @@ function validateReopen(
     ];
   }
 
+  const priorLifecycleRecords = [
+    [
+      "authorization",
+      priorCloseout.authorizationRecord,
+      priorCloseout.authorizationRecordDigest,
+      /^docs\/governance\/authorizations\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/,
+    ],
+    [
+      "cleanup evidence",
+      priorCloseout.cleanupEvidenceRecord,
+      priorCloseout.cleanupEvidenceDigest,
+      /^docs\/governance\/authorizations\/closeouts\/evidence\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/,
+    ],
+  ];
+  for (const [
+    label,
+    recordPath,
+    expectedDigest,
+    pathPattern,
+  ] of priorLifecycleRecords) {
+    const protectedText =
+      typeof recordPath === "string" ? readAtProtectedMain(recordPath) : null;
+    const currentText =
+      typeof recordPath === "string" ? readText(recordPath) : null;
+    if (
+      typeof recordPath !== "string" ||
+      !pathPattern.test(recordPath) ||
+      !isRegularFile(recordPath) ||
+      typeof protectedText !== "string" ||
+      typeof currentText !== "string" ||
+      normalizeText(currentText) !== normalizeText(protectedText) ||
+      protectedMainPathVersionCount(recordPath) !== 1 ||
+      sha256(protectedText) !== expectedDigest
+    )
+      errors.push(
+        `V1D-SV cannot reopen without preserving its immutable prior lifecycle ${label}.`,
+      );
+  }
+
   const { fields } = parseRecord(authorizationText);
   if (
     authorizationPath === priorCloseout.authorizationRecord ||
@@ -815,16 +856,38 @@ export function validateProductGateAuthorization(
     }
     if (!hasExactUniqueEntries(Object.keys(scope), PRODUCT_GATE_SCOPE_FIELDS))
       errors.push(`${gate.id} ${bindingType} scope has an invalid field set.`);
+    const exactScope = scope.scope;
+    const exactScopeIsValid =
+      Array.isArray(exactScope) &&
+      exactScope.length > 0 &&
+      new Set(exactScope).size === exactScope.length &&
+      exactScope.every(
+        (item) =>
+          typeof item === "string" &&
+          item.trim() === item &&
+          item.length > 0 &&
+          !/\b(?:TBD|TODO|CHANGEME|PLACEHOLDER)\b/i.test(item),
+      );
+    const resolvedScopeDigest = exactScopeIsValid
+      ? canonicalJsonDigest(exactScope)
+      : null;
     if (
       scope.schemaVersion !== 1 ||
       scope.gate !== gate.id ||
       scope.bindingType !== bindingType ||
       scope.status !== "Approved" ||
       scope.approver !== "Beowxlf" ||
-      !/^sha256:[a-f0-9]{64}$/.test(scope.scopeDigest ?? "")
+      !/^sha256:[a-f0-9]{64}$/.test(scope.scopeDigest ?? "") ||
+      resolvedScopeDigest !== scope.scopeDigest
     )
-      errors.push(`${gate.id} ${bindingType} scope has invalid approval data.`);
-    if (bindingType === "TargetSet") targetSetScopeDigest = scope.scopeDigest;
+      errors.push(
+        `${gate.id} ${bindingType} scope does not resolve its exact approved content.`,
+      );
+    if (
+      bindingType === "TargetSet" &&
+      resolvedScopeDigest === scope.scopeDigest
+    )
+      targetSetScopeDigest = resolvedScopeDigest;
     const approvedAt = validDate(scope.approvedAt);
     const scopeExpiresAt = validDate(scope.expiresAt);
     const scopeIntroducedAt = Date.parse(
@@ -899,6 +962,21 @@ export function validateProductGateAuthorization(
         errors.push(
           `${gate.id} evidence ${evidenceId} has an invalid field set.`,
         );
+      const exactResult = evidence.result;
+      const exactResultIsValid =
+        Array.isArray(exactResult) &&
+        exactResult.length > 0 &&
+        new Set(exactResult).size === exactResult.length &&
+        exactResult.every(
+          (item) =>
+            typeof item === "string" &&
+            item.trim() === item &&
+            item.length > 0 &&
+            !/\b(?:TBD|TODO|CHANGEME|PLACEHOLDER)\b/i.test(item),
+        );
+      const resolvedResultDigest = exactResultIsValid
+        ? canonicalJsonDigest(exactResult)
+        : null;
       if (
         evidence.schemaVersion !== 1 ||
         evidence.gate !== gate.id ||
@@ -907,7 +985,8 @@ export function validateProductGateAuthorization(
         evidence.approver !== "Beowxlf" ||
         !/^sha256:[a-f0-9]{64}$/.test(evidence.targetBinding ?? "") ||
         !/^sha256:[a-f0-9]{64}$/.test(evidence.resultBinding ?? "") ||
-        evidence.targetBinding !== targetSetScopeDigest
+        evidence.targetBinding !== targetSetScopeDigest ||
+        evidence.resultBinding !== resolvedResultDigest
       )
         errors.push(
           `${gate.id} evidence ${evidenceId} has invalid proof data.`,

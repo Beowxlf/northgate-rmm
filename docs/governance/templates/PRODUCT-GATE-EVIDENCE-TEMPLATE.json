@@ -6,5 +6,6 @@
   "approver": "Beowxlf",
   "verifiedAt": "YYYY-MM-DDTHH:MM:SSZ",
   "targetBinding": "sha256:PLACEHOLDER",
+  "result": ["PLACEHOLDER"],
   "resultBinding": "sha256:PLACEHOLDER"
 }

@@ -190,6 +190,29 @@ function renderCloseout(
 
 function buildProductGateFixture({ omitEvidenceId = null } = {}) {
   const records = {};
+  const scopes = [
+    ["Operation", "Operation record", "Operation binding"],
+    ["TargetSet", "Target set record", "Target set binding"],
+    ["ArtifactSet", "Artifact set record", "Artifact set binding"],
+    ["IdentitySet", "Identity set record", "Identity set binding"],
+    ["NetworkPolicy", "Network policy record", "Network policy binding"],
+    ["Rollback", "Rollback record", "Rollback binding"],
+    [
+      "EvidenceBoundary",
+      "Evidence boundary record",
+      "Evidence boundary binding",
+    ],
+  ];
+  const exactScopes = {
+    Operation: ["install:northgate-rmm-agent"],
+    TargetSet: ["asset:linux-canary-01"],
+    ArtifactSet: ["artifact:northgate-rmm-agent-test-package"],
+    IdentitySet: ["identity:linux-canary-agent"],
+    NetworkPolicy: ["flow:linux-canary-to-control-plane:443/tcp"],
+    Rollback: ["action:uninstall-package-and-revoke-identity"],
+    EvidenceBoundary: ["repository:protected-main-records-only"],
+  };
+  const targetScopeDigest = hash(canonical(exactScopes.TargetSet));
   const requiredEvidence = [
     "data-collection-inventory-approved",
     "endpoint-target-approved",
@@ -204,6 +227,7 @@ function buildProductGateFixture({ omitEvidenceId = null } = {}) {
     .filter((id) => id !== omitEvidenceId)
     .map((id) => {
       const record = `docs/governance/authorizations/product-gates/evidence/G2-${id}.json`;
+      const result = [`${id}:verified`];
       records[record] = canonical({
         schemaVersion: 1,
         gate: "G2",
@@ -211,24 +235,12 @@ function buildProductGateFixture({ omitEvidenceId = null } = {}) {
         status: "Verified",
         approver: "Beowxlf",
         verifiedAt: "2026-09-04T13:00:00Z",
-        targetBinding: digest,
-        resultBinding: digest,
+        targetBinding: targetScopeDigest,
+        result,
+        resultBinding: hash(canonical(result)),
       });
       return { id, record, digest: hash(records[record]) };
     });
-  const scopes = [
-    ["Operation", "Operation record", "Operation binding"],
-    ["TargetSet", "Target set record", "Target set binding"],
-    ["ArtifactSet", "Artifact set record", "Artifact set binding"],
-    ["IdentitySet", "Identity set record", "Identity set binding"],
-    ["NetworkPolicy", "Network policy record", "Network policy binding"],
-    ["Rollback", "Rollback record", "Rollback binding"],
-    [
-      "EvidenceBoundary",
-      "Evidence boundary record",
-      "Evidence boundary binding",
-    ],
-  ];
   const authorizationFields = {
     Gate: "G2",
     Status: "Authorized",
@@ -250,7 +262,8 @@ function buildProductGateFixture({ omitEvidenceId = null } = {}) {
       approver: "Beowxlf",
       approvedAt: "2026-09-04T13:20:00Z",
       expiresAt: "2026-09-04T15:00:00Z",
-      scopeDigest: digest,
+      scope: exactScopes[bindingType],
+      scopeDigest: hash(canonical(exactScopes[bindingType])),
       evidence: bindingType === "EvidenceBoundary" ? evidenceDescriptors : [],
     });
     authorizationFields[pathField] = record;
@@ -632,10 +645,19 @@ function expectFailure(
     protectedMainGates = null,
     priorCloseoutText = null,
     priorAuthorizationText = null,
+    priorCleanupEvidenceText = null,
+    currentAuthorizationPath = exactPath,
+    deletedPaths = [],
   } = {},
 ) {
   const config = clone();
   mutateConfig(config);
+  const currentAuthority = authority(config);
+  if (
+    currentAuthority?.status === "open" &&
+    currentAuthorizationPath !== exactPath
+  )
+    currentAuthority.authorization = currentAuthorizationPath;
   const fields = structuredClone(validFields);
   mutateFields?.(fields);
   const prerequisites = buildPrerequisites();
@@ -660,15 +682,21 @@ function expectFailure(
   const errors = validateV1dAuthority(config, {
     isRegularFile: (path) =>
       regularFile &&
-      (path === exactPath ||
+      !deletedPaths.includes(path) &&
+      (path === currentAuthorizationPath ||
+        (priorAuthorizationText !== null && path === exactPath) ||
         path === bindingPath ||
         path === factoryReceiptPath ||
         path === factorySignaturePath ||
         path === factoryTrustPath ||
         (priorCloseoutText !== null && path === closeoutPath) ||
+        (priorCleanupEvidenceText !== null && path === cleanupEvidencePath) ||
         path in prerequisites),
     readText: (path) => {
-      if (path === exactPath) return recordText ?? renderRecord(fields);
+      if (deletedPaths.includes(path)) return null;
+      if (path === currentAuthorizationPath)
+        return recordText ?? renderRecord(fields);
+      if (path === exactPath) return priorAuthorizationText;
       if (path === bindingPath) return currentApprovedText ?? priorApproval;
       if (path === factoryReceiptPath)
         return currentFactoryReceiptText ?? priorFactoryReceipt;
@@ -677,6 +705,7 @@ function expectFailure(
       if (path === factoryTrustPath)
         return currentFactoryTrustText ?? priorFactoryTrust;
       if (path === closeoutPath) return priorCloseoutText;
+      if (path === cleanupEvidencePath) return priorCleanupEvidenceText;
       if (path in prerequisites) return prerequisites[path];
       return null;
     },
@@ -696,14 +725,20 @@ function expectFailure(
       if (path === exactPath && priorAuthorizationText !== null)
         return priorAuthorizationText;
       if (path === closeoutPath) return priorCloseoutText;
+      if (path === cleanupEvidencePath) return priorCleanupEvidenceText;
       if (path === bindingPath) return priorApproval;
       if (path === factoryReceiptPath) return priorFactoryReceipt;
       if (path === factorySignaturePath) return priorFactorySignature;
       if (path === factoryTrustPath) return priorFactoryTrust;
       return prerequisites[path] ?? null;
     },
-    protectedMainPathVersionCount: (path) =>
-      path === closeoutPath && priorCloseoutText !== null ? 1 : null,
+    protectedMainPathVersionCount: (path) => {
+      if (path === closeoutPath && priorCloseoutText !== null) return 1;
+      if (path === exactPath && priorAuthorizationText !== null) return 1;
+      if (path === cleanupEvidencePath && priorCleanupEvidenceText !== null)
+        return 1;
+      return null;
+    },
     isPathImmutableOnProtectedMain: (commit, path) =>
       commit === validFields["Audited commit"] &&
       !nonImmutablePaths.includes(path),
@@ -1451,6 +1486,35 @@ expectFailure(
   },
 );
 
+const freshAuthorizationPath =
+  "docs/governance/authorizations/V1D-SV-second-lifecycle.md";
+expectFailure(
+  "reopen deletes prior authorization evidence",
+  open,
+  "preserving its immutable prior lifecycle authorization",
+  {
+    protectedMainGates: closedWithCloseout,
+    priorCloseoutText: renderCloseout(),
+    priorAuthorizationText: renderRecord(),
+    priorCleanupEvidenceText: renderCleanupEvidence(),
+    currentAuthorizationPath: freshAuthorizationPath,
+    deletedPaths: [exactPath],
+  },
+);
+expectFailure(
+  "reopen deletes prior cleanup evidence",
+  open,
+  "preserving its immutable prior lifecycle cleanup evidence",
+  {
+    protectedMainGates: closedWithCloseout,
+    priorCloseoutText: renderCloseout(),
+    priorAuthorizationText: renderRecord(),
+    priorCleanupEvidenceText: renderCleanupEvidence(),
+    currentAuthorizationPath: freshAuthorizationPath,
+    deletedPaths: [cleanupEvidencePath],
+  },
+);
+
 assert(
   validateV1dAuthority(
     closedWithCloseout,
@@ -1554,6 +1618,72 @@ assert(
     }),
   ).some((item) => item.includes("Operation scope digest mismatches")),
   "unresolved product-gate scope digest was accepted",
+);
+passed += 1;
+
+const opaqueG2ScopeFixture = buildProductGateFixture();
+const operationScopePath =
+  "docs/governance/authorizations/product-gates/scopes/G2-exact-operation.json";
+const opaqueOperationScope = JSON.parse(
+  opaqueG2ScopeFixture.records[operationScopePath],
+);
+opaqueOperationScope.scopeDigest = `sha256:${"d".repeat(64)}`;
+opaqueG2ScopeFixture.records[operationScopePath] =
+  canonical(opaqueOperationScope);
+opaqueG2ScopeFixture.authorizationText =
+  opaqueG2ScopeFixture.authorizationText.replace(
+    /^Operation binding:.*$/m,
+    `Operation binding: ${hash(opaqueG2ScopeFixture.records[operationScopePath])}`,
+  );
+assert(
+  validateV1dAuthority(
+    g2AfterCloseout,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: opaqueG2ScopeFixture,
+    }),
+  ).some((item) =>
+    item.includes(
+      "Operation scope does not resolve its exact approved content",
+    ),
+  ),
+  "opaque product-gate scope digest was accepted",
+);
+passed += 1;
+
+const opaqueG2ResultFixture = buildProductGateFixture();
+const resultEvidencePath =
+  "docs/governance/authorizations/product-gates/evidence/G2-linux-package-qualified.json";
+const opaqueResultEvidence = JSON.parse(
+  opaqueG2ResultFixture.records[resultEvidencePath],
+);
+opaqueResultEvidence.resultBinding = `sha256:${"e".repeat(64)}`;
+opaqueG2ResultFixture.records[resultEvidencePath] =
+  canonical(opaqueResultEvidence);
+const evidenceBoundaryPath =
+  "docs/governance/authorizations/product-gates/scopes/G2-exact-evidence-boundary.json";
+const evidenceBoundary = JSON.parse(
+  opaqueG2ResultFixture.records[evidenceBoundaryPath],
+);
+evidenceBoundary.evidence.find(
+  (item) => item.id === "linux-package-qualified",
+).digest = hash(opaqueG2ResultFixture.records[resultEvidencePath]);
+opaqueG2ResultFixture.records[evidenceBoundaryPath] =
+  canonical(evidenceBoundary);
+opaqueG2ResultFixture.authorizationText =
+  opaqueG2ResultFixture.authorizationText.replace(
+    /^Evidence boundary binding:.*$/m,
+    `Evidence boundary binding: ${hash(opaqueG2ResultFixture.records[evidenceBoundaryPath])}`,
+  );
+assert(
+  validateV1dAuthority(
+    g2AfterCloseout,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: opaqueG2ResultFixture,
+    }),
+  ).some((item) => item.includes("has invalid proof data")),
+  "opaque product-gate evidence result digest was accepted",
 );
 passed += 1;
 

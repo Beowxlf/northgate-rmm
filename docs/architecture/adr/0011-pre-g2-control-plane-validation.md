@@ -92,8 +92,10 @@ canary.
   endpoint authority.
 - PKI, verifier, telemetry/audit, backup/recovery, DNS, authenticated-time,
   network, Factory, and key-custody changes retain separate approval records.
-- Operators must prove cleanup and absence of residual endpoint authority before
-  accepting the V1D evidence and before opening G2.
+- Operators first freeze V1D-SV in a non-consumable `closing` state, then prove
+  cleanup and absence of residual endpoint authority before accepting the V1D
+  evidence and before opening G2. Expiry cannot restore operational authority or
+  prevent teardown.
 - The machine-readable governance audit rejects a missing authority definition,
   a gate-opening authority, the wrong phase, a missing exact record for an open
   authority, or concurrent V1D-SV and G2 state.
@@ -111,10 +113,12 @@ authority, plan, state hash, server, release, dependency, identity profile, and
 route scope. It also requires proof that the authority cannot change G2, publish
 artifacts, or create endpoint authority.
 
-Recovery stops the services, revokes synthetic and workload identities, restores
-the prior network policy, preserves database and protected audit evidence, and
-proves there is no endpoint grant, identity, traffic, reachable endpoint path, or
-residual V1D-SV authority. Failure to prove cleanup keeps V1D open and G2 closed.
+Recovery first changes V1D-SV from `open` to non-consumable `closing`, then stops
+the services, revokes synthetic and workload identities, restores the prior
+network policy, preserves database and protected audit evidence, and proves
+there is no endpoint grant, identity, traffic, reachable endpoint path, or
+residual V1D-SV authority. Expired records remain valid only for this teardown
+validation. Failure to prove cleanup keeps V1D-SV closing and G2 closed.
 
 ## Alternatives rejected
 

@@ -528,7 +528,7 @@ function validateCloseout(
   }
 
   if (
-    priorAuthority?.status !== "open" &&
+    !["open", "closing"].includes(priorAuthority?.status) &&
     priorAuthority?.closeout !== closeoutPath
   )
     errors.push(
@@ -603,7 +603,7 @@ function validateCloseout(
   if (sha256(authorizationText) !== closeout.authorizationRecordDigest)
     errors.push("V1D-SV cleanup closeout authorization digest mismatches.");
   if (
-    priorAuthority?.status === "open" &&
+    ["open", "closing"].includes(priorAuthority?.status) &&
     priorAuthority.authorization !== authorizationPath
   )
     errors.push(
@@ -710,15 +710,13 @@ function validateCloseout(
     verifiedAt <= authorityOpenedAt ||
     verifiedAt < issuedAt ||
     closedAt < verifiedAt ||
-    closedAt > expiresAt ||
-    closedAt > planExpiresAt ||
     closedAt > now.getTime()
   )
     errors.push(
       "V1D-SV cleanup closeout has an invalid evidence time sequence.",
     );
 
-  if (priorAuthority?.status === "open") {
+  if (["open", "closing"].includes(priorAuthority?.status)) {
     for (const [label, recordPath] of [
       ["closeout receipt", closeoutPath],
       ["cleanup evidence", evidencePath],
@@ -1987,6 +1985,7 @@ function validatePrerequisite(
     authorityExpiresAt,
     planIssuedAt,
     bindingsApprovedAt,
+    allowExpired = false,
   } = options;
   const recordPath = descriptor?.record ?? "";
   if (
@@ -2070,7 +2069,7 @@ function validatePrerequisite(
     errors.push(
       `V1D-SV ${expectedId} prerequisite approval must precede bindings approval.`,
     );
-  if (expiresAt === null || expiresAt <= now.getTime())
+  if (expiresAt === null || (!allowExpired && expiresAt <= now.getTime()))
     errors.push(`V1D-SV ${expectedId} prerequisite is invalid or expired.`);
   if (
     expiresAt !== null &&
@@ -2193,6 +2192,7 @@ function validateApprovedBindings(
     pathIntroductionTime,
     verifyFactoryReceiptSignature,
     now,
+    allowExpired = false,
   },
 ) {
   const errors = [];
@@ -2262,7 +2262,10 @@ function validateApprovedBindings(
     );
   if (approvedAt === null || approvedAt > now.getTime())
     errors.push("V1D-SV bindings approval time is invalid or in the future.");
-  if (bindingsExpireAt === null || bindingsExpireAt <= now.getTime())
+  if (
+    bindingsExpireAt === null ||
+    (!allowExpired && bindingsExpireAt <= now.getTime())
+  )
     errors.push("V1D-SV approved bindings are invalid or expired.");
   if (
     approvedAt !== null &&
@@ -2316,6 +2319,7 @@ function validateApprovedBindings(
       authorityExpiresAt: authorizationExpiresAt,
       planIssuedAt: validDate(fields.get("Factory plan issued at")),
       bindingsApprovedAt: approvedAt,
+      allowExpired,
       authorizedReleaseDigest: fields.get("Signed release digest"),
       authorizedServerBinding: fields.get("Server binding"),
       authorizedNetworkPolicyBinding: fields.get(
@@ -2546,7 +2550,12 @@ function validateFactoryPlanReceipt(fields, auditedCommit, options) {
 
 function validateRecord(text, options) {
   const errors = [];
-  const { now, isCommit, isProtectedMainCommit } = options;
+  const {
+    now,
+    isCommit,
+    isProtectedMainCommit,
+    allowExpired = false,
+  } = options;
   const { fields, duplicates } = parseRecord(text);
   for (const field of duplicates)
     errors.push(`V1D-SV authorization record duplicates ${field}.`);
@@ -2611,17 +2620,21 @@ function validateRecord(text, options) {
     expiresAt - issuedAt > MAX_AUTHORITY_LIFETIME_MS
   )
     errors.push("V1D-SV authorization exceeds the 24-hour lifetime limit.");
-  if (expiresAt !== null && expiresAt <= now.getTime())
+  if (!allowExpired && expiresAt !== null && expiresAt <= now.getTime())
     errors.push("V1D-SV authorization record is expired.");
   if (issuedAt !== null && issuedAt > now.getTime())
     errors.push("V1D-SV authorization issue time is in the future.");
   if (planIssuedAt !== null && planIssuedAt > now.getTime())
     errors.push("V1D-SV Factory plan issue time is in the future.");
-  if (planIssuedAt !== null && now.getTime() - planIssuedAt > MAX_PLAN_AGE_MS)
+  if (
+    !allowExpired &&
+    planIssuedAt !== null &&
+    now.getTime() - planIssuedAt > MAX_PLAN_AGE_MS
+  )
     errors.push("V1D-SV Factory plan is stale.");
   if (planApprovedAt !== null && planApprovedAt > now.getTime())
     errors.push("V1D-SV Factory plan approval time is in the future.");
-  if (planExpiresAt !== null && planExpiresAt <= now.getTime())
+  if (!allowExpired && planExpiresAt !== null && planExpiresAt <= now.getTime())
     errors.push("V1D-SV Factory plan is expired.");
   if (
     planIssuedAt !== null &&
@@ -2718,7 +2731,7 @@ export function validateV1dAuthority(
     !hasExactUniqueEntries(authority.requiresClosedGates, REQUIRED_CLOSED_GATES)
   )
     errors.push("V1D-SV must require G2 through G8 to remain closed.");
-  if (!["open", "closed"].includes(authority.status))
+  if (!["open", "closing", "closed"].includes(authority.status))
     errors.push("Invalid status for V1D-SV.");
 
   if (!hasExactUniqueEntries(authority.requirements, REQUIRED_REQUIREMENTS))
@@ -2759,7 +2772,7 @@ export function validateV1dAuthority(
     (gateId) =>
       gates.gates?.find((item) => item.id === gateId)?.status === "open",
   );
-  if (authority.status === "open") {
+  if (["open", "closing"].includes(authority.status)) {
     const authorization = authority.authorization;
     const validPath =
       typeof authorization === "string" &&
@@ -2777,7 +2790,7 @@ export function validateV1dAuthority(
           "Open V1D-SV authority has an unreadable authorization record.",
         );
       else {
-        if (priorAuthority?.status === "open") {
+        if (["open", "closing"].includes(priorAuthority?.status)) {
           const protectedRecord = readAtProtectedMain(
             priorAuthority.authorization,
           );
@@ -2805,6 +2818,7 @@ export function validateV1dAuthority(
             verifyFactoryReceiptSignature,
             isCommit,
             isProtectedMainCommit,
+            allowExpired: authority.status === "closing",
             now,
           }),
           ...validateReopen(authorization, record, priorAuthority, {
@@ -2817,20 +2831,42 @@ export function validateV1dAuthority(
       }
     }
   }
+  const enteringClosing =
+    priorAuthority?.status === "open" && authority.status === "closing";
+  if (
+    authority.status === "closing" &&
+    !["open", "closing"].includes(priorAuthority?.status)
+  )
+    errors.push("V1D-SV closing state requires a preceding open lifecycle.");
+  if (
+    enteringClosing &&
+    (authority.authorization !== priorAuthority.authorization ||
+      currentCloseoutHistory.length !== priorCloseoutHistory.length ||
+      Object.hasOwn(authority, "closeout"))
+  )
+    errors.push(
+      "V1D-SV closing transition must freeze the active authorization before cleanup.",
+    );
+  if (priorAuthority?.status === "closing" && authority.status === "open")
+    errors.push("V1D-SV closing state cannot restore operational authority.");
+  if (priorAuthority?.status === "open" && authority.status === "closed")
+    errors.push(
+      "V1D-SV must enter a non-consumable closing state before cleanup.",
+    );
   const requiresCloseout =
     authority.status === "closed" &&
-    (priorAuthority?.status === "open" ||
+    (priorAuthority?.status === "closing" ||
       priorAuthority?.closeout ||
       laterGateOpen);
   if (
     authority.status === "closed" &&
-    priorAuthority?.status === "open" &&
+    priorAuthority?.status === "closing" &&
     (currentCloseoutHistory.length !== priorCloseoutHistory.length + 1 ||
       authority.closeout !== currentCloseoutHistory.at(-1))
   )
     errors.push("V1D-SV closeout must append exactly one lifecycle tombstone.");
   if (
-    !(authority.status === "closed" && priorAuthority?.status === "open") &&
+    !(authority.status === "closed" && priorAuthority?.status === "closing") &&
     currentCloseoutHistory.length !== priorCloseoutHistory.length
   )
     errors.push(
@@ -2877,7 +2913,10 @@ export function validateV1dAuthority(
           now,
         }),
       );
-    if (authority.status === "open" && gate?.status !== "closed")
+    if (
+      ["open", "closing"].includes(authority.status) &&
+      gate?.status !== "closed"
+    )
       errors.push(`V1D-SV and ${gateId} cannot be open at the same time.`);
     if (gate?.status === "open" || gate?.status === "closing")
       errors.push(

@@ -359,12 +359,17 @@ function closeoutOptions(
       if (Object.hasOwn(v1dRecords, path)) return v1dRecords[path];
       return productRecords[path] ?? null;
     },
-    readAtCommit: (_commit, path) => productRecords[path] ?? null,
-    isPathImmutableOnProtectedMain: (_commit, path) =>
-      Object.hasOwn(productRecords, path),
+    readAtCommit: (commit, path) =>
+      commit === validFields["Audited commit"]
+        ? (productRecords[path] ?? v1dRecords[path] ?? null)
+        : null,
+    isPathImmutableOnProtectedMain: (commit, path) =>
+      commit === validFields["Audited commit"] &&
+      (Object.hasOwn(productRecords, path) || Object.hasOwn(v1dRecords, path)),
     isPathIntroducedBefore: (earlierPath, laterPath) =>
-      Object.hasOwn(productRecords, earlierPath) &&
-      laterPath === g2AuthorizationPath,
+      (Object.hasOwn(productRecords, earlierPath) &&
+        laterPath === g2AuthorizationPath) ||
+      (earlierPath === factoryTrustPath && laterPath === factoryReceiptPath),
     readAtProtectedMain: (path) => {
       if (path === "governance/gates.json")
         return canonical(protectedMainGates);
@@ -414,6 +419,12 @@ function closeoutOptions(
         (path === closeoutPath || path === cleanupEvidencePath)
       )
         return "2026-09-04T13:35:00Z";
+      if (path === factoryTrustPath) return "2026-09-04T12:55:00Z";
+      if (path === bindingPath) return "2026-09-04T13:02:30Z";
+      if (path === factoryReceiptPath || path === factorySignaturePath)
+        return "2026-09-04T13:01:30Z";
+      if (Object.hasOwn(prerequisiteRecords, path))
+        return "2026-09-04T12:56:00Z";
       return null;
     },
     authorityOpenIntroductionTime: () => "2026-09-04T13:10:00Z",
@@ -429,6 +440,8 @@ function closeoutOptions(
         : null,
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
+    verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
+      signature === renderFactorySignature(content, certificateSha256),
     now: fixedNow,
   };
 }
@@ -1520,19 +1533,70 @@ expectFailure(
 
 const priorOpen = clone();
 open(priorOpen);
+const priorClosing = structuredClone(priorOpen);
+authority(priorClosing).status = "closing";
+assert.deepEqual(
+  validateV1dAuthority(
+    priorClosing,
+    closeoutOptions(priorOpen, { authorizationInWorktree: true }),
+  ),
+  [],
+);
+passed += 1;
 const closedWithCloseout = clone();
 authority(closedWithCloseout).closeout = closeoutPath;
 authority(closedWithCloseout).closeouts = [closeoutPath];
 assert.deepEqual(
-  validateV1dAuthority(closedWithCloseout, closeoutOptions(priorOpen)),
+  validateV1dAuthority(closedWithCloseout, closeoutOptions(priorClosing)),
   [],
+);
+passed += 1;
+
+const expiredV1dClosingOptions = closeoutOptions(priorOpen);
+expiredV1dClosingOptions.now = new Date("2026-09-05T01:00:00Z");
+assert.deepEqual(
+  validateV1dAuthority(priorClosing, expiredV1dClosingOptions),
+  [],
+);
+passed += 1;
+
+const lateCleanupEvidence = renderCleanupEvidence({
+  verifiedAt: "2026-09-05T01:10:00Z",
+});
+const lateCloseout = renderCloseout(renderRecord(), lateCleanupEvidence, {
+  closedAt: "2026-09-05T01:20:00Z",
+});
+const lateCloseoutOptions = closeoutOptions(priorClosing, {
+  closeoutText: lateCloseout,
+  evidenceText: lateCleanupEvidence,
+});
+lateCloseoutOptions.now = new Date("2026-09-05T01:30:00Z");
+assert.deepEqual(
+  validateV1dAuthority(closedWithCloseout, lateCloseoutOptions),
+  [],
+);
+passed += 1;
+
+assert(
+  validateV1dAuthority(priorOpen, closeoutOptions(priorClosing)).some((item) =>
+    item.includes("cannot restore operational authority"),
+  ),
+  "V1D-SV closing state restored operational authority",
+);
+passed += 1;
+
+assert(
+  validateV1dAuthority(closedWithCloseout, closeoutOptions(priorOpen)).some(
+    (item) => item.includes("non-consumable closing state"),
+  ),
+  "V1D-SV closed directly from an operational state",
 );
 passed += 1;
 
 assert(
   validateV1dAuthority(
     closedWithCloseout,
-    closeoutOptions(priorOpen, { missingPaths: [bindingPath] }),
+    closeoutOptions(priorClosing, { missingPaths: [bindingPath] }),
   ).some((item) =>
     item.includes("V1D-SV closing transition must preserve transitive record"),
   ),
@@ -1543,7 +1607,7 @@ passed += 1;
 assert(
   validateV1dAuthority(
     closedWithCloseout,
-    closeoutOptions(priorOpen, { authorizationInWorktree: false }),
+    closeoutOptions(priorClosing, { authorizationInWorktree: false }),
   ).some((item) =>
     item.includes("preserve the exact active authorization record"),
   ),
@@ -1646,7 +1710,7 @@ passed += 1;
 assert(
   validateV1dAuthority(
     closedWithCloseout,
-    closeoutOptions(priorOpen, { artifactsOnProtectedMain: true }),
+    closeoutOptions(priorClosing, { artifactsOnProtectedMain: true }),
   ).some((item) =>
     item.includes("must be created after the protected-main authority opening"),
   ),
@@ -1662,7 +1726,7 @@ const unanchoredCloseout = renderCloseout(
 assert(
   validateV1dAuthority(
     closedWithCloseout,
-    closeoutOptions(priorOpen, { closeoutText: unanchoredCloseout }),
+    closeoutOptions(priorClosing, { closeoutText: unanchoredCloseout }),
   ).some((item) => item.includes("invalid evidence time sequence")),
   "closeout not anchored to the protected-main opening was accepted",
 );
@@ -1676,7 +1740,7 @@ sameChangeG2.gates.find((gate) => gate.id === "G2").authorization =
 assert(
   validateV1dAuthority(
     sameChangeG2,
-    closeoutOptions(priorOpen, {
+    closeoutOptions(priorClosing, {
       productGateFixture: g2Fixture,
     }),
   ).some((item) => item.includes("must remain accepted exactly once")),
@@ -2104,7 +2168,7 @@ const incompleteCleanupCloseout = renderCloseout(
 assert(
   validateV1dAuthority(
     closedWithCloseout,
-    closeoutOptions(priorOpen, {
+    closeoutOptions(priorClosing, {
       closeoutText: incompleteCleanupCloseout,
       evidenceText: incompleteCleanupEvidence,
     }),
@@ -2123,7 +2187,7 @@ const activeWorkloadCloseout = renderCloseout(
 );
 const activeWorkloadErrors = validateV1dAuthority(
   closedWithCloseout,
-  closeoutOptions(priorOpen, {
+  closeoutOptions(priorClosing, {
     closeoutText: activeWorkloadCloseout,
     evidenceText: activeWorkloadEvidence,
   }),

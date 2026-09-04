@@ -88,8 +88,10 @@ and evidence records.
    remains open until every required proof passes. Stop the validation service,
    revoke service, database, operator-validation, and synthetic identities,
    preserve blocked endpoint routes, remove temporary access and secrets,
-   verify rollback, and merge the immutable cleanup evidence and closeout
-   receipt while G2 through G8 remain closed. The cleanup evidence must be
+   verify rollback, first merge a non-consumable `closing` state that preserves
+   the exact authorization, then merge the immutable cleanup evidence and
+   closeout receipt while G2 through G8 remain closed. Expiry cannot return the
+   authority to service or strand teardown. The cleanup evidence must be
    created after the protected-main V1D-SV opening; the closed authorization and
    Factory plan are single-use and cannot authorize another execution.
 9. Only after V1D passes and the owner accepts the hardened-server and recovery

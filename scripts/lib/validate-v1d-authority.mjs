@@ -2040,7 +2040,23 @@ export function validateV1dAuthority(
         errors.push(
           "Open V1D-SV authority has an unreadable authorization record.",
         );
-      else
+      else {
+        if (priorAuthority?.status === "open") {
+          const protectedRecord = readAtProtectedMain(
+            priorAuthority.authorization,
+          );
+          if (authorization !== priorAuthority.authorization)
+            errors.push(
+              "Open V1D-SV must preserve its protected-main authorization path until closeout.",
+            );
+          if (
+            typeof protectedRecord !== "string" ||
+            normalizeText(record) !== normalizeText(protectedRecord)
+          )
+            errors.push(
+              "Open V1D-SV must preserve its exact protected-main authorization bytes until closeout.",
+            );
+        }
         errors.push(
           ...validateRecord(record, {
             isRegularFile,
@@ -2062,6 +2078,7 @@ export function validateV1dAuthority(
             protectedMainPathVersionCount,
           }),
         );
+      }
     }
   }
   const requiresCloseout =

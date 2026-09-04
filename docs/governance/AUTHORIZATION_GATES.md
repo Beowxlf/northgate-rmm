@@ -82,6 +82,11 @@ The authenticated plan issue and approval times must fall within the pinned
 certificate's validity interval. The receipt's protected-main introduction
 commit time must follow approval, and the detached signature's introduction
 must follow the receipt; both must precede certificate expiry.
+After `V1D-SV` opens, every later open state must preserve the exact
+authorization path and bytes from protected `main`. Changing the server,
+release, plan, identities, network, expiry, or any other authorization content
+requires closing and cleaning the current lifecycle, then beginning a
+separately approved lifecycle with a new plan and authorization.
 Its protected-main introduction commit time must also predate the authenticated
 plan issue time. The trust record, receipt, and signature each use an immutable,
 single-use protected-main path.

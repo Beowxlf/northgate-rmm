@@ -82,6 +82,8 @@ Pre-G2 V1D validation boundary:
 - a sanitized approved-bindings manifest must then reach protected `main`;
 - a separate later exact record may open `V1D-SV` and permit execution only for
   the named private control-plane server and synthetic validation identities;
+- that authorization path and its exact bytes remain fixed for the entire open
+  lifecycle;
 - canary and endpoint routes remain blocked, and no endpoint-usable grant,
   identity, package, or traffic is permitted; and
 - the negative tests, rollback, and recovery evidence in ADR 0011 and the

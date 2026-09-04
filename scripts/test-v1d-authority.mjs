@@ -627,6 +627,7 @@ function expectFailure(
     signatureIntroductionTime = "2026-09-04T13:01:30Z",
     protectedMainGates = null,
     priorCloseoutText = null,
+    priorAuthorizationText = null,
   } = {},
 ) {
   const config = clone();
@@ -688,6 +689,8 @@ function expectFailure(
         return protectedMainTexts[path];
       if (path === "governance/gates.json" && protectedMainGates)
         return canonical(protectedMainGates);
+      if (path === exactPath && priorAuthorizationText !== null)
+        return priorAuthorizationText;
       if (path === closeoutPath) return priorCloseoutText;
       if (path === bindingPath) return priorApproval;
       if (path === factoryReceiptPath) return priorFactoryReceipt;
@@ -837,6 +840,18 @@ expectFailure(
     config.gates.find((gate) => gate.id === "G3").status = "open";
   },
   "V1D-SV and G3 cannot be open at the same time",
+);
+const protectedOpenForContinuity = clone();
+open(protectedOpenForContinuity);
+expectFailure(
+  "open authorization bytes cannot change before closeout",
+  open,
+  "must preserve its exact protected-main authorization bytes",
+  {
+    protectedMainGates: protectedOpenForContinuity,
+    priorAuthorizationText: renderRecord(),
+    recordText: `${renderRecord()}\n# unauthorized open-lifecycle rewrite\n`,
+  },
 );
 expectFailure(
   "closed V1D-SV cannot bypass cleanup before G2",

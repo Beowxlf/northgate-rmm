@@ -54,6 +54,8 @@ receipt. Its digest and plan, state, time, approver, and target fields must matc
 the authorization, and its detached CMS signature must verify against a
 separately owner-pinned Factory approval certificate. The trust record must
 be introduced in an earlier protected-main change and predate plan issuance.
+The authenticated plan issue and approval times must fall within the pinned
+certificate's validity interval.
 Its protected-main introduction commit time must also predate the authenticated
 plan issue time. The trust record, receipt, and signature each use an immutable,
 single-use protected-main path.

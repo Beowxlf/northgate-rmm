@@ -48,7 +48,8 @@ the authorization. Its detached CMS signature must verify against an
 independently owner-pinned Factory approval certificate established before plan
 issuance and introduced in an earlier protected-main change; copied
 self-declared plan metadata, a backdated trust record, or an attacker-selected
-signer is rejected. The protected-main introduction commit time must also
+signer is rejected. Plan issuance and approval must both fall within the pinned
+certificate's validity interval. The protected-main introduction commit time must also
 precede the authenticated plan issue time. Strict UTC
 calendar validation rejects normalized impossible
 dates and future-effective records; the authority is limited to 24 hours and

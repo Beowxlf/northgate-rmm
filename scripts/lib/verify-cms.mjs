@@ -50,7 +50,7 @@ function usesOnlySha256Digests(details) {
     )
     .filter((index) => index >= 0);
   return (
-    signerDigests.length > 0 &&
+    signerDigests.length === 1 &&
     signerDigests.every((index) => {
       const algorithms = sectionAlgorithms(lines, index);
       return algorithms.length === 1 && algorithms[0] === "sha256";
@@ -112,11 +112,29 @@ export function verifyCmsDetached(
     ]);
     if (verification.status !== 0) return false;
     if (fs.readFileSync(verifiedPath, "utf8") !== content) return false;
-    const signer = new X509Certificate(fs.readFileSync(signerPath));
+    const signerText = fs.readFileSync(signerPath, "utf8");
+    if ((signerText.match(/-----BEGIN CERTIFICATE-----/g) ?? []).length !== 1)
+      return false;
+    const signer = new X509Certificate(signerText);
     const fingerprint = `sha256:${signer.fingerprint256
       .replaceAll(":", "")
       .toLowerCase()}`;
-    return fingerprint === expectedCertificateSha256;
+    if (fingerprint !== expectedCertificateSha256) return false;
+
+    const receipt = JSON.parse(content);
+    const issuedAt = Date.parse(receipt.issuedAt ?? "");
+    const approvedAt = Date.parse(receipt.approvedAt ?? "");
+    const validFrom = Date.parse(signer.validFrom);
+    const validTo = Date.parse(signer.validTo);
+    return (
+      Number.isFinite(issuedAt) &&
+      Number.isFinite(approvedAt) &&
+      Number.isFinite(validFrom) &&
+      Number.isFinite(validTo) &&
+      validFrom <= issuedAt &&
+      issuedAt <= approvedAt &&
+      approvedAt <= validTo
+    );
   } catch {
     return false;
   } finally {

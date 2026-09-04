@@ -63,6 +63,8 @@ must match this authorization. Its detached CMS signature must verify against
 the certificate digest in the independently owner-pinned trust record built
 from
 [`V1D-FACTORY-APPROVAL-TRUST-TEMPLATE.json`](V1D-FACTORY-APPROVAL-TRUST-TEMPLATE.json).
+The receipt's authenticated plan issue and approval times must both fall within
+the pinned signer certificate's validity interval.
 The trust record must be introduced by an earlier protected-main change and
 both its approval time and protected-main introduction commit time must predate
 authenticated plan issuance. Like the receipt and signature, it has immutable

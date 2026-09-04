@@ -41,7 +41,11 @@ and rejects missing, duplicate, placeholder, malformed, expired, future-dated,
 or mismatched authority, owner, commit, time, server, release, plan, state-hash,
 dependency, identity, network, rollback, recovery, and evidence values. Plan
 approval must follow plan issuance, and the V1D-SV record must be issued after
-that approval. Strict UTC calendar validation rejects normalized impossible
+that approval. The same audited commit must contain an immutable, single-use,
+canonical Factory-exported approval receipt whose exact digest, plan ID,
+authenticated state hash, timestamps, owner approval, and target binding match
+the authorization; copied self-declared plan metadata is rejected. Strict UTC
+calendar validation rejects normalized impossible
 dates and future-effective records; the authority is limited to 24 hours and
 its prior approved-bindings manifest to seven days. The manifest uses canonical
 duplicate-free JSON and hashes an immutable V1C pass record plus separate

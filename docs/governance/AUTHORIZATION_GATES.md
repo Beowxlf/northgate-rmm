@@ -49,6 +49,9 @@ and approved through the Factory's non-deployment planning path while `V1D-SV`
 remains closed; `V1D-SV` governs only execution of the approved plan. Before the
 authority can open, its record must use the parsed, fail-closed field contract in
 the [V1D-SV authorization template](templates/V1D-SV-AUTHORIZATION-TEMPLATE.md).
+The audited commit must contain the canonical Factory-exported plan approval
+receipt. Its digest and plan, state, time, approver, and target fields must match
+the authorization, and its protected-main path is immutable and single use.
 Its sanitized approved-bindings manifest must already exist at the audited
 commit; changing it in the authority-opening change or substituting any bound
 value fails validation.

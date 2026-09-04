@@ -29,6 +29,8 @@ const REQUIRED_RECORD_FIELDS = [
   "Expires at",
   "Server binding",
   "Signed release digest",
+  "Factory plan receipt",
+  "Factory plan receipt digest",
   "Factory plan ID",
   "Authenticated state hash",
   "Factory plan issued at",
@@ -49,6 +51,7 @@ const REQUIRED_RECORD_FIELDS = [
 const DIGEST_FIELDS = [
   "Server binding",
   "Signed release digest",
+  "Factory plan receipt digest",
   "Authenticated state hash",
   "External dependency set binding",
   "Service identity binding",
@@ -65,6 +68,8 @@ const APPROVED_BINDING_FIELDS = [
   "Expires at",
   "Server binding",
   "Signed release digest",
+  "Factory plan receipt",
+  "Factory plan receipt digest",
   "Factory plan ID",
   "Authenticated state hash",
   "Factory plan issued at",
@@ -100,6 +105,19 @@ const MAX_AUTHORITY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const MAX_BINDINGS_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_PLAN_AGE_MS = 2 * 60 * 60 * 1000;
 const MAX_PLAN_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const FACTORY_PLAN_RECEIPT_FIELDS = [
+  "schemaVersion",
+  "receiptType",
+  "issuer",
+  "status",
+  "planId",
+  "authenticatedStateHash",
+  "issuedAt",
+  "approvedAt",
+  "expiresAt",
+  "approver",
+  "targetBinding",
+];
 const NETWORK_DEPENDENCY_ID = "V1D-DEP-NETWORK-SEGMENTATION";
 const EXPECTED_DEPENDENCY_IDS = [
   "V1D-DEP-DNS-TIME",
@@ -706,6 +724,15 @@ function validateApprovedBindings(
       errors.push(`V1D-SV ${field} mismatches its approved binding.`);
   }
   errors.push(
+    ...validateFactoryPlanReceipt(fields, auditedCommit, {
+      isRegularFile,
+      readText,
+      readAtCommit,
+      readAtProtectedMain,
+      isPathImmutableOnProtectedMain,
+    }),
+  );
+  errors.push(
     ...validatePrerequisites(approval, auditedCommit, {
       isRegularFile,
       readText,
@@ -726,6 +753,80 @@ function validateApprovedBindings(
       ),
     }),
   );
+  return errors;
+}
+
+function validateFactoryPlanReceipt(fields, auditedCommit, options) {
+  const errors = [];
+  const {
+    isRegularFile,
+    readText,
+    readAtCommit,
+    readAtProtectedMain,
+    isPathImmutableOnProtectedMain,
+  } = options;
+  const receiptPath = fields.get("Factory plan receipt") ?? "";
+  if (
+    !/^docs\/governance\/authorizations\/factory-receipts\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+      receiptPath,
+    ) ||
+    !isRegularFile(receiptPath)
+  ) {
+    return ["V1D-SV lacks its immutable Factory plan approval receipt."];
+  }
+
+  const currentText = readText(receiptPath);
+  const approvedText = readAtCommit(auditedCommit, receiptPath);
+  if (typeof currentText !== "string" || typeof approvedText !== "string")
+    return ["V1D-SV Factory plan receipt is absent from the audited commit."];
+  if (normalizeText(currentText) !== normalizeText(approvedText))
+    errors.push("V1D-SV Factory plan receipt changed after approval.");
+  errors.push(
+    ...validateProtectedMainContinuity(
+      "V1D-SV Factory plan receipt",
+      receiptPath,
+      approvedText,
+      readAtProtectedMain,
+      isPathImmutableOnProtectedMain,
+      auditedCommit,
+    ),
+  );
+  if (sha256(approvedText) !== fields.get("Factory plan receipt digest"))
+    errors.push("V1D-SV Factory plan receipt digest mismatches.");
+
+  const receipt = parseCanonicalJson(approvedText);
+  if (!receipt) {
+    errors.push(
+      "V1D-SV Factory plan receipt is not canonical duplicate-free JSON.",
+    );
+    return errors;
+  }
+  if (!hasExactUniqueEntries(Object.keys(receipt), FACTORY_PLAN_RECEIPT_FIELDS))
+    errors.push("V1D-SV Factory plan receipt has an invalid field set.");
+  if (receipt.schemaVersion !== 1)
+    errors.push("V1D-SV Factory plan receipt has an invalid schema version.");
+  if (
+    receipt.receiptType !== "PlanApprovalReceipt" ||
+    receipt.issuer !== "NorthGate VM Factory" ||
+    receipt.status !== "Approved"
+  )
+    errors.push("V1D-SV Factory plan receipt lacks Factory-issued approval.");
+
+  const bindings = [
+    ["planId", "Factory plan ID"],
+    ["authenticatedStateHash", "Authenticated state hash"],
+    ["issuedAt", "Factory plan issued at"],
+    ["approvedAt", "Factory plan approved at"],
+    ["expiresAt", "Factory plan expires at"],
+    ["approver", "Factory plan approver"],
+    ["targetBinding", "Server binding"],
+  ];
+  for (const [receiptField, authorityField] of bindings) {
+    if (receipt[receiptField] !== fields.get(authorityField))
+      errors.push(
+        `V1D-SV Factory plan receipt ${receiptField} mismatches the authorized ${authorityField}.`,
+      );
+  }
   return errors;
 }
 

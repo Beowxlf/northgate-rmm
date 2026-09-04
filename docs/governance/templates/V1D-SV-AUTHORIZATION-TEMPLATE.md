@@ -23,6 +23,8 @@ Issued at: PLACEHOLDER
 Expires at: PLACEHOLDER  
 Server binding: sha256:PLACEHOLDER  
 Signed release digest: sha256:PLACEHOLDER  
+Factory plan receipt: docs/governance/authorizations/factory-receipts/PLACEHOLDER.json  
+Factory plan receipt digest: sha256:PLACEHOLDER  
 Factory plan ID: PLACEHOLDER  
 Authenticated state hash: sha256:PLACEHOLDER  
 Factory plan issued at: PLACEHOLDER  
@@ -48,6 +50,12 @@ The approved-bindings JSON must be committed first. `Audited commit` identifies
 the repository commit that already contains it. The governance audit loads that
 exact historical file, requires the current content to remain identical, and
 compares every operational field in this authorization with the approved value.
+The audited commit must also contain the canonical Factory-exported plan
+approval receipt built from
+[`V1D-FACTORY-PLAN-RECEIPT-TEMPLATE.json`](V1D-FACTORY-PLAN-RECEIPT-TEMPLATE.json).
+Its protected-main path is single use, its exact bytes must remain unchanged,
+and its SHA-256 digest and every plan, state, time, approver, and target field
+must match this authorization. Self-declared plan metadata is insufficient.
 Use
 [`V1D-SV-APPROVED-BINDINGS-TEMPLATE.json`](V1D-SV-APPROVED-BINDINGS-TEMPLATE.json)
 for its schema. The manifest and every prerequisite record must be canonical

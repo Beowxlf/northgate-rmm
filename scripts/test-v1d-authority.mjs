@@ -7,6 +7,8 @@ import { validateV1dAuthority } from "./lib/validate-v1d-authority.mjs";
 const baseline = JSON.parse(fs.readFileSync("governance/gates.json", "utf8"));
 const exactPath = "docs/governance/authorizations/V1D-SV-EXACT.md";
 const bindingPath = "docs/governance/authorizations/bindings/V1D-SV-EXACT.json";
+const factoryReceiptPath =
+  "docs/governance/authorizations/factory-receipts/V1D-SV-PLAN.json";
 const fixedNow = new Date("2026-09-04T14:00:00Z");
 const digest = `sha256:${"a".repeat(64)}`;
 const v1cPath = "docs/governance/authorizations/prerequisites/V1C-PASS.json";
@@ -42,6 +44,8 @@ const validFields = {
   "Expires at": "2026-09-04T14:59:59Z",
   "Server binding": digest,
   "Signed release digest": digest,
+  "Factory plan receipt": factoryReceiptPath,
+  "Factory plan receipt digest": digest,
   "Factory plan ID": "plan-v1d-0001",
   "Authenticated state hash": digest,
   "Factory plan issued at": "2026-09-04T13:00:00Z",
@@ -73,6 +77,23 @@ function renderRecord(fields = validFields) {
   return Object.entries(fields)
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
+}
+
+function renderFactoryPlanReceipt(fields = validFields, overrides = {}) {
+  return canonical({
+    schemaVersion: 1,
+    receiptType: "PlanApprovalReceipt",
+    issuer: "NorthGate VM Factory",
+    status: "Approved",
+    planId: fields["Factory plan ID"],
+    authenticatedStateHash: fields["Authenticated state hash"],
+    issuedAt: fields["Factory plan issued at"],
+    approvedAt: fields["Factory plan approved at"],
+    expiresAt: fields["Factory plan expires at"],
+    approver: fields["Factory plan approver"],
+    targetBinding: fields["Server binding"],
+    ...overrides,
+  });
 }
 
 function canonical(value) {
@@ -252,6 +273,8 @@ function renderApprovedBindings(
     "Expires at",
     "Server binding",
     "Signed release digest",
+    "Factory plan receipt",
+    "Factory plan receipt digest",
     "Factory plan ID",
     "Authenticated state hash",
     "Factory plan issued at",
@@ -306,6 +329,7 @@ function renderApprovedBindings(
 validFields["External dependency set binding"] = hash(
   canonical(buildDependencyDescriptors(validFields, buildPrerequisites())),
 );
+validFields["Factory plan receipt digest"] = hash(renderFactoryPlanReceipt());
 
 function open(config) {
   authority(config).status = "open";
@@ -320,12 +344,14 @@ function expectFailure(
   {
     mutateFields,
     mutateApproval,
+    mutateFactoryReceipt,
     mutatePrerequisites,
     regularFile = true,
     protectedMain = true,
     recordText,
     approvedText,
     currentApprovedText,
+    currentFactoryReceiptText,
     protectedMainTexts = {},
     nonImmutablePaths = [],
   } = {},
@@ -341,25 +367,35 @@ function expectFailure(
   );
   mutateApproval?.(approval);
   const priorApproval = approvedText ?? canonical(approval);
+  const factoryReceipt = JSON.parse(renderFactoryPlanReceipt(fields));
+  mutateFactoryReceipt?.(factoryReceipt);
+  const priorFactoryReceipt = canonical(factoryReceipt);
   const errors = validateV1dAuthority(config, {
     isRegularFile: (path) =>
       regularFile &&
-      (path === exactPath || path === bindingPath || path in prerequisites),
+      (path === exactPath ||
+        path === bindingPath ||
+        path === factoryReceiptPath ||
+        path in prerequisites),
     readText: (path) => {
       if (path === exactPath) return recordText ?? renderRecord(fields);
       if (path === bindingPath) return currentApprovedText ?? priorApproval;
+      if (path === factoryReceiptPath)
+        return currentFactoryReceiptText ?? priorFactoryReceipt;
       if (path in prerequisites) return prerequisites[path];
       return null;
     },
     readAtCommit: (commit, path) => {
       if (commit !== validFields["Audited commit"]) return null;
       if (path === bindingPath) return priorApproval;
+      if (path === factoryReceiptPath) return priorFactoryReceipt;
       return prerequisites[path] ?? null;
     },
     readAtProtectedMain: (path) => {
       if (Object.hasOwn(protectedMainTexts, path))
         return protectedMainTexts[path];
       if (path === bindingPath) return priorApproval;
+      if (path === factoryReceiptPath) return priorFactoryReceipt;
       return prerequisites[path] ?? null;
     },
     isPathImmutableOnProtectedMain: (commit, path) =>
@@ -549,6 +585,49 @@ expectFailure("audited commit off main", open, "not on protected main", {
 expectFailure("bad plan ID", open, "invalid Factory plan ID", {
   mutateFields: (fields) => (fields["Factory plan ID"] = "short"),
 });
+expectFailure(
+  "Factory receipt substituted for another plan",
+  open,
+  "planId mismatches the authorized Factory plan ID",
+  {
+    mutateFactoryReceipt: (receipt) => (receipt.planId = "plan-v1d-other"),
+  },
+);
+expectFailure(
+  "Factory receipt substituted state hash",
+  open,
+  "authenticatedStateHash mismatches",
+  {
+    mutateFactoryReceipt: (receipt) =>
+      (receipt.authenticatedStateHash = `sha256:${"c".repeat(64)}`),
+  },
+);
+expectFailure(
+  "non-Factory plan receipt",
+  open,
+  "lacks Factory-issued approval",
+  {
+    mutateFactoryReceipt: (receipt) => (receipt.issuer = "self-reported"),
+  },
+);
+expectFailure(
+  "Factory receipt changed after approval",
+  open,
+  "Factory plan receipt changed after approval",
+  { currentFactoryReceiptText: "{}" },
+);
+expectFailure(
+  "Factory receipt restored after revocation",
+  open,
+  "Factory plan receipt was revoked from protected main",
+  { protectedMainTexts: { [factoryReceiptPath]: null } },
+);
+expectFailure(
+  "Factory receipt path replayed",
+  open,
+  "Factory plan receipt lacks single-use immutable protected-main history",
+  { nonImmutablePaths: [factoryReceiptPath] },
+);
 expectFailure("bad release digest", open, "invalid Signed release digest", {
   mutateFields: (fields) => (fields["Signed release digest"] = "sha256:bad"),
 });
@@ -928,19 +1007,30 @@ const exactApproval = renderApprovedBindings(
   {},
   exactPrerequisites,
 );
+const exactFactoryReceipt = renderFactoryPlanReceipt();
 assert.deepEqual(
   validateV1dAuthority(exactOpen, {
     isRegularFile: (path) =>
-      path === exactPath || path === bindingPath || path in exactPrerequisites,
+      path === exactPath ||
+      path === bindingPath ||
+      path === factoryReceiptPath ||
+      path in exactPrerequisites,
     readText: (path) => {
       if (path === exactPath) return renderRecord();
       if (path === bindingPath) return exactApproval;
+      if (path === factoryReceiptPath) return exactFactoryReceipt;
       return exactPrerequisites[path] ?? null;
     },
-    readAtCommit: (_commit, path) =>
-      path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
-    readAtProtectedMain: (path) =>
-      path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
+    readAtCommit: (_commit, path) => {
+      if (path === bindingPath) return exactApproval;
+      if (path === factoryReceiptPath) return exactFactoryReceipt;
+      return exactPrerequisites[path] ?? null;
+    },
+    readAtProtectedMain: (path) => {
+      if (path === bindingPath) return exactApproval;
+      if (path === factoryReceiptPath) return exactFactoryReceipt;
+      return exactPrerequisites[path] ?? null;
+    },
     isPathImmutableOnProtectedMain: (commit) =>
       commit === validFields["Audited commit"],
     isCommit: (commit) => commit === validFields["Audited commit"],

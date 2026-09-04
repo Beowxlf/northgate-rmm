@@ -10,6 +10,8 @@
     "Expires at": "PLACEHOLDER",
     "Server binding": "sha256:PLACEHOLDER",
     "Signed release digest": "sha256:PLACEHOLDER",
+    "Factory plan receipt": "docs/governance/authorizations/factory-receipts/PLACEHOLDER.json",
+    "Factory plan receipt digest": "sha256:PLACEHOLDER",
     "Factory plan ID": "PLACEHOLDER",
     "Authenticated state hash": "sha256:PLACEHOLDER",
     "Factory plan issued at": "PLACEHOLDER",

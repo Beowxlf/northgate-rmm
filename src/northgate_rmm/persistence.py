@@ -29,6 +29,7 @@ from northgate_rmm.domain import (
     Endpoint,
     EndpointHealth,
     EndpointIdentity,
+    EndpointLifecycle,
     EndpointStatus,
     EnrollmentGrant,
     FreshnessPolicy,
@@ -215,7 +216,7 @@ class PostgresControlPlane:
             cursor.execute(
                 """
                 SELECT identity_id, endpoint_id, public_key_fingerprint, created_at,
-                       revoked_at, revocation_reason
+                       revoked_at, revocation_reason, identity_status
                 FROM endpoint_identities WHERE identity_id = %s
                 """,
                 (identity_id,),
@@ -476,6 +477,7 @@ class PostgresControlPlane:
                         endpoint_id=endpoint_id,
                         public_key_fingerprint=public_key_fingerprint,
                         created_at=server_time,
+                        status=EndpointLifecycle(identity_status),
                     )
                     endpoint = Endpoint(
                         endpoint_id=endpoint_id,
@@ -676,6 +678,7 @@ class PostgresControlPlane:
                         identity_id,
                     ),
                 )
+                identity = replace(identity, status=EndpointLifecycle.ISSUED)
                 self._insert_audit(
                     cursor,
                     server_time=server_time,
@@ -936,7 +939,7 @@ class PostgresControlPlane:
             cursor.execute(
                 """
                 SELECT identity_id, endpoint_id, public_key_fingerprint, created_at,
-                       revoked_at, revocation_reason
+                       revoked_at, revocation_reason, identity_status
                 FROM endpoint_identities
                 WHERE identity_id = %s
                 FOR UPDATE
@@ -962,6 +965,7 @@ class PostgresControlPlane:
                 return identity
             revoked = replace(
                 identity,
+                status=EndpointLifecycle.REVOKED,
                 revoked_at=now,
                 revocation_reason=reason,
             )
@@ -1415,6 +1419,7 @@ class PostgresControlPlane:
             endpoint_id=cast(UUID, row["endpoint_id"]),
             public_key_fingerprint=cast(str, row["public_key_fingerprint"]),
             created_at=cast(datetime, row["created_at"]),
+            status=EndpointLifecycle(cast(str, row["identity_status"])),
             revoked_at=cast(datetime | None, row["revoked_at"]),
             revocation_reason=cast(str | None, row["revocation_reason"]),
         )

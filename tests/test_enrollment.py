@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID, NameOID
 
-from northgate_rmm.domain import Endpoint, EndpointIdentity, Platform
+from northgate_rmm.domain import Endpoint, EndpointIdentity, EndpointLifecycle, Platform
 from northgate_rmm.enrollment import (
     EndpointIssuanceRequest,
     EnrollmentApplication,
@@ -87,6 +87,7 @@ class RecordingEnrollmentStore:
             endpoint_id=self.endpoint_id,
             public_key_fingerprint=self.fingerprint,
             created_at=now,
+            status=EndpointLifecycle.ISSUED,
         )
 
 

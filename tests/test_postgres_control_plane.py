@@ -357,6 +357,7 @@ def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
         public_key_fingerprint="sha256:" + "8" * 64,
         now=NOW + timedelta(seconds=1),
     )
+    assert identity.lifecycle is EndpointLifecycle.PENDING
     retry_endpoint, retry_identity = plane.begin_endpoint_enrollment(
         token=token,
         public_key_fingerprint="sha256:" + "8" * 64,
@@ -388,7 +389,8 @@ def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
         certificate_not_after=not_after,
         now=NOW + timedelta(seconds=3),
     )
-    assert issued == identity
+    assert issued.identity_id == identity.identity_id
+    assert issued.lifecycle is EndpointLifecycle.ISSUED
     authenticated = plane.authenticate_endpoint_certificate(
         endpoint_id=endpoint.endpoint_id,
         public_key_fingerprint=identity.public_key_fingerprint,
@@ -411,7 +413,7 @@ def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
         certificate_not_after=not_after,
         now=NOW + timedelta(seconds=5),
     )
-    assert retry == identity
+    assert retry == issued
     pending_agent = SyntheticAgent(
         endpoint_id=endpoint.endpoint_id,
         identity_id=identity.identity_id,
@@ -431,6 +433,9 @@ def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
         authenticated_identity_id=identity.identity_id,
         message=pending_agent.heartbeat(now=NOW + timedelta(seconds=8)),
         received_at=NOW + timedelta(seconds=9),
+    )
+    assert (
+        plane.get_identity(identity.identity_id).lifecycle is EndpointLifecycle.ACTIVE
     )
     with pytest.raises(AuthorizationError, match="unavailable"):
         plane.begin_endpoint_enrollment(
@@ -854,6 +859,93 @@ def test_rotation_keeps_history_and_rejects_the_previous_identity(
         if event.action == "certificate.authenticate" and event.decision == "rejected"
     )
     assert rejected_authentication.reason == "certificate identity is not current"
+
+
+def test_rotation_lineage_is_same_endpoint_chronological_and_immutable(
+    postgres_dsn: str,
+) -> None:
+    plane, first_agent = enrolled_plane(postgres_dsn)
+    second_agent = SyntheticAgent.enroll(
+        plane,
+        display_name="second-linux-db-sim",
+        platform=Platform.LINUX,
+        architecture="x86_64",
+        now=NOW,
+    )
+
+    with (
+        pytest.raises(psycopg.errors.CheckViolation),
+        psycopg.connect(postgres_dsn) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            """
+                INSERT INTO endpoint_identities (
+                    identity_id, endpoint_id, public_key_fingerprint, created_at,
+                    identity_status, previous_identity_id
+                ) VALUES (%s, %s, %s, %s, 'active', %s)
+                """,
+            (
+                uuid4(),
+                first_agent.endpoint_id,
+                "sha256:" + "7" * 64,
+                NOW + timedelta(minutes=1),
+                second_agent.identity_id,
+            ),
+        )
+
+    with (
+        pytest.raises(psycopg.errors.CheckViolation),
+        psycopg.connect(postgres_dsn) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            """
+                INSERT INTO endpoint_identities (
+                    identity_id, endpoint_id, public_key_fingerprint, created_at,
+                    identity_status, previous_identity_id
+                ) VALUES (%s, %s, %s, %s, 'active', %s)
+                """,
+            (
+                uuid4(),
+                first_agent.endpoint_id,
+                "sha256:" + "6" * 64,
+                NOW,
+                first_agent.identity_id,
+            ),
+        )
+
+    replacement_id = uuid4()
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO endpoint_identities (
+                identity_id, endpoint_id, public_key_fingerprint, created_at,
+                identity_status, previous_identity_id
+            ) VALUES (%s, %s, %s, %s, 'active', %s)
+            """,
+            (
+                replacement_id,
+                first_agent.endpoint_id,
+                "sha256:" + "5" * 64,
+                NOW + timedelta(minutes=1),
+                first_agent.identity_id,
+            ),
+        )
+
+    with (
+        pytest.raises(psycopg.errors.CheckViolation),
+        psycopg.connect(postgres_dsn) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            """
+                UPDATE endpoint_identities
+                SET previous_identity_id = NULL
+                WHERE identity_id = %s
+                """,
+            (replacement_id,),
+        )
 
 
 def test_inventory_binding_and_both_replay_classes_fail_closed(

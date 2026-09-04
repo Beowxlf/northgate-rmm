@@ -17,6 +17,7 @@ from northgate_rmm.domain import (
     Endpoint,
     EndpointHealth,
     EndpointIdentity,
+    EndpointLifecycle,
     EndpointStatus,
     FreshnessPolicy,
     HeartbeatMessage,
@@ -300,7 +301,12 @@ class ControlPlane:
                 correlation_id=event_correlation_id,
             )
             return identity
-        revoked = replace(identity, revoked_at=now, revocation_reason=reason)
+        revoked = replace(
+            identity,
+            status=EndpointLifecycle.REVOKED,
+            revoked_at=now,
+            revocation_reason=reason,
+        )
         self._identities[identity_id] = revoked
         self._audit(
             server_time=now,

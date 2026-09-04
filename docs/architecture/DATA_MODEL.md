@@ -99,8 +99,10 @@ digests added by
 certificate-lifecycle, and rotation lineage constraints added by
 `src/northgate_rmm/migrations/0004_identity_rotation.sql`, followed by the
 issued-before-active transition in
-`src/northgate_rmm/migrations/0005_issued_identity_status.sql`. Jobs, leases,
-results, and approvals remain future schema and are not executable capabilities.
+`src/northgate_rmm/migrations/0005_issued_identity_status.sql` and immutable,
+same-endpoint, older-predecessor rotation lineage in
+`src/northgate_rmm/migrations/0006_rotation_lineage.sql`. Jobs, leases, results,
+and approvals remain future schema and are not executable capabilities.
 
 ## Retention
 

@@ -458,6 +458,8 @@ function validateCloseout(
     typeof authorizationPath === "string"
       ? readAtProtectedMain(authorizationPath)
       : null;
+  const currentAuthorizationText =
+    typeof authorizationPath === "string" ? readText(authorizationPath) : null;
   if (
     !/^docs\/governance\/authorizations\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(
       authorizationPath ?? "",
@@ -469,6 +471,14 @@ function validateCloseout(
     );
     return errors;
   }
+  if (
+    !isRegularFile(authorizationPath) ||
+    typeof currentAuthorizationText !== "string" ||
+    normalizeText(currentAuthorizationText) !== normalizeText(authorizationText)
+  )
+    errors.push(
+      "V1D-SV cleanup closeout must preserve the exact active authorization record.",
+    );
   if (sha256(authorizationText) !== closeout.authorizationRecordDigest)
     errors.push("V1D-SV cleanup closeout authorization digest mismatches.");
   if (

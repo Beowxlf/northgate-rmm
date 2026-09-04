@@ -149,7 +149,8 @@ service stopped; service, database, operator-validation, and synthetic
 identities were revoked; endpoint routes stayed blocked; temporary network
 access and secrets were removed; and rollback was verified within the
 authorization and Factory-plan windows. The closeout change must keep G2
-through G8 closed. A later product gate may open only in a separate change after
+through G8 closed and must preserve the active authorization file byte for byte.
+A later product gate may open only in a separate change after
 both closeout artifacts have been accepted exactly once on protected `main`;
 changed, deleted, recreated, future-dated, or same-change closeout evidence
 fails closed. Cleanup events and both artifacts must follow the protected-main

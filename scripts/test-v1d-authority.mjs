@@ -270,16 +270,20 @@ function closeoutOptions(
     artifactsOnProtectedMain = false,
     productGateFixture = null,
     productAuthorizationOnProtectedMain = true,
+    authorizationInWorktree = true,
   } = {},
 ) {
   const productRecords = productGateFixture?.records ?? {};
   return {
     isRegularFile: (path) =>
+      (authorizationInWorktree && path === exactPath) ||
       path === closeoutPath ||
       path === cleanupEvidencePath ||
       (productGateFixture !== null && path === g2AuthorizationPath) ||
       Object.hasOwn(productRecords, path),
     readText: (path) => {
+      if (path === exactPath)
+        return authorizationInWorktree ? renderRecord() : null;
       if (path === closeoutPath) return closeoutText;
       if (path === cleanupEvidencePath) return evidenceText;
       if (path === g2AuthorizationPath)
@@ -1414,6 +1418,17 @@ authority(closedWithCloseout).closeout = closeoutPath;
 assert.deepEqual(
   validateV1dAuthority(closedWithCloseout, closeoutOptions(priorOpen)),
   [],
+);
+passed += 1;
+
+assert(
+  validateV1dAuthority(
+    closedWithCloseout,
+    closeoutOptions(priorOpen, { authorizationInWorktree: false }),
+  ).some((item) =>
+    item.includes("preserve the exact active authorization record"),
+  ),
+  "closeout accepted deletion of its active authorization record",
 );
 passed += 1;
 

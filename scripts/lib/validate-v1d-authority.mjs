@@ -421,6 +421,60 @@ function canonicalJsonDigest(value) {
   return sha256(`${JSON.stringify(value, null, 2)}\n`);
 }
 
+function validateTransitiveGovernanceRecords(
+  authorizationText,
+  {
+    isRegularFile,
+    readText,
+    readAtProtectedMain,
+    protectedMainPathVersionCount,
+  },
+  label,
+) {
+  const errors = [];
+  const { fields } = parseRecord(authorizationText);
+  const queue = [...fields.values()].filter(
+    (value) =>
+      typeof value === "string" &&
+      /^docs\/governance\/[A-Za-z0-9_./-]+$/.test(value),
+  );
+  const visited = new Set();
+  const enqueueGovernancePaths = (value) => {
+    if (typeof value === "string") {
+      if (/^docs\/governance\/[A-Za-z0-9_./-]+$/.test(value)) queue.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) enqueueGovernancePaths(item);
+      return;
+    }
+    if (value && typeof value === "object")
+      for (const item of Object.values(value)) enqueueGovernancePaths(item);
+  };
+  while (queue.length > 0) {
+    const recordPath = queue.shift();
+    if (visited.has(recordPath)) continue;
+    visited.add(recordPath);
+    const protectedText = readAtProtectedMain(recordPath);
+    const currentText = readText(recordPath);
+    if (
+      !isRegularFile(recordPath) ||
+      typeof protectedText !== "string" ||
+      typeof currentText !== "string" ||
+      normalizeText(currentText) !== normalizeText(protectedText) ||
+      protectedMainPathVersionCount(recordPath) !== 1
+    ) {
+      errors.push(`${label} must preserve transitive record: ${recordPath}.`);
+      continue;
+    }
+    if (recordPath.endsWith(".json")) {
+      const record = parseCanonicalJson(protectedText);
+      if (record) enqueueGovernancePaths(record);
+    }
+  }
+  return errors;
+}
+
 function protectedMainAuthority(readAtProtectedMain) {
   const text = readAtProtectedMain("governance/gates.json");
   if (typeof text !== "string") return null;
@@ -555,6 +609,18 @@ function validateCloseout(
     errors.push(
       "V1D-SV cleanup closeout does not bind the preceding open authorization.",
     );
+  errors.push(
+    ...validateTransitiveGovernanceRecords(
+      authorizationText,
+      {
+        isRegularFile,
+        readText,
+        readAtProtectedMain,
+        protectedMainPathVersionCount,
+      },
+      "V1D-SV closing transition",
+    ),
+  );
 
   const { fields: authorizationFields, duplicates } =
     parseRecord(authorizationText);
@@ -888,49 +954,18 @@ function validateV1dCloseoutHistory(
       closeout.authorizationRecord,
     );
     if (typeof consumedAuthorizationText !== "string") continue;
-    const { fields } = parseRecord(consumedAuthorizationText);
-    const queue = [...fields.values()].filter(
-      (value) =>
-        typeof value === "string" &&
-        /^docs\/governance\/[A-Za-z0-9_./-]+$/.test(value),
+    errors.push(
+      ...validateTransitiveGovernanceRecords(
+        consumedAuthorizationText,
+        {
+          isRegularFile,
+          readText,
+          readAtProtectedMain,
+          protectedMainPathVersionCount,
+        },
+        "V1D-SV consumed lifecycle",
+      ),
     );
-    const visited = new Set();
-    const enqueueGovernancePaths = (value) => {
-      if (typeof value === "string") {
-        if (/^docs\/governance\/[A-Za-z0-9_./-]+$/.test(value))
-          queue.push(value);
-        return;
-      }
-      if (Array.isArray(value)) {
-        for (const item of value) enqueueGovernancePaths(item);
-        return;
-      }
-      if (value && typeof value === "object")
-        for (const item of Object.values(value)) enqueueGovernancePaths(item);
-    };
-    while (queue.length > 0) {
-      const recordPath = queue.shift();
-      if (visited.has(recordPath)) continue;
-      visited.add(recordPath);
-      const protectedText = readAtProtectedMain(recordPath);
-      const currentText = readText(recordPath);
-      if (
-        !isRegularFile(recordPath) ||
-        typeof protectedText !== "string" ||
-        typeof currentText !== "string" ||
-        normalizeText(currentText) !== normalizeText(protectedText) ||
-        protectedMainPathVersionCount(recordPath) !== 1
-      ) {
-        errors.push(
-          `V1D-SV must preserve every transitive consumed-lifecycle record: ${recordPath}.`,
-        );
-        continue;
-      }
-      if (recordPath.endsWith(".json")) {
-        const record = parseCanonicalJson(protectedText);
-        if (record) enqueueGovernancePaths(record);
-      }
-    }
   }
   return errors;
 }

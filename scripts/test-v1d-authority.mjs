@@ -1532,6 +1532,17 @@ passed += 1;
 assert(
   validateV1dAuthority(
     closedWithCloseout,
+    closeoutOptions(priorOpen, { missingPaths: [bindingPath] }),
+  ).some((item) =>
+    item.includes("V1D-SV closing transition must preserve transitive record"),
+  ),
+  "first V1D closeout deleted its approved bindings evidence",
+);
+passed += 1;
+
+assert(
+  validateV1dAuthority(
+    closedWithCloseout,
     closeoutOptions(priorOpen, { authorizationInWorktree: false }),
   ).some((item) =>
     item.includes("preserve the exact active authorization record"),
@@ -1627,7 +1638,7 @@ assert(
       artifactsOnProtectedMain: true,
       missingPaths: [bindingPath],
     }),
-  ).some((item) => item.includes("transitive consumed-lifecycle record")),
+  ).some((item) => item.includes("must preserve transitive record")),
   "an open-to-open change deleted older V1D approved bindings",
 );
 passed += 1;

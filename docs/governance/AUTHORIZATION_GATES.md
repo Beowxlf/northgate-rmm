@@ -192,6 +192,9 @@ identities were revoked; endpoint routes stayed blocked; temporary network
 access and secrets were removed; and rollback was verified within the
 authorization and Factory-plan windows. The closeout change must keep G2
 through G8 closed and must preserve the active authorization file byte for byte.
+That same first closing change must also preserve every transitively referenced
+bindings manifest, Factory receipt, signature, trust record, prerequisite,
+evidence record, and rollback artifact byte for byte from protected `main`.
 A later product gate may open only in a separate change after
 both closeout artifacts have been accepted exactly once on protected `main`;
 changed, deleted, recreated, future-dated, or same-change closeout evidence

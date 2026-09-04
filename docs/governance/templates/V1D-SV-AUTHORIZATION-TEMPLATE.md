@@ -76,6 +76,10 @@ and
 [`V1D-PREREQUISITE-ROLLBACK-TEMPLATE.json`](V1D-PREREQUISITE-ROLLBACK-TEMPLATE.json).
 Each receipt scope must exactly match its independently approved
 `evidenceScope` or `rollbackScope` in the approved-bindings manifest.
+`External dependency set binding` is the SHA-256 digest of the manifest's full
+`prerequisites.dependencies` array serialized as canonical two-space-indented
+JSON with one trailing newline in template order. It therefore binds every
+dependency record, digest, evidence scope, and rollback scope to this authority.
 Binding-manifest approval must occur after Factory plan approval.
 The authorization expiry must not exceed the expiry of the binding manifest,
 the Factory plan, the V1C pass record, or any external-dependency approval

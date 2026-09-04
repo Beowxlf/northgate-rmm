@@ -157,6 +157,10 @@ function sha256(text) {
   return `sha256:${createHash("sha256").update(normalizeText(text)).digest("hex")}`;
 }
 
+function canonicalJsonDigest(value) {
+  return sha256(`${JSON.stringify(value, null, 2)}\n`);
+}
+
 function validateProtectedMainContinuity(
   label,
   recordPath,
@@ -584,6 +588,15 @@ function validatePrerequisites(approval, auditedCommit, options) {
     errors.push(
       "V1D-SV external dependency approval set is incomplete or duplicated.",
     );
+  if (!EXPECTED_DEPENDENCY_IDS.every((id, index) => ids[index] === id))
+    errors.push("V1D-SV external dependency approval set is out of order.");
+  if (
+    canonicalJsonDigest(dependencies) !==
+    options.authorizedExternalDependencySetBinding
+  )
+    errors.push(
+      "V1D-SV external dependency set mismatches its authorized aggregate binding.",
+    );
   for (const expectedId of EXPECTED_DEPENDENCY_IDS) {
     errors.push(
       ...validatePrerequisite(
@@ -707,6 +720,9 @@ function validateApprovedBindings(
       authorizedServerBinding: fields.get("Server binding"),
       authorizedNetworkPolicyBinding: fields.get(
         "Private network policy binding",
+      ),
+      authorizedExternalDependencySetBinding: fields.get(
+        "External dependency set binding",
       ),
     }),
   );

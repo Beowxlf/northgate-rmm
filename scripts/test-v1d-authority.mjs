@@ -204,32 +204,7 @@ function buildPrerequisites() {
   return records;
 }
 
-function renderApprovedBindings(
-  fields = validFields,
-  overrides = {},
-  prerequisiteRecords = buildPrerequisites(),
-) {
-  const bindingFields = [
-    "Issued at",
-    "Expires at",
-    "Server binding",
-    "Signed release digest",
-    "Factory plan ID",
-    "Authenticated state hash",
-    "Factory plan issued at",
-    "Factory plan approved at",
-    "Factory plan expires at",
-    "Factory plan approver",
-    "External dependency set binding",
-    "Service identity binding",
-    "Database identity binding",
-    "Synthetic identity profile binding",
-    "Private network policy binding",
-    "Endpoint routes",
-    "Rollback binding",
-    "Recovery binding",
-    "Evidence boundary binding",
-  ];
+function buildDependencyDescriptors(fields, prerequisiteRecords) {
   const descriptor = (id, record) => ({
     id,
     record,
@@ -264,6 +239,36 @@ function renderApprovedBindings(
       recoveryEvidenceBinding: fields["Recovery binding"],
     },
   });
+  return dependencyRecords.map(([id, record]) => descriptor(id, record));
+}
+
+function renderApprovedBindings(
+  fields = validFields,
+  overrides = {},
+  prerequisiteRecords = buildPrerequisites(),
+) {
+  const bindingFields = [
+    "Issued at",
+    "Expires at",
+    "Server binding",
+    "Signed release digest",
+    "Factory plan ID",
+    "Authenticated state hash",
+    "Factory plan issued at",
+    "Factory plan approved at",
+    "Factory plan expires at",
+    "Factory plan approver",
+    "External dependency set binding",
+    "Service identity binding",
+    "Database identity binding",
+    "Synthetic identity profile binding",
+    "Private network policy binding",
+    "Endpoint routes",
+    "Rollback binding",
+    "Recovery binding",
+    "Evidence boundary binding",
+  ];
+  const dependencies = buildDependencyDescriptors(fields, prerequisiteRecords);
   return canonical({
     schemaVersion: 1,
     authority: "V1D-SV",
@@ -292,13 +297,15 @@ function renderApprovedBindings(
           recoveryEvidenceBinding: fields["Recovery binding"],
         },
       },
-      dependencies: dependencyRecords.map(([id, record]) =>
-        descriptor(id, record),
-      ),
+      dependencies,
     },
     ...overrides,
   });
 }
+
+validFields["External dependency set binding"] = hash(
+  canonical(buildDependencyDescriptors(validFields, buildPrerequisites())),
+);
 
 function open(config) {
   authority(config).status = "open";
@@ -768,6 +775,21 @@ expectFailure(
   },
 );
 expectFailure(
+  "server PKI evidence scope substituted for another environment",
+  open,
+  "external dependency set mismatches its authorized aggregate binding",
+  {
+    mutateApproval: (approval) => {
+      const serverPki = approval.prerequisites.dependencies.find(
+        ({ id }) => id === "V1D-DEP-SERVER-PKI",
+      );
+      serverPki.evidenceScope.targetBinding = `sha256:${"c".repeat(64)}`;
+      serverPki.evidenceScope.identityBinding = `sha256:${"d".repeat(64)}`;
+      serverPki.evidenceScope.flowBinding = `sha256:${"e".repeat(64)}`;
+    },
+  },
+);
+expectFailure(
   "network segmentation tests precede apply",
   open,
   "AllowPathVerified record is out of sequence",
@@ -880,6 +902,14 @@ expectFailure(
 expectFailure("dependency set incomplete", open, "incomplete or duplicated", {
   mutateApproval: (approval) => approval.prerequisites.dependencies.pop(),
 });
+expectFailure(
+  "dependency set reordered",
+  open,
+  "approval set is out of order",
+  {
+    mutateApproval: (approval) => approval.prerequisites.dependencies.reverse(),
+  },
+);
 
 const exactOpen = clone();
 open(exactOpen);

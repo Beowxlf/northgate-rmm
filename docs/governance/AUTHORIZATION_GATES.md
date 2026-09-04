@@ -73,6 +73,11 @@ environment.
 The network prerequisite's target and flow scopes must also equal the
 authorization's exact server and private-network-policy bindings; a
 manifest-local alternate network scope is rejected.
+The full dependency array has one fixed ID order and its canonical
+two-space-indented JSON plus trailing newline is SHA-256 hashed. That derived
+digest must equal `External dependency set binding`, binding every dependency
+record, evidence scope, receipt digest, and rollback scope to the exact
+authorization.
 Every approved binding, prerequisite, evidence receipt, rollback receipt, and
 network-change artifact must also remain byte-identical at the current
 protected-main tip. Removing or replacing one revokes it; restoring an older

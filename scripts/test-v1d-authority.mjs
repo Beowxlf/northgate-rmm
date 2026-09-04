@@ -792,6 +792,7 @@ function expectFailure(
         path === factoryTrustPath ||
         (priorCloseoutText !== null && path === closeoutPath) ||
         (priorCleanupEvidenceText !== null && path === cleanupEvidencePath) ||
+        typeof protectedMainTexts[path] === "string" ||
         path in prerequisites),
     readText: (path) => {
       if (deletedPaths.includes(path)) return null;
@@ -807,6 +808,8 @@ function expectFailure(
         return currentFactoryTrustText ?? priorFactoryTrust;
       if (path === closeoutPath) return priorCloseoutText;
       if (path === cleanupEvidencePath) return priorCleanupEvidenceText;
+      if (typeof protectedMainTexts[path] === "string")
+        return protectedMainTexts[path];
       if (path in prerequisites) return prerequisites[path];
       return null;
     },
@@ -838,6 +841,7 @@ function expectFailure(
       if (path === exactPath && priorAuthorizationText !== null) return 1;
       if (path === cleanupEvidencePath && priorCleanupEvidenceText !== null)
         return 1;
+      if (typeof protectedMainTexts[path] === "string") return 1;
       return null;
     },
     isPathImmutableOnProtectedMain: (commit, path) =>
@@ -1655,6 +1659,78 @@ expectFailure(
   {
     protectedMainGates: closedWithCloseout,
     priorCloseoutText: renderCloseout(),
+  },
+);
+
+const firstHistoricalCloseoutPath =
+  "docs/governance/authorizations/closeouts/V1D-SV-FIRST-CLOSEOUT.json";
+const secondHistoricalCloseoutPath =
+  "docs/governance/authorizations/closeouts/V1D-SV-SECOND-CLOSEOUT.json";
+const firstHistoricalAuthorizationPath =
+  "docs/governance/authorizations/V1D-SV-FIRST.md";
+const secondHistoricalAuthorizationPath =
+  "docs/governance/authorizations/V1D-SV-SECOND.md";
+const firstHistoricalCleanupPath =
+  "docs/governance/authorizations/closeouts/evidence/V1D-SV-FIRST-CLEANUP.json";
+const secondHistoricalCleanupPath =
+  "docs/governance/authorizations/closeouts/evidence/V1D-SV-SECOND-CLEANUP.json";
+const thirdAuthorizationPath = "docs/governance/authorizations/V1D-SV-THIRD.md";
+const firstHistoricalAuthorization = renderRecord();
+const secondHistoricalFields = {
+  ...validFields,
+  "Factory plan ID": `ngp-${"2".repeat(64)}`,
+};
+const secondHistoricalAuthorization = renderRecord(secondHistoricalFields);
+const firstHistoricalCleanup = renderCleanupEvidence();
+const secondHistoricalCleanup = renderCleanupEvidence({
+  factoryPlanId: secondHistoricalFields["Factory plan ID"],
+});
+const firstHistoricalCloseout = renderCloseout(
+  firstHistoricalAuthorization,
+  firstHistoricalCleanup,
+  {
+    authorizationRecord: firstHistoricalAuthorizationPath,
+    cleanupEvidenceRecord: firstHistoricalCleanupPath,
+  },
+);
+const secondHistoricalCloseout = renderCloseout(
+  secondHistoricalAuthorization,
+  secondHistoricalCleanup,
+  {
+    authorizationRecord: secondHistoricalAuthorizationPath,
+    cleanupEvidenceRecord: secondHistoricalCleanupPath,
+    factoryPlanId: secondHistoricalFields["Factory plan ID"],
+  },
+);
+const twoClosedV1dLifecycles = clone();
+authority(twoClosedV1dLifecycles).closeouts = [
+  firstHistoricalCloseoutPath,
+  secondHistoricalCloseoutPath,
+];
+authority(twoClosedV1dLifecycles).closeout = secondHistoricalCloseoutPath;
+expectFailure(
+  "an older consumed Factory plan cannot be replayed",
+  (config) => {
+    open(config);
+    authority(config).closeouts = [
+      firstHistoricalCloseoutPath,
+      secondHistoricalCloseoutPath,
+    ];
+    authority(config).closeout = secondHistoricalCloseoutPath;
+  },
+  "cannot replay a consumed Factory plan",
+  {
+    protectedMainGates: twoClosedV1dLifecycles,
+    currentAuthorizationPath: thirdAuthorizationPath,
+    protectedMainTexts: {
+      [thirdAuthorizationPath]: renderRecord(),
+      [firstHistoricalCloseoutPath]: firstHistoricalCloseout,
+      [secondHistoricalCloseoutPath]: secondHistoricalCloseout,
+      [firstHistoricalAuthorizationPath]: firstHistoricalAuthorization,
+      [secondHistoricalAuthorizationPath]: secondHistoricalAuthorization,
+      [firstHistoricalCleanupPath]: firstHistoricalCleanup,
+      [secondHistoricalCleanupPath]: secondHistoricalCleanup,
+    },
   },
 );
 

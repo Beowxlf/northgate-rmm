@@ -856,12 +856,26 @@ function validateReopen(
   }
 
   const { fields } = parseRecord(authorizationText);
-  if (
-    authorizationPath === priorCloseout.authorizationRecord ||
-    sha256(authorizationText) === priorCloseout.authorizationRecordDigest
-  )
+  let authorizationReplayed = false;
+  let planReplayed = false;
+  for (const closeoutPath of priorAuthority.closeouts ?? []) {
+    const historicalText = readAtProtectedMain(closeoutPath);
+    const historicalCloseout =
+      typeof historicalText === "string"
+        ? parseCanonicalJson(historicalText)
+        : null;
+    if (!historicalCloseout) continue;
+    if (
+      authorizationPath === historicalCloseout.authorizationRecord ||
+      sha256(authorizationText) === historicalCloseout.authorizationRecordDigest
+    )
+      authorizationReplayed = true;
+    if (fields.get("Factory plan ID") === historicalCloseout.factoryPlanId)
+      planReplayed = true;
+  }
+  if (authorizationReplayed)
     errors.push("V1D-SV cannot replay a consumed authorization record.");
-  if (fields.get("Factory plan ID") === priorCloseout.factoryPlanId)
+  if (planReplayed)
     errors.push("V1D-SV cannot replay a consumed Factory plan.");
   const priorClosedAt = validDate(priorCloseout.closedAt);
   const planIssuedAt = validDate(fields.get("Factory plan issued at"));

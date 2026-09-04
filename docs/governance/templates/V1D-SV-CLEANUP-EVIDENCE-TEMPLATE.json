@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "event": "V1D-SV-CleanupVerified",
+  "status": "Verified",
+  "approver": "Beowxlf",
+  "factoryPlanId": "ngp-PLACEHOLDER",
+  "serverBinding": "sha256:PLACEHOLDER",
+  "externalDependencySetBinding": "sha256:PLACEHOLDER",
+  "serviceIdentityBinding": "sha256:PLACEHOLDER",
+  "databaseIdentityBinding": "sha256:PLACEHOLDER",
+  "syntheticIdentityProfileBinding": "sha256:PLACEHOLDER",
+  "privateNetworkPolicyBinding": "sha256:PLACEHOLDER",
+  "serviceStopped": true,
+  "serviceIdentityRevoked": true,
+  "databaseIdentityRevoked": true,
+  "operatorValidationIdentitiesRevoked": true,
+  "syntheticIdentitiesRevoked": true,
+  "endpointRoutesBlocked": true,
+  "temporaryNetworkAccessRemoved": true,
+  "temporarySecretsDestroyed": true,
+  "rollbackVerified": true,
+  "verifiedAt": "YYYY-MM-DDTHH:MM:SSZ"
+}

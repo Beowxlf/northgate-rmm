@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+
+import { validateV1dAuthority } from "./lib/validate-v1d-authority.mjs";
+import { verifyCmsDetached } from "./lib/verify-cms.mjs";
 
 const root = process.cwd();
 const errors = [];
@@ -11,6 +15,254 @@ function read(relativePath) {
 
 function exists(relativePath) {
   return fs.existsSync(path.join(root, relativePath));
+}
+
+function isRegularFile(relativePath) {
+  if (typeof relativePath !== "string" || relativePath.trim() === "")
+    return false;
+  try {
+    return fs.statSync(path.join(root, relativePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isCommit(commit) {
+  return (
+    spawnSync("git", ["cat-file", "-e", `${commit}^{commit}`], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
+}
+
+function isProtectedMainCommit(commit) {
+  return (
+    spawnSync("git", ["merge-base", "--is-ancestor", commit, "origin/main"], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
+}
+
+function readAtCommit(commit, relativePath) {
+  const result = spawnSync("git", ["show", `${commit}:${relativePath}`], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return result.status === 0 ? result.stdout : null;
+}
+
+function readAtProtectedMain(relativePath) {
+  const result = spawnSync("git", ["show", `origin/main:${relativePath}`], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return result.status === 0 ? result.stdout : null;
+}
+
+function isPathImmutableOnProtectedMain(commit, relativePath) {
+  const history = spawnSync(
+    "git",
+    ["log", "--format=%H", "--full-history", "origin/main", "--", relativePath],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return false;
+  const commits = history.stdout.trim().split(/\r?\n/).filter(Boolean);
+  if (commits.length !== 1) return false;
+  return (
+    spawnSync("git", ["merge-base", "--is-ancestor", commits[0], commit], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
+}
+
+function isPathIntroducedBefore(earlierPath, laterPath) {
+  const historyFor = (relativePath) => {
+    const history = spawnSync(
+      "git",
+      [
+        "log",
+        "--format=%H",
+        "--full-history",
+        "origin/main",
+        "--",
+        relativePath,
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    if (history.status !== 0) return [];
+    return history.stdout.trim().split(/\r?\n/).filter(Boolean);
+  };
+  const earlier = historyFor(earlierPath);
+  const later = historyFor(laterPath);
+  if (earlier.length !== 1 || later.length !== 1 || earlier[0] === later[0])
+    return false;
+  return (
+    spawnSync("git", ["merge-base", "--is-ancestor", earlier[0], later[0]], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
+}
+
+function pathIntroductionTime(relativePath) {
+  const history = spawnSync(
+    "git",
+    ["log", "--format=%H", "--full-history", "origin/main", "--", relativePath],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  const commits = history.stdout.trim().split(/\r?\n/).filter(Boolean);
+  if (commits.length !== 1) return null;
+  const timestamp = spawnSync(
+    "git",
+    ["show", "-s", "--format=%cI", commits[0]],
+    {
+      cwd: root,
+      encoding: "utf8",
+    },
+  );
+  return timestamp.status === 0 ? timestamp.stdout.trim() : null;
+}
+
+function protectedMainPathVersionCount(relativePath) {
+  const history = spawnSync(
+    "git",
+    ["log", "--format=%H", "--full-history", "origin/main", "--", relativePath],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  return history.stdout.trim().split(/\r?\n/).filter(Boolean).length;
+}
+
+function authorityOpenIntroductionTime() {
+  const history = spawnSync(
+    "git",
+    [
+      "log",
+      "--first-parent",
+      "--format=%H",
+      "origin/main",
+      "--",
+      "governance/gates.json",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  let transitionCommit = null;
+  let foundOpen = false;
+  for (const commit of history.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+    const snapshot = readAtCommit(commit, "governance/gates.json");
+    if (typeof snapshot !== "string") continue;
+    let status = null;
+    try {
+      status = JSON.parse(snapshot).boundedOperationalAuthorizations?.find(
+        (item) => item.id === "V1D-SV",
+      )?.status;
+    } catch {
+      return null;
+    }
+    if (status === "open") {
+      foundOpen = true;
+      transitionCommit = commit;
+    } else if (foundOpen) break;
+  }
+  if (!transitionCommit) return null;
+  const timestamp = spawnSync(
+    "git",
+    ["show", "-s", "--format=%cI", transitionCommit],
+    { cwd: root, encoding: "utf8" },
+  );
+  return timestamp.status === 0 ? timestamp.stdout.trim() : null;
+}
+
+function authorityClosingIntroductionTime() {
+  const history = spawnSync(
+    "git",
+    [
+      "log",
+      "--first-parent",
+      "--format=%H",
+      "origin/main",
+      "--",
+      "governance/gates.json",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  let transitionCommit = null;
+  let foundClosing = false;
+  for (const commit of history.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+    const snapshot = readAtCommit(commit, "governance/gates.json");
+    if (typeof snapshot !== "string") continue;
+    let status = null;
+    try {
+      status = JSON.parse(snapshot).boundedOperationalAuthorizations?.find(
+        (item) => item.id === "V1D-SV",
+      )?.status;
+    } catch {
+      return null;
+    }
+    if (status === "closing") {
+      foundClosing = true;
+      transitionCommit = commit;
+    } else if (foundClosing) break;
+  }
+  if (!transitionCommit) return null;
+  const timestamp = spawnSync(
+    "git",
+    ["show", "-s", "--format=%cI", transitionCommit],
+    { cwd: root, encoding: "utf8" },
+  );
+  return timestamp.status === 0 ? timestamp.stdout.trim() : null;
+}
+
+function gateOpenIntroductionTime(
+  gateId,
+  authorizationPath,
+  expectedStatus = "open",
+) {
+  const history = spawnSync(
+    "git",
+    [
+      "log",
+      "--first-parent",
+      "--format=%H",
+      "origin/main",
+      "--",
+      "governance/gates.json",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  let transitionCommit = null;
+  let foundOpen = false;
+  for (const commit of history.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+    const snapshot = readAtCommit(commit, "governance/gates.json");
+    if (typeof snapshot !== "string") continue;
+    let gate = null;
+    try {
+      gate = JSON.parse(snapshot).gates?.find((item) => item.id === gateId);
+    } catch {
+      return null;
+    }
+    if (
+      gate?.status === expectedStatus &&
+      gate.authorization === authorizationPath
+    ) {
+      foundOpen = true;
+      transitionCommit = commit;
+    } else if (foundOpen) break;
+  }
+  if (!transitionCommit) return null;
+  const timestamp = spawnSync(
+    "git",
+    ["show", "-s", "--format=%cI", transitionCommit],
+    { cwd: root, encoding: "utf8" },
+  );
+  return timestamp.status === 0 ? timestamp.stdout.trim() : null;
 }
 
 function walk(directory) {
@@ -82,6 +334,10 @@ if (
 ) {
   error("GitHub baseline permits force pushes or deletions on main.");
 }
+if (githubBaseline.mainProtection.requireBranchesUpToDate !== true)
+  error(
+    "GitHub baseline must require pull-request branches to be current with main.",
+  );
 if (
   githubBaseline.mainProtection.reviewMode !== "single-maintainer" ||
   githubBaseline.mainProtection.requiredApprovingReviewCount !== 0 ||
@@ -96,6 +352,24 @@ for (let number = 0; number <= 8; number += 1) {
   if (!gateIds.includes(`G${number}`)) error(`Missing gate G${number}.`);
 }
 
+for (const authorityError of validateV1dAuthority(gates, {
+  isRegularFile,
+  readText: read,
+  readAtCommit,
+  readAtProtectedMain,
+  isPathImmutableOnProtectedMain,
+  isPathIntroducedBefore,
+  pathIntroductionTime,
+  verifyFactoryReceiptSignature: verifyCmsDetached,
+  isCommit,
+  isProtectedMainCommit,
+  protectedMainPathVersionCount,
+  authorityOpenIntroductionTime,
+  authorityClosingIntroductionTime,
+  gateOpenIntroductionTime,
+}))
+  error(authorityError);
+
 for (const artifact of gates.requiredPhase0Artifacts) {
   if (!exists(artifact))
     error(`Missing required Phase 0 artifact: ${artifact}`);
@@ -104,17 +378,19 @@ for (const artifact of gates.requiredPhase0Artifacts) {
 }
 
 for (const gate of gates.gates) {
-  if (!["open", "closed"].includes(gate.status))
+  if (!["open", "closing", "closed"].includes(gate.status))
     error(`Invalid status for ${gate.id}.`);
-  if (
-    gate.status === "open" &&
-    gate.authorization &&
-    !exists(gate.authorization)
-  ) {
+  if (gate.status === "closing" && !/^G[2-8]$/.test(gate.id))
+    error(`Closing state is not valid for ${gate.id}.`);
+  if (["open", "closing"].includes(gate.status) && !gate.authorization)
+    error(`Active or closing gate ${gate.id} lacks an authorization record.`);
+  else if (
+    ["open", "closing"].includes(gate.status) &&
+    !isRegularFile(gate.authorization)
+  )
     error(
-      `Open gate ${gate.id} lacks authorization record ${gate.authorization}.`,
+      `Active or closing gate ${gate.id} lacks authorization file ${gate.authorization}.`,
     );
-  }
 }
 
 if (!gates.productCodeAuthorized) {

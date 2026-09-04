@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "prerequisiteId": "PLACEHOLDER",
+  "status": "RollbackVerified",
+  "approver": "Beowxlf",
+  "verifiedAt": "PLACEHOLDER",
+  "procedureBinding": "sha256:PLACEHOLDER",
+  "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+}

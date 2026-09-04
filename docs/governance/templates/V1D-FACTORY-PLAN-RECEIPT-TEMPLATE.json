@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "PlanApprovalReceipt",
+  "issuer": "NorthGate VM Factory",
+  "status": "Approved",
+  "planId": "PLACEHOLDER",
+  "authenticatedStateHash": "sha256:PLACEHOLDER",
+  "issuedAt": "PLACEHOLDER",
+  "approvedAt": "PLACEHOLDER",
+  "expiresAt": "PLACEHOLDER",
+  "approver": "Beowxlf",
+  "targetBinding": "sha256:PLACEHOLDER"
+}

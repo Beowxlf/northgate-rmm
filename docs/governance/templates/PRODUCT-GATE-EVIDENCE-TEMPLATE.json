@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "gate": "GN",
+  "evidenceId": "PLACEHOLDER",
+  "status": "Verified",
+  "approver": "Beowxlf",
+  "verifiedAt": "YYYY-MM-DDTHH:MM:SSZ",
+  "operationBinding": "sha256:PLACEHOLDER",
+  "targetBinding": "sha256:PLACEHOLDER",
+  "artifactBinding": "sha256:PLACEHOLDER",
+  "identityBinding": "sha256:PLACEHOLDER",
+  "networkPolicyBinding": "sha256:PLACEHOLDER",
+  "rollbackBinding": "sha256:PLACEHOLDER",
+  "evidenceBoundaryBinding": "sha256:PLACEHOLDER",
+  "result": ["PLACEHOLDER"],
+  "resultBinding": "sha256:PLACEHOLDER"
+}

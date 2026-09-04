@@ -41,6 +41,7 @@
     "enforceAdmins": true,
     "allowForcePushes": false,
     "allowDeletions": false,
+    "requireBranchesUpToDate": true,
     "requiredStatusChecks": [
       "Pre-code governance audit",
       "Free-software security checks",

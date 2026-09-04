@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "gate": "GN",
+  "status": "Verified",
+  "approver": "Beowxlf",
+  "authorizationDigest": "sha256:PLACEHOLDER",
+  "targetsRevoked": true,
+  "identitiesRevoked": true,
+  "networkAccessRemoved": true,
+  "artifactsWithdrawn": true,
+  "rollbackVerified": true,
+  "verifiedAt": "YYYY-MM-DDTHH:MM:SSZ"
+}

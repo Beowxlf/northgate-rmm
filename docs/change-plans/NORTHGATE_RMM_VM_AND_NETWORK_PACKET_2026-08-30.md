@@ -5,6 +5,22 @@ Candidate change: `NG-CHG-20260830-001`
 Discovery authority: read-only NorthGate MCP and pinned OPNsense guest access  
 Product gate: G1 remains open; G2 remains closed
 
+## 2026-09-04 reconciliation
+
+The current read-only facts and V1D dependency matrix are recorded in
+[`V1D_LIVE_READINESS_AUDIT_2026-09-04.md`](../audits/V1D_LIVE_READINESS_AUDIT_2026-09-04.md).
+The private read-only reconciliation is complete. Current internal identities,
+addresses, capacity, storage, VLAN inventory, host fingerprints, configuration
+hashes, listener details, and tool results remain only in the approved private
+Operation-SeeSaw assessment and evidence records.
+
+VM Factory protected main now contains guarded multi-disk support plus proposed
+RMM storage, network, bootstrap, and recovery profiles. The installed authority
+has no RMM asset. Source progress therefore narrows, but does not remove, the
+Factory gate: both manifests, approved profile records, exact private host
+bindings, a new signed release and rollout promotion remain required before a
+fresh RMM plan can exist.
+
 ## Decision summary
 
 The proposed RMM service VM is `NG-VM-022 / NG-RMM-CP01`. The proposed first
@@ -87,10 +103,11 @@ host policy or the separately controlled network packet, not the VM manifest.
 | Desired state             | Off after creation unless the approved plan includes bounded installation |
 | Destruction control       | `destroyProtection: true`                                                 |
 
-Required Factory additions before a deployable manifest exists:
+Required Factory additions before a deployable manifest exists. Item 1 is
+source-complete on protected VM Factory main but is not installed or promoted:
 
-1. schema, planner, host-plan, executor, receipt, and postcondition support for
-   one explicitly declared service-data disk;
+1. install and qualify the merged schema, planner, host-plan, executor, receipt,
+   and postcondition support for one explicitly declared service-data disk;
 2. a `rmm-linux-gen2-vtpm` firmware profile that requires Secure Boot and vTPM;
 3. a negative-test-covered `rmm-service` network profile;
 4. an asset-bound Debian bootstrap profile with no embedded secret;
@@ -160,7 +177,7 @@ they are not installable firewall objects. The owner reviews every rule by
 | RMM-NET-006 | `10.10.170.10`                                               | `10.10.100.14`                                           | `TBD exact approved Wazuh ports` | Required before service acceptance and G2; listener revalidated; bounded write-only logs, metrics, and traces; exact queue byte/record/age bounds, overflow policy, service-data warning/critical thresholds, and independent capacity alerts; no RMM control authority | Security monitoring     | `NG-CHG-20260830-001` |
 | RMM-NET-007 | `10.10.170.10`                                               | `TBD exact package-mirror firewall aliases`              | TCP 443; conditional TCP 80      | Maintenance window; signed packages; exact repositories                                                                                                                                                                                                                 | Linux platform owner    | `NG-CHG-20260830-001` |
 | RMM-NET-008 | `10.10.170.10`                                               | `TBD approved human IdP`                                 | TCP 443                          | Required before operator privilege and G2; revalidate the signed issuer/tenant/subject/session/client tuple on every privileged request; positive cache at most 60 seconds; unknown, unavailable, stale, or revoked fails closed                                        | Identity service owner  | `NG-CHG-20260830-001` |
-| RMM-NET-009 | `10.10.170.10`                                               | `TBD endpoint issuer`                                    | TCP 443                          | G2; workload mTLS; issuance/renewal/revocation/status only                                                                                                                                                                                                              | Endpoint PKI owner      | `NG-CHG-20260830-001` |
+| RMM-NET-009 | `10.10.170.10`                                               | `TBD endpoint issuer`                                    | TCP 443                          | V1D synthetic only under the exact server-validation authorization, with synthetic identities unusable by endpoints and every endpoint route blocked; G2 required for endpoint-usable issuance/renewal/revocation/status traffic                                        | Endpoint PKI owner      | `NG-CHG-20260830-001` |
 | RMM-NET-010 | `10.10.170.10`                                               | `TBD server PKI`                                         | TCP 443                          | Required before TLS activation; exact lifecycle APIs                                                                                                                                                                                                                    | Server PKI owner        | `NG-CHG-20260830-001` |
 | RMM-NET-011 | `TBD exact Z1 managed TLS-client firewall alias`             | `TBD server-PKI status service`                          | TCP 443                          | Required before TLS activation; signed status only; stale/unknown/revoked fails closed; channel lifetime at most five minutes; full re-handshake with fresh status; resumption and 0-RTT cannot bypass validation                                                       | Server PKI owner        | `NG-CHG-20260830-001` |
 | RMM-NET-012 | `10.10.180.10`                                               | `TBD server-PKI status service`                          | TCP 443                          | Required before G2; exact certificate status only; hard fail; channel lifetime at most five minutes; full re-handshake with fresh status; resumption and 0-RTT cannot bypass validation                                                                                 | Endpoint PKI owner      | `NG-CHG-20260830-001` |
@@ -288,9 +305,14 @@ G2 remains closed until evidence identifies and validates:
 - Factory support for the complete server and canary manifests; and
 - before/after network validation and rollback evidence.
 
-Phase 1 code has no listener or real agent. Creating a connected server or
-installing an endpoint agent before these controls exist would not satisfy the
-approved phase model.
+The V1B source now includes real private agent, enrollment, and operator
+listeners plus an executable Debian agent. They remain disabled qualification
+artifacts, not a deployment. After V1C passes, the exact bounded V1D
+server-validation authority may create and connect only the named private
+control-plane server with synthetic validation identities and every endpoint
+route blocked, solely to complete the remaining V1D proofs. Any other connected
+server deployment, or installing an endpoint agent before V1D passes and G2 is
+separately authorized, would not satisfy the approved version 1.0 contract.
 
 ## Rollback and containment
 
@@ -330,10 +352,13 @@ The following decisions remain separate:
 
 1. approve the candidate asset IDs, names, network numbers, and addresses;
 2. approve and merge the Factory capability/catalog/manifest changes;
-3. approve the exact OPNsense backup-bound network change;
-4. approve the fresh host-issued server VM plan ID and state hash;
-5. accept the hardened server and recovery evidence;
-6. open G2 for only `NG-VM-023 / NG-RMM-CAN01`;
-7. approve the fresh canary plan and the single endpoint installation.
+3. separately approve, provision, and verify each external V1D identity,
+   telemetry/audit, backup/recovery, DNS, authenticated-time, and key-custody
+   dependency;
+4. approve the exact OPNsense backup-bound network change;
+5. approve the fresh host-issued server VM plan ID and state hash;
+6. accept the hardened server and recovery evidence;
+7. open G2 for only `NG-VM-023 / NG-RMM-CAN01`;
+8. approve the fresh canary plan and the single endpoint installation.
 
 This packet authorizes none of those actions by itself.

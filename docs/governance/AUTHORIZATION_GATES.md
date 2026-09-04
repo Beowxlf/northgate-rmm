@@ -12,6 +12,81 @@ The machine-readable source is `governance/gates.json`. A gate is open only when
 
 A passing CI run is evidence, not authorization by itself.
 
+Every open product gate from G2 through G8 must name its own regular
+authorization file whose name begins with that exact gate ID. The record must
+be active, owner-approved, limited to 24 hours, anchored to an existing
+protected-main commit, and bind the exact operation, targets, artifacts,
+identities, network policy, rollback, and evidence boundary. Missing,
+cross-gate, duplicated, malformed, placeholder, expired, future, or unprotected
+records fail closed. Use the
+[product-gate authorization template](templates/PRODUCT-GATE-AUTHORIZATION-TEMPLATE.md)
+in addition to the gate-specific requirements below.
+Each of the seven bound scope records and every evidence record must be
+canonical, separately owner-approved, digest-matched, single-use, unchanged on
+protected `main`, and present at the audited commit before the authorization is
+accepted. A scope digest must recompute from the record's embedded, non-empty
+exact scope, and an evidence result digest must recompute from its embedded,
+non-empty exact result. Every evidence record must also bind the resolved
+operation, target, artifact, identity, network-policy, rollback, and evidence-
+boundary scope digests. Opaque or scope-detached proofs fail closed. After a
+gate closes, neither a consumed scope nor evidence path or digest may be reused
+by a later authorization. The exact required evidence IDs are enforced as
+follows:
+
+Each gate also permits exactly one operation string and one target string. The
+machine validator enforces these semantic prefixes so a correctly hashed scope
+cannot borrow authority from another gate:
+
+An active or closing product gate must equal the numbered active project phase
+(`G2` in Phase 2 through `G8` in Phase 8). G2 additionally requires a completed
+V1D-SV lifecycle closeout. Every later gate requires each earlier product gate
+to be closed with at least one immutable lifecycle closeout, preventing phase
+skips or concurrent activation.
+
+| Gate | Operation prefix                         | Target prefix                                  |
+| ---- | ---------------------------------------- | ---------------------------------------------- |
+| G2   | `install:linux-agent-read-only:`         | `linux-canary:`                                |
+| G3   | `install:windows-agent-read-only:`       | `windows-canary:`                              |
+| G4   | `execute:typed-read-only-job:`           | `canary-endpoint:`                             |
+| G5   | `execute:typed-state-change:`            | `canary-endpoint:`                             |
+| G6   | `release:signed-agent-update:`           | `canary-ring:`                                 |
+| G7   | `access:brokered-interactive:`           | `canary-endpoint:`                             |
+| G8   | `deploy:production:` or `expose:public:` | `production-environment:` or `public-service:` |
+
+| Gate | Required evidence IDs                                                                                                                                                                                                                        |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G2   | `data-collection-inventory-approved`, `endpoint-target-approved`, `linux-package-qualified`, `linux-service-reviewed`, `resource-limits-verified`, `uninstall-revoke-plan-verified`, `v1d-closeout-accepted`, `vm-factory-plan-approved`     |
+| G3   | `data-collection-inventory-approved`, `endpoint-target-approved`, `resource-limits-verified`, `uninstall-revoke-plan-verified`, `v1d-closeout-accepted`, `vm-factory-plan-approved`, `windows-package-qualified`, `windows-service-reviewed` |
+| G4   | `audit-evidence-verified`, `cancellation-result-unknown-tested`, `duplicate-replay-tested`, `exact-target-approved`, `lease-timeout-tested`, `output-bounds-tested`, `typed-action-reviewed`                                                 |
+| G5   | `audit-evidence-verified`, `canary-tested`, `exact-target-approved`, `least-privilege-approved`, `postcondition-verified`, `rollback-verified`, `state-change-reviewed`                                                                      |
+| G6   | `canary-ring-approved`, `distribution-protected`, `exact-release-artifacts-verified`, `key-custody-verified`, `provenance-sbom-verified`, `rollback-freeze-tested`, `signing-profile-approved`                                               |
+| G7   | `break-glass-tested`, `consent-policy-approved`, `exact-target-approved`, `jit-expiry-tested`, `operator-identity-approved`, `protocol-reviewed`, `recording-audit-verified`                                                                 |
+| G8   | `backup-recovery-verified`, `capacity-slo-verified`, `data-retention-approved`, `incident-response-ready`, `multi-tenant-isolation-verified`, `public-exposure-approved`, `topology-approved`                                                |
+
+Every G2 through G8 gate carries an ordered `closeouts` history and uses a
+three-change cleanup state machine. First, `open` transitions to `closing` with
+the exact authorization unchanged and no cleanup artifact; `closing` is
+non-consumable and remains valid even after the authorization expires. Second,
+after cleanup, a later `closing` change adds `pendingCloseout` and the canonical
+closeout plus separate evidence proving targets and identities were revoked,
+network access was removed, artifacts were withdrawn, and rollback was verified.
+Third, a later change consumes that exact protected-main pending record, appends
+it to `closeouts`, names it as `closeout`, and moves to `closed` or opens a newly
+authorized scope. Direct open-to-closed and open-to-open rescope transitions
+fail closed.
+
+A product gate may enter `closing` only from that same gate's protected-main
+`open` state. A never-opened or already-closed gate cannot manufacture cleanup
+history by moving directly to `closing`.
+
+Cleanup events must follow the start of the exact authorization's frozen
+`closing` run. Finalization requires the pending closeout and evidence to match
+their owner-accepted protected-main bytes with one immutable history entry. A
+consumed authorization path or digest can never reopen a gate. Later states
+must preserve every closeout, consumed authorization, transitively referenced
+scope and proof record, and cleanup evidence byte for byte. Use the adjacent
+product-gate closeout and cleanup-evidence templates.
+
 Phase-specific source development may be authorized by a separate committed
 development record that states an exact non-deployment boundary. Such a record
 does not open the corresponding installation or capability gate. In particular,
@@ -29,6 +104,148 @@ policy, CODEOWNERS, change templates, and a protected remote repository plan.
 Allows Phase 1 product code. Requires the full Phase 0 document set and a passing
 pre-code audit. Evidence record:
 `docs/governance/authorizations/G1-PRODUCT-CODING.md`.
+
+## Pre-G2 V1D control-plane validation authority
+
+`V1D-SV` is the only recognized bounded operational authority. Unknown
+authority IDs fail governance validation. Its closed-gate requirements,
+prerequisites, and prohibitions must be exact unique arrays; alternate types,
+duplicates, omissions, and additions fail closed. Every endpoint-capable gate
+from G2 through G8 must remain closed while V1D-SV is open. Its `open` and
+`closing` states are valid only while the project `currentPhase` is exactly 2.
+
+This is an exact, bounded change authorization, not an opened product gate. It
+may be issued only after V1C passes and the required external V1D dependencies
+have been separately approved, provisioned, and verified. It must name the
+control-plane server, signed release, private network policy, service and
+database identities, synthetic validation identities, expiry, rollback, and
+evidence boundary. Its fresh host-issued VM Factory plan ID and authenticated
+state hash require exact owner approval after issuance. The plan is generated
+and approved through the Factory's non-deployment planning path while `V1D-SV`
+remains closed; `V1D-SV` governs only execution of the approved plan. Before the
+authority can open, its record must use the parsed, fail-closed field contract in
+the [V1D-SV authorization template](templates/V1D-SV-AUTHORIZATION-TEMPLATE.md).
+The audited commit must contain the canonical Factory-exported plan approval
+receipt. Its digest and plan, state, time, approver, and target fields must match
+the authorization, and its detached CMS signature must verify against a
+separately owner-pinned Factory approval certificate. The trust record must
+be introduced in an earlier protected-main change and predate plan issuance.
+The authenticated plan issue and approval times must fall within the pinned
+certificate's validity interval. The receipt's protected-main introduction
+commit time must follow approval, and the detached signature's introduction
+must follow the receipt; both must precede certificate expiry.
+After `V1D-SV` opens, every later open state must preserve the exact
+authorization path and bytes from protected `main`. Changing the server,
+release, plan, identities, network, expiry, or any other authorization content
+requires closing and cleaning the current lifecycle, then beginning a
+separately approved lifecycle with a new plan and authorization. Reopening must
+preserve the prior closeout, consumed authorization, and cleanup-evidence files
+byte for byte with their complete single-use protected-main history. The
+ordered `closeouts` list is permanent across all later open and closed states;
+each verified close adds exactly one entry and no later change may remove,
+replace, or reorder one.
+Its protected-main introduction commit time must also predate the authenticated
+plan issue time. The trust record, receipt, and signature each use an immutable,
+single-use protected-main path.
+Its sanitized approved-bindings manifest must already exist at the audited
+commit; changing it in the authority-opening change or substituting any bound
+value fails validation. Its protected-main introduction commit must predate
+authorization issuance.
+The manifest must also bind the exact authorization issuance and expiry; the
+authority window cannot be extended by editing the later authorization record.
+That manifest must hash and reference a protected-main V1C pass record and the
+eight separate external-dependency approval records, including the separately
+approved and tested network-segmentation change. Each prerequisite record
+must be owner-approved, unexpired, evidence- and rollback-bound, unchanged from
+the audited commit, valid for its exact required identity and status, and valid
+through the authorization expiry. Every prerequisite approval must precede
+Factory plan issuance and approval of the binding manifest. Protected-main
+introduction commit times for every prerequisite, evidence, rollback, and
+network artifact must also precede Factory plan issuance. Each record's claimed
+event must be no later than that trusted introduction time.
+Each evidence and rollback binding must identify a separate canonical receipt
+that is present and unchanged at the audited commit, matches the prerequisite,
+records owner-approved verification before prerequisite approval, and binds the
+approved target, identities, flows, provision/verification receipts, rollback
+procedure, and recovery evidence without publishing live values.
+Those receipt scopes must match the independently owner-approved per-prerequisite
+scope values in the immutable approved-bindings manifest; recomputing inner
+receipt and prerequisite digests cannot substitute evidence from another
+environment.
+The network prerequisite's target and flow scopes must also equal the
+authorization's exact server and private-network-policy bindings; a
+manifest-local alternate network scope is rejected.
+The full dependency array has one fixed ID order and its canonical
+two-space-indented JSON plus trailing newline is SHA-256 hashed. That derived
+digest must equal `External dependency set binding`, binding every dependency
+record, evidence scope, receipt digest, and rollback scope to the exact
+authorization.
+Every approved binding, prerequisite, evidence receipt, rollback receipt, and
+network-change artifact must also remain byte-identical at the current
+protected-main tip. Removing or replacing one revokes it; restoring an older
+still-unexpired approval snapshot does not restore authority. Validation also
+checks each path's entire protected-main history. Every approval path is
+single-use: it must be introduced once and never changed, deleted, or recreated.
+A later byte-identical restoration remains revoked even when its restoration
+commit is selected as the audit anchor; renewal requires a new record path.
+The protected branch requires strict up-to-date status checks, so any `main`
+advance between validation and merge makes the authority-opening pull request
+stale and forces these checks to rerun against the new protected-main tip.
+The Factory plan expiry must cover the full authorization lifetime.
+At every governance validation, the plan must be no more than two hours old and
+its issue-to-expiry lifetime must not exceed 24 hours; older or longer-lived
+plans fail closed and require a fresh host state validation and plan.
+The V1D-SV authorization itself must expire no later than two hours after plan
+issuance, preventing later execution after the freshness window has elapsed.
+Every operational consumption must run `node scripts/check-gate.mjs V1D-SV`
+from a clean checkout exactly at the freshly fetched protected-main tip. The
+checker rereads the protected authority and performs the complete current-clock,
+signature, plan, scope, history, and evidence validation; an authorization that
+expires without a repository event therefore becomes non-consumable.
+
+Closing `V1D-SV` after it has opened is a two-change fail-closed sequence. The
+first change moves it from `open` to `closing` while preserving the exact
+authorization and lifecycle history. `closing` is non-consumable, cannot return
+to `open`, and permits validation of the expired authorization, Factory plan,
+bindings, and prerequisites only so teardown cannot be stranded. The second
+change moves it from `closing` to `closed` with a canonical owner-approved
+closeout receipt and separate canonical cleanup-evidence record. Both records
+must bind the exact protected-main authorization, Factory plan, server, signed
+release, identities, and network policy. They must prove that the validation
+service stopped; service, database, operator-validation, and synthetic
+identities were revoked; endpoint routes stayed blocked; temporary network
+access and secrets were removed; and rollback was verified. Cleanup may finish
+after authorization or plan expiry, but it must follow the protected-main
+`closing` transition, and every claimed event must be no later than the audit
+clock. The
+closing and closeout changes must keep G2
+through G8 closed and must preserve the active authorization file byte for byte.
+That same first closing change must also preserve every transitively referenced
+bindings manifest, Factory receipt, signature, trust record, prerequisite,
+evidence record, and rollback artifact byte for byte from protected `main`.
+A later product gate may open only in a separate change after
+both closeout artifacts have been accepted exactly once on protected `main`;
+changed, deleted, recreated, future-dated, or same-change closeout evidence
+fails closed. Cleanup events must occur strictly after the protected-main
+`closing` transition, and both artifacts must follow the protected-main opening;
+pre-freeze or pre-staged closeout evidence is invalid. Direct `open` to `closed`
+transitions are rejected. Once closed, that exact authorization record and
+Factory plan are
+consumed permanently. Every later closed state must preserve the exact
+single-use closeout reference and artifacts as a monotonic tombstone. A later
+V1D-SV lifecycle requires a different authorization path and a fresh Factory
+plan issued after the prior closeout.
+Use the
+[cleanup-evidence template](templates/V1D-SV-CLEANUP-EVIDENCE-TEMPLATE.json)
+and [closeout template](templates/V1D-SV-CLOSEOUT-TEMPLATE.json).
+
+The authorization permits installation and operation of the named private
+control-plane server only to complete V1D backup/restore, telemetry-outage,
+capacity, certificate-revocation, containment, and rollback proofs. It cannot
+install an endpoint package, create an enrollment grant usable by an endpoint,
+issue a live endpoint identity, admit canary or other endpoint traffic, publish
+or update artifacts, or open G2. G2 remains the separate gate for the one
+disposable Linux endpoint canary.
 
 ## G2 — Linux endpoint installation
 

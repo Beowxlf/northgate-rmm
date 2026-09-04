@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "V1C",
+  "status": "Passed",
+  "approver": "Beowxlf",
+  "approvedAt": "PLACEHOLDER",
+  "expiresAt": "PLACEHOLDER",
+  "releaseDigest": "sha256:PLACEHOLDER",
+  "evidenceRecord": "docs/governance/authorizations/prerequisites/evidence/V1C.json",
+  "evidenceBinding": "sha256:PLACEHOLDER",
+  "rollbackRecord": "docs/governance/authorizations/prerequisites/rollback/V1C.json",
+  "rollbackBinding": "sha256:PLACEHOLDER",
+  "controls": [
+    "exact production artifacts",
+    "independent trust root",
+    "signing custody and recovery",
+    "protected distribution and bootstrap",
+    "signing-key loss test",
+    "signing-key compromise test",
+    "independent verification"
+  ]
+}

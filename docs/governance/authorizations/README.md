@@ -4,6 +4,14 @@ Records in this directory authorize a bounded phase transition. Templates are no
 authorization. A valid record names the gate, exact commit, evidence, approver,
 date, scope, expiration or supersession condition, and unresolved accepted risks.
 
+Every G2 through G8 opening uses a gate-prefixed record based on the
+[product-gate authorization template](../templates/PRODUCT-GATE-AUTHORIZATION-TEMPLATE.md).
+An open gate without its own exact active record fails governance validation;
+another gate's authorization cannot be reused.
+Operational consumers must refresh `origin/main`, use the exact clean
+protected-main checkout, and revalidate the active time window and every bound
+record immediately before acting.
+
 `PUB-001-PUBLIC-REPOSITORY.md` records the separately approved licensing and
 public-repository transition. `G1-PRODUCT-CODING.md` authorizes only the bounded
 Phase 1 simulation and development scope named in that record.

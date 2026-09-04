@@ -94,6 +94,24 @@
 - Linux/Windows host-key/certificate identity validation;
 - penetration test of gateway, tunnel broker, and browser session boundary.
 
+## Pre-G2 V1D server-validation tests
+
+- absent, expired, wrong-server, wrong-release, wrong-plan, or wrong-state-hash
+  V1D-SV authority prevents installation and service start;
+- every canary and endpoint path is denied before, during, and after validation;
+- synthetic grants and identities cannot authenticate from an endpoint, chain
+  to an endpoint trust root, or survive validation cleanup;
+- the issuer rejects every non-synthetic profile and the control plane rejects
+  every endpoint-usable credential while G2 is closed;
+- a missing, unverified, or unavailable external dependency fails the affected
+  proof closed without silently weakening trust or opening an alternate path;
+- V1D-SV cannot publish or update artifacts, create endpoint authority, change
+  G2 state, or expand the exact approved Factory plan;
+- recovery stops all RMM services, revokes synthetic, operator-validation, and
+  workload identities, restores the prior network policy, preserves database
+  and protected audit evidence, and proves that no endpoint grant, identity,
+  traffic, listener reachability, or residual V1D-SV authority remains.
+
 ## Recovery tests
 
 - compromised key rotation;

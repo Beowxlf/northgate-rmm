@@ -27,6 +27,7 @@ The first executable lesson is
 - [Project charter](PROJECT_CHARTER.md)
 - [Version 1.0 release criteria](docs/governance/V1_RELEASE_CRITERIA.md)
 - [V1A and V1B exit audit](docs/audits/V1A_V1B_EXIT_AUDIT_2026-09-04.md)
+- [V1D live readiness audit](docs/audits/V1D_LIVE_READINESS_AUDIT_2026-09-04.md)
 - [Development phases](docs/governance/PHASES.md)
 - [Authorization gates](docs/governance/AUTHORIZATION_GATES.md)
 - [Licensing policy](docs/governance/LICENSING.md)
@@ -50,8 +51,12 @@ The first executable lesson is
 The Phase 1 trustworthy vertical-slice simulation is complete. Separate,
 bounded authorizations permit **Phase 2 Linux-agent and control-plane source
 development**.
-G2 remains closed: endpoint or VM installation, live identity, live collection,
-networking, and infrastructure changes remain prohibited.
+G2 remains closed: Linux endpoint installation, endpoint-usable identity, live
+endpoint collection, and canary networking remain prohibited. A separately
+authorized, post-V1C V1D server-validation change may deploy only the named
+private control plane with synthetic validation identities and blocked endpoint
+routes; it does not open G2 or authorize a canary. All other VM, networking, and
+infrastructure changes remain prohibited without their own exact authorization.
 
 The control-plane source includes a strict message decoder, transactional
 PostgreSQL adapter and migrations, digest-only single-use enrollment grants,
@@ -107,7 +112,9 @@ deployment: no issuer/IdP integration, approved deployment configuration,
 command runner, or privileged helper is present.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
-remain G2 blockers.
+remain G2 blockers. A 2026-09-04 private read-only V1D reconciliation confirmed
+that live prerequisites remain incomplete; the public audit is redacted and no
+live change was made.
 
 ## Phase 1 developer checks
 

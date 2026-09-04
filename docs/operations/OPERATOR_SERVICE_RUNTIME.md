@@ -17,7 +17,11 @@ maximum session age before reading endpoint state.
 
 This source and disabled reference unit do not authorize installation, an IdP
 connection, a database, a listener, or a lab change. Exact infrastructure and a
-separate G2 approval remain required.
+bounded control-plane authorization remain required. Before G2, the V1D
+server-validation authority may use only its named operator validation identity
+and synthetic endpoint records on the private server. It cannot create or admit
+a live endpoint; the separate G2 authorization remains required for the
+disposable canary.
 
 ## Startup and shutdown contract
 

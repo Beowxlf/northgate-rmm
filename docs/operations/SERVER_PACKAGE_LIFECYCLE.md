@@ -4,9 +4,14 @@
 
 The source-built `northgate-rmm-server` Debian package contains the three
 private read-only control-plane services. It is a Debian 12 amd64 qualification
-artifact, not a published release or deployment authorization. G2 remains
-required for any NorthGate installation, identity, listener, database, or
-network change, and G6 remains required for production signing or publication.
+artifact, not a published release or deployment authorization. An exact,
+bounded control-plane change authorization remains required for any NorthGate
+server installation, identity, listener, database, or network change, and G6
+remains required for production signing or publication. Before G2, the defined
+V1D control-plane validation authority may cover only the named private server
+and synthetic validation identities. G2 remains required for the disposable
+Linux endpoint, any endpoint-usable enrollment grant or identity, and any
+canary or other endpoint traffic.
 
 ## Reproducible offline package
 
@@ -34,9 +39,12 @@ The control-plane ingress unit is named `northgate-rmm-agent-ingress.service`,
 so it cannot collide with the endpoint package's `northgate-rmm-agent.service`.
 Each identity has one private state directory and no supplementary groups. Code
 and configuration roots remain root-owned. All three units remain disabled and
-must not be started until an exact G2 change supplies approved configuration,
-credentials, TLS identities, database state, microsegmentation, validation, and
-rollback.
+must not be started until an exact authorization supplies approved
+configuration, credentials, TLS identities, database state, microsegmentation,
+validation, and rollback. A pre-G2 V1D authorization may start them only on the
+named private server with synthetic validation identities and every canary and
+endpoint route blocked. An exact G2 record remains mandatory before creating an
+endpoint-usable grant or identity or admitting any endpoint traffic.
 
 Installation and package upgrade refuse to proceed while any same-named service
 is active. This is an intentional no-automatic-update boundary: an authorized

@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "authority": "V1D-SV",
+  "status": "Approved",
+  "approver": "Beowxlf",
+  "approvedAt": "PLACEHOLDER",
+  "expiresAt": "PLACEHOLDER",
+  "bindings": {
+    "Issued at": "PLACEHOLDER",
+    "Expires at": "PLACEHOLDER",
+    "Server binding": "sha256:PLACEHOLDER",
+    "Signed release digest": "sha256:PLACEHOLDER",
+    "Factory plan receipt": "docs/governance/authorizations/factory-receipts/PLACEHOLDER.json",
+    "Factory plan receipt digest": "sha256:PLACEHOLDER",
+    "Factory plan receipt signature": "docs/governance/authorizations/factory-receipts/PLACEHOLDER.cms.pem",
+    "Factory plan receipt signature digest": "sha256:PLACEHOLDER",
+    "Factory approval trust record": "docs/governance/trust/vm-factory/PLACEHOLDER.json",
+    "Factory approval trust record digest": "sha256:PLACEHOLDER",
+    "Factory plan ID": "PLACEHOLDER",
+    "Authenticated state hash": "sha256:PLACEHOLDER",
+    "Factory plan issued at": "PLACEHOLDER",
+    "Factory plan approved at": "PLACEHOLDER",
+    "Factory plan expires at": "PLACEHOLDER",
+    "Factory plan approver": "Beowxlf",
+    "External dependency set binding": "sha256:PLACEHOLDER",
+    "Service identity binding": "sha256:PLACEHOLDER",
+    "Database identity binding": "sha256:PLACEHOLDER",
+    "Synthetic identity profile binding": "sha256:PLACEHOLDER",
+    "Private network policy binding": "sha256:PLACEHOLDER",
+    "Endpoint routes": "blocked",
+    "Rollback binding": "sha256:PLACEHOLDER",
+    "Recovery binding": "sha256:PLACEHOLDER",
+    "Evidence boundary binding": "sha256:PLACEHOLDER"
+  },
+  "prerequisites": {
+    "v1c": {
+      "record": "docs/governance/authorizations/prerequisites/V1C-PASS.json",
+      "digest": "sha256:PLACEHOLDER",
+      "evidenceScope": {
+        "targetBinding": "sha256:PLACEHOLDER",
+        "identityBinding": "sha256:PLACEHOLDER",
+        "flowBinding": "sha256:PLACEHOLDER",
+        "provisionReceiptDigest": "sha256:PLACEHOLDER",
+        "verificationReceiptDigest": "sha256:PLACEHOLDER"
+      },
+      "rollbackScope": {
+        "procedureBinding": "sha256:PLACEHOLDER",
+        "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+      }
+    },
+    "dependencies": [
+      {
+        "id": "V1D-DEP-DNS-TIME",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-DNS-TIME.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      },
+      {
+        "id": "V1D-DEP-SERVER-PKI",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-SERVER-PKI.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      },
+      {
+        "id": "V1D-DEP-NETWORK-SEGMENTATION",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-NETWORK-SEGMENTATION.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER",
+          "changeApprovalBinding": "sha256:PLACEHOLDER",
+          "applyReceiptDigest": "sha256:PLACEHOLDER",
+          "allowTestReceiptDigest": "sha256:PLACEHOLDER",
+          "denyTestReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      },
+      {
+        "id": "V1D-DEP-SYNTHETIC-ISSUER-STATUS",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-SYNTHETIC-ISSUER-STATUS.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      },
+      {
+        "id": "V1D-DEP-OPERATOR-VERIFIER",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-OPERATOR-VERIFIER.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      },
+      {
+        "id": "V1D-DEP-TELEMETRY-AUDIT",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-TELEMETRY-AUDIT.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      },
+      {
+        "id": "V1D-DEP-BACKUP-RECOVERY",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-BACKUP-RECOVERY.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      },
+      {
+        "id": "V1D-DEP-ENCRYPTION-KEY-CUSTODY",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-ENCRYPTION-KEY-CUSTODY.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      }
+    ]
+  }
+}

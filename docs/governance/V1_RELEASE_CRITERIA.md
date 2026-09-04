@@ -41,17 +41,19 @@ product requirements without claiming either unqualified platform as supported.
 
 ## Qualification ladder
 
-Current qualification status is recorded in the
-[V1A and V1B exit audit](../audits/V1A_V1B_EXIT_AUDIT_2026-09-04.md).
+Current source qualification is recorded in the
+[V1A and V1B exit audit](../audits/V1A_V1B_EXIT_AUDIT_2026-09-04.md). Current
+operational facts and dependencies are recorded in the
+[V1D live readiness audit](../audits/V1D_LIVE_READINESS_AUDIT_2026-09-04.md).
 
-| Stage | Current state                                          |
-| ----- | ------------------------------------------------------ |
-| V1A   | Pass on protected main                                 |
-| V1B   | Source qualification pass; no deployment               |
-| V1C   | Open; G6 closed                                        |
-| V1D   | Open; operational dependencies not yet exact or proven |
-| V1E   | Closed; separate G2 authorization required             |
-| V1F   | Open; canary and release acceptance not performed      |
+| Stage | Current state                                      |
+| ----- | -------------------------------------------------- |
+| V1A   | Pass on protected main                             |
+| V1B   | Source qualification pass; no deployment           |
+| V1C   | Open; G6 closed                                    |
+| V1D   | Open; live dependencies reconciled, not yet proven |
+| V1E   | Closed; separate G2 authorization required         |
+| V1F   | Open; canary and release acceptance not performed  |
 
 ### V1A — Release contract and source authority
 
@@ -98,7 +100,14 @@ Current qualification status is recorded in the
 - telemetry outage, capacity, certificate-revocation, and containment tests have
   observable outcomes and rollback; and
 - secrets, keys, retention, incident response, and service objectives have
-  named owners and runbooks.
+  named owners and runbooks; and
+- any pre-G2 control-plane deployment uses the exact bounded V1D
+  server-validation authority, synthetic validation identities, and blocked
+  endpoint routes defined in the authorization and server lifecycle contracts;
+  and
+- the validation authority closes with immutable cleanup evidence in a
+  protected-main change that follows the actual authority opening and precedes
+  any G2 opening; the closed authorization and Factory plan cannot be replayed.
 
 ### V1E — G2 canary
 

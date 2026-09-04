@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "trustPurpose": "NorthGate VM Factory plan approval signer",
+  "status": "Pinned",
+  "approver": "Beowxlf",
+  "approvedAt": "PLACEHOLDER",
+  "certificateSha256": "sha256:PLACEHOLDER"
+}

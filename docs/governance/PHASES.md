@@ -4,7 +4,12 @@ Each phase has a purpose, permitted work, entry evidence, exit evidence, and an
 authorization record. Later-phase operational work is prohibited while an
 earlier gate is closed. Bounded source development may proceed only under the
 separate non-deployment authorization mechanism defined in
-`AUTHORIZATION_GATES.md`.
+`AUTHORIZATION_GATES.md`. The sole pre-G2 operational exception is the bounded
+Phase 2 V1D control-plane validation authority defined there and in
+[ADR 0011](../architecture/adr/0011-pre-g2-control-plane-validation.md). It may
+operate only the named private server with synthetic validation identities and
+blocked endpoint routes after all prerequisites pass; it does not open G2 or
+permit an endpoint installation.
 
 ## Phase 0 — Govern and design
 
@@ -67,6 +72,29 @@ Permitted:
 - bounded read-only collectors;
 - outbound authenticated transport;
 - bounded offline spool.
+
+Pre-G2 V1D validation boundary:
+
+- the machine-readable `V1D-SV` authority remains closed until V1C and every
+  required external dependency implementation pass;
+- the Factory's non-deployment planning path must first issue a fresh plan and
+  authenticated state hash for exact owner approval;
+- a sanitized approved-bindings manifest must then reach protected `main`;
+- a separate later exact record may open `V1D-SV` and permit execution only for
+  the named private control-plane server and synthetic validation identities;
+- that authorization path and its exact bytes remain fixed for the entire open
+  lifecycle;
+- canary and endpoint routes remain blocked, and no endpoint-usable grant,
+  identity, package, or traffic is permitted; and
+- the negative tests, rollback, and recovery evidence in ADR 0011 and the
+  security test plan must pass before the server evidence can satisfy V1D; and
+- `V1D-SV` must first freeze in a non-consumable `closing` protected-main
+  state, then close in a second change with immutable cleanup evidence proving
+  service stop, service/database/operator/synthetic
+  identity revocation, route blocking, temporary-access removal, secret
+  destruction, and rollback before G2 or any later product gate may open; the
+  evidence must postdate the actual protected-main opening, and the consumed
+  authorization and Factory plan cannot be replayed.
 
 Exit evidence:
 

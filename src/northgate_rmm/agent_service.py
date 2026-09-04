@@ -17,7 +17,7 @@ import stat
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import parse_qsl
 
@@ -136,6 +136,9 @@ def load_database_dsn(path: Path) -> str:
         hostname = parameters.get("host", "")
         database_name = parameters.get("dbname", "")
         port_value = parameters.get("port")
+        ssl_mode = parameters.get("sslmode")
+        ssl_root_certificate = parameters.get("sslrootcert")
+        gss_encryption_mode = parameters.get("gssencmode")
         if not isinstance(hostname, str) or not isinstance(database_name, str):
             raise ValueError("database target fields are invalid")
         if "," in hostname:
@@ -165,6 +168,10 @@ def load_database_dsn(path: Path) -> str:
     if (
         not value.startswith("postgresql://")
         or not database_name
+        or ssl_mode != "verify-full"
+        or not isinstance(ssl_root_certificate, str)
+        or not PurePosixPath(ssl_root_certificate).is_absolute()
+        or gss_encryption_mode != "disable"
         or query_fields & {"host", "hostaddr", "service"}
         or "hostaddr" in parameters
         or "service" in parameters

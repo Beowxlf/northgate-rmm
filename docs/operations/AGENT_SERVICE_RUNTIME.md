@@ -42,6 +42,9 @@ connection-attempt bound rather than a per-target multiplier.
 The process also refuses every inherited `PG...` libpq environment variable;
 all connection identity, routing, TLS, and timeout inputs must therefore come
 from the validated credential and the service's explicit connection options.
+Network database credentials must set `sslmode=verify-full`, name an absolute
+Debian `sslrootcert` path, and set `gssencmode=disable`. Opportunistic TLS,
+plaintext fallback, and ambient GSS negotiation are rejected before startup.
 
 Before opening a socket, startup verifies that every migration packaged with the
 service is present in PostgreSQL with the exact expected checksum. Migration is

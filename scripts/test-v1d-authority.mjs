@@ -396,6 +396,7 @@ function expectFailure(
     protectedMainTexts = {},
     nonImmutablePaths = [],
     trustPredatesReceipt = true,
+    trustIntroductionTime = "2026-09-04T12:53:00Z",
   } = {},
 ) {
   const config = clone();
@@ -466,6 +467,8 @@ function expectFailure(
       trustPredatesReceipt &&
       earlierPath === factoryTrustPath &&
       laterPath === factoryReceiptPath,
+    pathIntroductionTime: (path) =>
+      path === factoryTrustPath ? trustIntroductionTime : null,
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
       signature === renderFactorySignature(content, certificateSha256),
     isCommit: (commit) => commit === validFields["Audited commit"],
@@ -705,6 +708,12 @@ expectFailure(
   open,
   "pinned in an earlier protected-main change",
   { trustPredatesReceipt: false },
+);
+expectFailure(
+  "Factory trust merged at plan issuance",
+  open,
+  "introduction must predate authenticated plan issuance",
+  { trustIntroductionTime: validFields["Factory plan issued at"] },
 );
 expectFailure(
   "Factory receipt changed after approval",
@@ -1144,6 +1153,8 @@ assert.deepEqual(
       commit === validFields["Audited commit"],
     isPathIntroducedBefore: (earlierPath, laterPath) =>
       earlierPath === factoryTrustPath && laterPath === factoryReceiptPath,
+    pathIntroductionTime: (path) =>
+      path === factoryTrustPath ? "2026-09-04T12:53:00Z" : null,
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
       signature === renderFactorySignature(content, certificateSha256),
     isCommit: (commit) => commit === validFields["Audited commit"],

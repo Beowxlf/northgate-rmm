@@ -657,6 +657,7 @@ function validateApprovedBindings(
     readAtProtectedMain,
     isPathImmutableOnProtectedMain,
     isPathIntroducedBefore,
+    pathIntroductionTime,
     verifyFactoryReceiptSignature,
     now,
   },
@@ -751,6 +752,7 @@ function validateApprovedBindings(
       readAtProtectedMain,
       isPathImmutableOnProtectedMain,
       isPathIntroducedBefore,
+      pathIntroductionTime,
       verifyFactoryReceiptSignature,
     }),
   );
@@ -787,6 +789,7 @@ function validateFactoryPlanReceipt(fields, auditedCommit, options) {
     readAtProtectedMain,
     isPathImmutableOnProtectedMain,
     isPathIntroducedBefore,
+    pathIntroductionTime,
     verifyFactoryReceiptSignature,
   } = options;
   const receiptPath = fields.get("Factory plan receipt") ?? "";
@@ -841,6 +844,18 @@ function validateFactoryPlanReceipt(fields, auditedCommit, options) {
   )
     errors.push(
       "V1D-SV Factory approval trust must be pinned in an earlier protected-main change.",
+    );
+  const trustIntroductionAt = Date.parse(pathIntroductionTime(trustPath) ?? "");
+  const authenticatedPlanIssuedAt = validDate(
+    fields.get("Factory plan issued at"),
+  );
+  if (
+    !Number.isFinite(trustIntroductionAt) ||
+    authenticatedPlanIssuedAt === null ||
+    trustIntroductionAt >= authenticatedPlanIssuedAt
+  )
+    errors.push(
+      "V1D-SV Factory approval trust introduction must predate authenticated plan issuance.",
     );
 
   const signatureText = isRegularFile(signaturePath)
@@ -1115,6 +1130,7 @@ export function validateV1dAuthority(
     readAtProtectedMain = () => null,
     isPathImmutableOnProtectedMain = () => false,
     isPathIntroducedBefore = () => false,
+    pathIntroductionTime = () => null,
     verifyFactoryReceiptSignature = () => false,
     isCommit = () => false,
     isProtectedMainCommit = () => false,
@@ -1192,6 +1208,7 @@ export function validateV1dAuthority(
             readAtProtectedMain,
             isPathImmutableOnProtectedMain,
             isPathIntroducedBefore,
+            pathIntroductionTime,
             verifyFactoryReceiptSignature,
             isCommit,
             isProtectedMainCommit,

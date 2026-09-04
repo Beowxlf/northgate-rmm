@@ -107,6 +107,26 @@ function isPathIntroducedBefore(earlierPath, laterPath) {
   );
 }
 
+function pathIntroductionTime(relativePath) {
+  const history = spawnSync(
+    "git",
+    ["log", "--format=%H", "--full-history", "origin/main", "--", relativePath],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  const commits = history.stdout.trim().split(/\r?\n/).filter(Boolean);
+  if (commits.length !== 1) return null;
+  const timestamp = spawnSync(
+    "git",
+    ["show", "-s", "--format=%cI", commits[0]],
+    {
+      cwd: root,
+      encoding: "utf8",
+    },
+  );
+  return timestamp.status === 0 ? timestamp.stdout.trim() : null;
+}
+
 function walk(directory) {
   if (!exists(directory)) return [];
   return fs
@@ -201,6 +221,7 @@ for (const authorityError of validateV1dAuthority(gates, {
   readAtProtectedMain,
   isPathImmutableOnProtectedMain,
   isPathIntroducedBefore,
+  pathIntroductionTime,
   verifyFactoryReceiptSignature: verifyCmsDetached,
   isCommit,
   isProtectedMainCommit,

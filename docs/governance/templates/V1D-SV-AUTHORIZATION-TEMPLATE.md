@@ -64,9 +64,10 @@ the certificate digest in the independently owner-pinned trust record built
 from
 [`V1D-FACTORY-APPROVAL-TRUST-TEMPLATE.json`](V1D-FACTORY-APPROVAL-TRUST-TEMPLATE.json).
 The trust record must be introduced by an earlier protected-main change and
-must predate plan issuance. Like the receipt and signature, it has immutable
-single-use protected-main history. Self-declared plan metadata or an
-attacker-selected signer is insufficient.
+both its approval time and protected-main introduction commit time must predate
+authenticated plan issuance. Like the receipt and signature, it has immutable
+single-use protected-main history. Self-declared plan metadata, a backdated
+trust record, or an attacker-selected signer is insufficient.
 Use
 [`V1D-SV-APPROVED-BINDINGS-TEMPLATE.json`](V1D-SV-APPROVED-BINDINGS-TEMPLATE.json)
 for its schema. The manifest and every prerequisite record must be canonical

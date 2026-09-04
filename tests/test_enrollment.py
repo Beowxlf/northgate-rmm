@@ -12,6 +12,7 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID, NameOID
+from psycopg import OperationalError
 
 from northgate_rmm.domain import Endpoint, EndpointIdentity, EndpointLifecycle, Platform
 from northgate_rmm.enrollment import (
@@ -94,6 +95,43 @@ class RecordingEnrollmentStore:
             created_at=now,
             status=EndpointLifecycle.ISSUED,
         )
+
+
+class FailingBeginStore(RecordingEnrollmentStore):
+    def begin_endpoint_enrollment(
+        self,
+        *,
+        token: str,
+        public_key_fingerprint: str,
+        now: datetime,
+        actor_id: str = "enrollment-service",
+    ) -> tuple[Endpoint, EndpointIdentity]:
+        del token, public_key_fingerprint, now, actor_id
+        raise OperationalError("private database detail")
+
+
+class FailingRecordStore(RecordingEnrollmentStore):
+    def record_issued_endpoint_identity(
+        self,
+        identity_id: UUID,
+        *,
+        certificate_serial: str,
+        certificate_issuer: str,
+        certificate_not_before: datetime,
+        certificate_not_after: datetime,
+        now: datetime,
+        actor_id: str = "enrollment-service",
+    ) -> EndpointIdentity:
+        del (
+            identity_id,
+            certificate_serial,
+            certificate_issuer,
+            certificate_not_before,
+            certificate_not_after,
+            now,
+            actor_id,
+        )
+        raise OperationalError("private database detail")
 
 
 @dataclass
@@ -276,7 +314,7 @@ def test_enrollment_leaves_pending_state_when_issuer_binding_is_wrong() -> None:
         issuer_trust_roots=(root,),
     )
 
-    with pytest.raises(ValidationError, match="binding"):
+    with pytest.raises(ServiceUnavailableError, match="invalid endpoint credential"):
         service.enroll(
             token=grant_value(),
             csr_der=csr_for(ec.generate_private_key(ec.SECP256R1())),
@@ -293,6 +331,25 @@ def test_enrollment_requires_a_pinned_issuer_root() -> None:
             RecordingEnrollmentStore(),
             FakeIssuer(root, root_key),
             issuer_trust_roots=(),
+        )
+
+
+@pytest.mark.parametrize("store_type", [FailingBeginStore, FailingRecordStore])
+def test_enrollment_maps_database_outages_to_service_unavailable(
+    store_type: type[RecordingEnrollmentStore],
+) -> None:
+    root, root_key = issue_root()
+    service = EnrollmentService(
+        store_type(),
+        FakeIssuer(root, root_key),
+        issuer_trust_roots=(root,),
+    )
+
+    with pytest.raises(ServiceUnavailableError, match="store is unavailable"):
+        service.enroll(
+            token=grant_value(),
+            csr_der=csr_for(ec.generate_private_key(ec.SECP256R1())),
+            now=NOW,
         )
 
 
@@ -525,28 +582,19 @@ def test_enrollment_rejects_invalid_issued_certificate_variants() -> None:
         now=NOW,
     )
     cases = (
-        (
-            IssuedEndpointCredential(leaf_certificate_der=b"x" * 16_385),
-            "size",
+        IssuedEndpointCredential(leaf_certificate_der=b"x" * 16_385),
+        IssuedEndpointCredential(
+            leaf_certificate_der=b"x",
+            intermediate_certificates_der=(b"x",) * 5,
         ),
-        (
-            IssuedEndpointCredential(
-                leaf_certificate_der=b"x",
-                intermediate_certificates_der=(b"x",) * 5,
-            ),
-            "chain is too long",
+        IssuedEndpointCredential(leaf_certificate_der=b"not-der"),
+        IssuedEndpointCredential(
+            leaf_certificate_der=untrusted.leaf_certificate_der,
+            intermediate_certificates_der=(b"",),
         ),
-        (IssuedEndpointCredential(leaf_certificate_der=b"not-der"), "is invalid"),
-        (
-            IssuedEndpointCredential(
-                leaf_certificate_der=untrusted.leaf_certificate_der,
-                intermediate_certificates_der=(b"",),
-            ),
-            "size",
-        ),
-        (untrusted, "chain is invalid"),
+        untrusted,
     )
-    for credential, match in cases:
+    for credential in cases:
         store = RecordingEnrollmentStore(
             endpoint_id=template_store.endpoint_id,
             identity_id=template_store.identity_id,
@@ -556,7 +604,9 @@ def test_enrollment_rejects_invalid_issued_certificate_variants() -> None:
             StaticIssuer(credential),
             issuer_trust_roots=(trusted_root,),
         )
-        with pytest.raises(ValidationError, match=match):
+        with pytest.raises(
+            ServiceUnavailableError, match="invalid endpoint credential"
+        ):
             service.enroll(token=grant_value(), csr_der=csr_der, now=NOW)
         assert store.activated is None
 

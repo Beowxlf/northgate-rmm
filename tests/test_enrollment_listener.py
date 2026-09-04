@@ -257,6 +257,39 @@ def test_timed_out_enrollment_retains_admission_until_work_finishes(
     asyncio.run(scenario())
 
 
+def test_incomplete_tls_handshakes_are_bounded_per_source(tmp_path: Path) -> None:
+    _root_path, certificate_path, key_path = _write_server_identity(tmp_path)
+    config = configuration(
+        tmp_path,
+        authority="enroll.test",
+        server_certificate=certificate_path,
+        server_private_key=key_path,
+    )
+
+    async def scenario() -> None:
+        listener = EnrollmentTLSListener(config, RecordingOperation())
+        await listener.start()
+        writers: list[asyncio.StreamWriter] = []
+        try:
+            host, port = listener.addresses[0]
+            _first_reader, first_writer = await asyncio.open_connection(host, port)
+            _second_reader, second_writer = await asyncio.open_connection(host, port)
+            third_reader, third_writer = await asyncio.open_connection(host, port)
+            writers.extend((first_writer, second_writer, third_writer))
+            assert await asyncio.wait_for(third_reader.read(1), timeout=0.5) == b""
+            assert listener._active_handshakes == {"127.0.0.1": 2}
+        finally:
+            for writer in writers:
+                writer.close()
+            await asyncio.gather(
+                *(writer.wait_closed() for writer in writers),
+                return_exceptions=True,
+            )
+            await listener.close()
+
+    asyncio.run(scenario())
+
+
 async def _parse_request(encoded: bytes) -> EnrollmentRequest:
     reader = asyncio.StreamReader(limit=2_052)
     reader.feed_data(encoded)

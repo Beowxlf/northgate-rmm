@@ -5,15 +5,17 @@ from __future__ import annotations
 import base64
 import binascii
 import http.client
+import io
 import ipaddress
 import json
 import re
 import socket
 import ssl
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, BinaryIO, cast
 
 from northgate_rmm.enrollment import (
     EndpointIssuanceRequest,
@@ -138,12 +140,15 @@ class MTLSIssuerClient:
             if response.status in {408, 425, 429} or 500 <= response.status <= 599:
                 raise ServiceUnavailableError("issuer is unavailable")
             if response.status != 201:
-                raise ValidationError("issuer response status is invalid")
+                raise ServiceUnavailableError("issuer response is invalid")
             if response.getheader("Content-Type") != "application/json":
-                raise ValidationError("issuer response type is invalid")
+                raise ServiceUnavailableError("issuer response is invalid")
             if response.getheader("Content-Encoding") is not None:
-                raise ValidationError("issuer response encoding is not allowed")
-            return _decode_issuer_response(encoded)
+                raise ServiceUnavailableError("issuer response is invalid")
+            try:
+                return _decode_issuer_response(encoded)
+            except ValidationError as error:
+                raise ServiceUnavailableError("issuer response is invalid") from error
         except (OSError, http.client.HTTPException, ssl.SSLError) as error:
             raise ServiceUnavailableError("issuer request failed") from error
         finally:
@@ -165,20 +170,77 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
         )
         self._connect_address = configuration.connect_address
         self._ssl_context = context
+        self._deadline = time.monotonic() + float(configuration.timeout_seconds)
 
     def connect(self) -> None:
         raw_socket = socket.create_connection(
             (self._connect_address, self.port),
-            self.timeout,
+            _remaining(self._deadline),
         )
         try:
-            self.sock = self._ssl_context.wrap_socket(
+            raw_socket.settimeout(_remaining(self._deadline))
+            secured_socket = self._ssl_context.wrap_socket(
                 raw_socket,
                 server_hostname=self.host,
+            )
+            self.sock = cast(
+                socket.socket,
+                _DeadlineSocket(secured_socket, deadline=self._deadline),
             )
         except BaseException:
             raw_socket.close()
             raise
+
+
+class _DeadlineSocket:
+    """Re-arm each socket operation with the remaining whole-request budget."""
+
+    def __init__(self, wrapped: ssl.SSLSocket, *, deadline: float) -> None:
+        self._wrapped = wrapped
+        self._deadline = deadline
+
+    def sendall(self, data: bytes, flags: int = 0) -> None:
+        self._arm()
+        self._wrapped.sendall(data, flags)
+
+    def recv_into(self, buffer: Any, nbytes: int = 0, flags: int = 0) -> int:
+        self._arm()
+        return self._wrapped.recv_into(buffer, nbytes, flags)
+
+    def makefile(
+        self,
+        mode: str,
+        buffering: int | None = None,
+    ) -> BinaryIO:
+        if mode != "rb":
+            raise ValueError("issuer socket supports response reads only")
+        size = io.DEFAULT_BUFFER_SIZE if buffering in (None, -1) else buffering
+        return io.BufferedReader(_DeadlineReader(self), buffer_size=size)
+
+    def close(self) -> None:
+        self._wrapped.close()
+
+    def _arm(self) -> None:
+        self._wrapped.settimeout(_remaining(self._deadline))
+
+
+class _DeadlineReader(io.RawIOBase):
+    def __init__(self, deadline_socket: _DeadlineSocket) -> None:
+        super().__init__()
+        self._deadline_socket = deadline_socket
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        return self._deadline_socket.recv_into(buffer)
+
+
+def _remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("issuer request deadline expired")
+    return remaining
 
 
 def _build_client_context(configuration: IssuerClientConfiguration) -> ssl.SSLContext:

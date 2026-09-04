@@ -30,11 +30,17 @@ database migration and checksum. Any failure leaves the enrollment socket
 closed.
 
 The inbound listener is TLS 1.3 server-authenticated because an endpoint has no
-client identity yet. It accepts only one exact HTTP/1.1 enrollment route, bounds
-headers and body, rejects ambiguous framing, permits four concurrent operations
-globally and one per source, and applies source and global rate limits. A timed
-out issuer or database worker retains its admission slot until it actually
-finishes, preventing abandoned work from bypassing the concurrency bound.
+client identity yet. Raw TCP connections enter a separate pre-TLS admission
+boundary limited to 16 handshakes globally and two per source before the process
+performs a bounded handshake. It then accepts only one exact HTTP/1.1 enrollment
+route, bounds headers and body, rejects ambiguous framing, permits four
+concurrent operations globally and one per source, and applies source and global
+rate limits. A timed-out issuer or database worker retains its admission slot
+until it actually finishes, preventing abandoned work from bypassing the
+concurrency bound. Issuer transport re-arms every blocking operation with the
+remaining monotonic whole-request budget, so a trickled response cannot reset
+the 30-second maximum. Expected issuer, certificate-validation, and PostgreSQL
+dependency faults return the same generic service-unavailable response.
 
 `SIGINT` or `SIGTERM` stops admission, rejects new database work, cancels known
 database connections, and closes connection handlers. Issuer calls have an

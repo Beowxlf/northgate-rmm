@@ -17,6 +17,7 @@ from northgate_rmm.errors import (
 from northgate_rmm.issuer_client import (
     IssuerClientConfiguration,
     MTLSIssuerClient,
+    _DeadlineSocket,
     _decode_issuer_response,
 )
 
@@ -223,6 +224,81 @@ def test_issuer_client_maps_service_failure_generically(
 
     with pytest.raises(ServiceUnavailableError, match="request failed"):
         client.issue_endpoint_certificate(request, now=NOW)
+
+
+def test_issuer_client_maps_invalid_upstream_response_to_service_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import northgate_rmm.issuer_client as issuer_module
+
+    class InvalidResponse:
+        status = 200
+
+        def getheader(self, name: str) -> str | None:
+            return "0" if name == "Content-Length" else None
+
+        def read(self, _amount: int) -> bytes:
+            return b""
+
+    class FakeConnection:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def request(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def getresponse(self) -> InvalidResponse:
+            return InvalidResponse()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(issuer_module, "_build_client_context", lambda _value: object())
+    monkeypatch.setattr(issuer_module, "_PinnedHTTPSConnection", FakeConnection)
+    request = EndpointIssuanceRequest(
+        identity_id=UUID("11111111-1111-4111-8111-111111111111"),
+        endpoint_id=UUID("22222222-2222-4222-8222-222222222222"),
+        public_key_fingerprint="sha256:" + "a" * 64,
+        csr_der=b"csr",
+    )
+
+    with pytest.raises(ServiceUnavailableError, match="response is invalid"):
+        MTLSIssuerClient(configuration(tmp_path)).issue_endpoint_certificate(
+            request, now=NOW
+        )
+
+
+def test_issuer_socket_enforces_one_monotonic_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSocket:
+        def __init__(self) -> None:
+            self.timeouts: list[float] = []
+            self.sent: list[bytes] = []
+
+        def settimeout(self, value: float) -> None:
+            self.timeouts.append(value)
+
+        def sendall(self, value: bytes, _flags: int = 0) -> None:
+            self.sent.append(value)
+
+        def close(self) -> None:
+            pass
+
+    times = iter([1.0, 9.0, 10.1])
+    monkeypatch.setattr(
+        "northgate_rmm.issuer_client.time.monotonic", lambda: next(times)
+    )
+    wrapped = FakeSocket()
+    deadline = _DeadlineSocket(wrapped, deadline=10.0)  # type: ignore[arg-type]
+
+    deadline.sendall(b"first")
+    deadline.sendall(b"second")
+    with pytest.raises(TimeoutError, match="deadline"):
+        deadline.sendall(b"late")
+
+    assert wrapped.sent == [b"first", b"second"]
+    assert wrapped.timeouts == [9.0, 1.0]
 
 
 @pytest.mark.parametrize(

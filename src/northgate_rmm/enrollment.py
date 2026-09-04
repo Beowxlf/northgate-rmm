@@ -22,6 +22,7 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
+from psycopg import Error as PsycopgError
 
 from northgate_rmm.domain import Endpoint, EndpointIdentity, require_aware
 from northgate_rmm.errors import (
@@ -196,11 +197,14 @@ class EnrollmentService:
         require_aware(now, "now")
         server_time = now.astimezone(UTC)
         canonical_csr, fingerprint = _validate_csr(csr_der)
-        endpoint, identity = self._store.begin_endpoint_enrollment(
-            token=token,
-            public_key_fingerprint=fingerprint,
-            now=server_time,
-        )
+        try:
+            endpoint, identity = self._store.begin_endpoint_enrollment(
+                token=token,
+                public_key_fingerprint=fingerprint,
+                now=server_time,
+            )
+        except (PsycopgError, TimeoutError) as error:
+            raise ServiceUnavailableError("enrollment store is unavailable") from error
         issued = self._issuer.issue_endpoint_certificate(
             EndpointIssuanceRequest(
                 identity_id=identity.identity_id,
@@ -210,20 +214,28 @@ class EnrollmentService:
             ),
             now=server_time,
         )
-        leaf, intermediates = self._validate_issued_credential(
-            issued,
-            endpoint_id=endpoint.endpoint_id,
-            public_key_fingerprint=fingerprint,
-            now=server_time,
-        )
-        self._store.record_issued_endpoint_identity(
-            identity.identity_id,
-            certificate_serial=format(leaf.serial_number, "x"),
-            certificate_issuer=leaf.issuer.rfc4514_string(),
-            certificate_not_before=leaf.not_valid_before_utc,
-            certificate_not_after=leaf.not_valid_after_utc,
-            now=server_time,
-        )
+        try:
+            leaf, intermediates = self._validate_issued_credential(
+                issued,
+                endpoint_id=endpoint.endpoint_id,
+                public_key_fingerprint=fingerprint,
+                now=server_time,
+            )
+        except ValidationError as error:
+            raise ServiceUnavailableError(
+                "issuer returned an invalid endpoint credential"
+            ) from error
+        try:
+            self._store.record_issued_endpoint_identity(
+                identity.identity_id,
+                certificate_serial=format(leaf.serial_number, "x"),
+                certificate_issuer=leaf.issuer.rfc4514_string(),
+                certificate_not_before=leaf.not_valid_before_utc,
+                certificate_not_after=leaf.not_valid_after_utc,
+                now=server_time,
+            )
+        except (PsycopgError, TimeoutError) as error:
+            raise ServiceUnavailableError("enrollment store is unavailable") from error
         return EnrollmentResult(
             endpoint_id=endpoint.endpoint_id,
             identity_id=identity.identity_id,

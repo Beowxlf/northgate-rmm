@@ -26,6 +26,8 @@ MAX_ENROLLMENT_HEADER_BYTES = 2_048
 MAX_ENROLLMENT_HEADERS = 24
 MAX_CONCURRENT_ENROLLMENTS = 4
 MAX_ACTIVE_PER_SOURCE = 1
+MAX_CONCURRENT_TLS_HANDSHAKES = 16
+MAX_TLS_HANDSHAKES_PER_SOURCE = 2
 RATE_LIMIT_WINDOW_SECONDS = 60.0
 MAX_REQUESTS_PER_SOURCE_WINDOW = 8
 MAX_GLOBAL_REQUESTS_PER_WINDOW = 64
@@ -93,7 +95,10 @@ class EnrollmentTLSListener:
         self._configuration = configuration
         self._application = EnrollmentApplication(operation)
         self._server: asyncio.Server | None = None
+        self._tls_context: ssl.SSLContext | None = None
         self._tasks: set[asyncio.Task[None]] = set()
+        self._handshake_semaphore = asyncio.Semaphore(MAX_CONCURRENT_TLS_HANDSHAKES)
+        self._active_handshakes: dict[str, int] = {}
         self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_ENROLLMENTS)
         self._active_sources: dict[str, int] = {}
         self._rate_limiter = _SourceRateLimiter()
@@ -110,21 +115,26 @@ class EnrollmentTLSListener:
     async def start(self) -> None:
         if self._server is not None:
             raise RuntimeError("enrollment listener is already started")
-        self._server = await asyncio.start_server(
-            self._accept,
-            self._configuration.bind_address,
-            self._configuration.port,
-            ssl=_build_server_context(self._configuration),
-            ssl_handshake_timeout=self._configuration.request_timeout_seconds,
-            limit=MAX_ENROLLMENT_HEADER_BYTES + 4,
-            backlog=32,
-            reuse_address=True,
-            reuse_port=False,
-            start_serving=True,
-        )
+        tls_context = _build_server_context(self._configuration)
+        self._tls_context = tls_context
+        try:
+            self._server = await asyncio.start_server(
+                self._accept,
+                self._configuration.bind_address,
+                self._configuration.port,
+                limit=MAX_ENROLLMENT_HEADER_BYTES + 4,
+                backlog=32,
+                reuse_address=True,
+                reuse_port=False,
+                start_serving=True,
+            )
+        except BaseException:
+            self._tls_context = None
+            raise
 
     async def close(self) -> None:
         server, self._server = self._server, None
+        self._tls_context = None
         if server is not None:
             server.close()
             await server.wait_closed()
@@ -137,9 +147,49 @@ class EnrollmentTLSListener:
     def _accept(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        task = asyncio.create_task(self._handle_connection(reader, writer))
+        task = asyncio.create_task(self._handle_transport(reader, writer))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+
+    async def _handle_transport(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        source: str | None = None
+        admitted = False
+        try:
+            peer = writer.get_extra_info("peername")
+            if not isinstance(peer, tuple) or not peer or not isinstance(peer[0], str):
+                return
+            source = str(ipaddress.ip_address(peer[0]))
+            active = self._active_handshakes.get(source, 0)
+            if (
+                self._handshake_semaphore.locked()
+                or active >= MAX_TLS_HANDSHAKES_PER_SOURCE
+            ):
+                return
+            await self._handshake_semaphore.acquire()
+            self._active_handshakes[source] = active + 1
+            admitted = True
+            tls_context = self._tls_context
+            if tls_context is None:
+                return
+            await writer.start_tls(
+                tls_context,
+                ssl_handshake_timeout=self._configuration.request_timeout_seconds,
+            )
+            self._release_handshake(source)
+            admitted = False
+            await self._handle_connection(reader, writer)
+        except (ConnectionError, OSError, TimeoutError, ValueError, ssl.SSLError):
+            return
+        finally:
+            if admitted:
+                self._release_handshake(source)
+            writer.close()
+            with suppress(ConnectionError, OSError, ssl.SSLError):
+                await writer.wait_closed()
 
     async def _handle_connection(
         self,
@@ -210,9 +260,18 @@ class EnrollmentTLSListener:
         finally:
             if admitted and source is not None:
                 self._release(source)
-            writer.close()
-            with suppress(ConnectionError, OSError, ssl.SSLError):
-                await writer.wait_closed()
+
+    def _release_handshake(self, source: str | None) -> None:
+        if source is None:
+            return
+        active = self._active_handshakes.get(source)
+        if active is None or active < 1:
+            raise AssertionError("TLS handshake admission accounting is inconsistent")
+        if active == 1:
+            del self._active_handshakes[source]
+        else:
+            self._active_handshakes[source] = active - 1
+        self._handshake_semaphore.release()
 
     def _release(self, source: str | None) -> None:
         if source is None:

@@ -51,8 +51,12 @@ The first executable lesson is
 The Phase 1 trustworthy vertical-slice simulation is complete. Separate,
 bounded authorizations permit **Phase 2 Linux-agent and control-plane source
 development**.
-G2 remains closed: endpoint or VM installation, live identity, live collection,
-networking, and infrastructure changes remain prohibited.
+G2 remains closed: Linux endpoint installation, endpoint-usable identity, live
+endpoint collection, and canary networking remain prohibited. A separately
+authorized, post-V1C V1D server-validation change may deploy only the named
+private control plane with synthetic validation identities and blocked endpoint
+routes; it does not open G2 or authorize a canary. All other VM, networking, and
+infrastructure changes remain prohibited without their own exact authorization.
 
 The control-plane source includes a strict message decoder, transactional
 PostgreSQL adapter and migrations, digest-only single-use enrollment grants,

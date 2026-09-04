@@ -6,5 +6,8 @@ Architecture: amd64
 Maintainer: NorthGate RMM maintainers
 Depends: adduser, python3 (>= 3.11), python3 (<< 3.12), systemd
 Description: private read-only NorthGate RMM control-plane services
- This source-built package is for network-isolated Debian 12 qualification only.
- Installation on a NorthGate VM requires separate exact-plan G2 authorization.
+ This source-built package carries no deployment authorization.
+ Installation on NorthGate requires either the exact bounded V1D
+ server-validation authorization and approved post-issued Factory plan, or a
+ later exact deployment authorization. V1D permits only synthetic validation
+ identities with endpoint routes blocked; G2 is required for any Linux endpoint.

@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-import os
 import re
 import ssl
-import stat
 from collections import OrderedDict, deque
-from collections.abc import Iterator
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
@@ -24,6 +21,7 @@ from northgate_rmm.enrollment import (
     EnrollmentResponse,
 )
 from northgate_rmm.errors import ValidationError
+from northgate_rmm.secure_files import private_key_reference
 
 MAX_ENROLLMENT_HEADER_BYTES = 2_048
 MAX_ENROLLMENT_HEADERS = 24
@@ -406,59 +404,15 @@ def _build_server_context(
     context.verify_mode = ssl.CERT_NONE
     context.options |= ssl.OP_NO_TICKET
     context.num_tickets = 0
-    with _private_key_reference(configuration.server_private_key) as key_path:
+    with private_key_reference(
+        configuration.server_private_key,
+        label="enrollment server private key",
+    ) as key_path:
         context.load_cert_chain(
             certfile=str(configuration.server_certificate),
             keyfile=str(key_path),
         )
     return context
-
-
-@contextmanager
-def _private_key_reference(path: Path) -> Iterator[Path]:
-    """Hold the validated key inode open while OpenSSL loads it on Debian."""
-
-    if path.is_symlink():
-        raise ValidationError(
-            "enrollment server private key could not be opened safely"
-        )
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_CLOEXEC", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_NONBLOCK", 0)
-    )
-    descriptor: int | None = None
-    try:
-        descriptor = os.open(path, flags)
-        metadata = os.fstat(descriptor)
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 65_536:
-            raise ValidationError(
-                "enrollment server private key is not a bounded regular file"
-            )
-        if os.name == "posix":
-            get_effective_user = getattr(os, "geteuid", None)
-            effective_user = get_effective_user() if get_effective_user else None
-            if (
-                type(effective_user) is not int
-                or metadata.st_uid not in {0, effective_user}
-                or metadata.st_mode & 0o077
-            ):
-                raise ValidationError(
-                    "enrollment server private key permissions are too broad"
-                )
-            yield Path(f"/proc/self/fd/{descriptor}")
-        else:
-            yield path
-    except ValidationError:
-        raise
-    except OSError as error:
-        raise ValidationError(
-            "enrollment server private key could not be opened safely"
-        ) from error
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
 
 
 async def _write_error(

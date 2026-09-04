@@ -22,6 +22,7 @@ from northgate_rmm.enrollment import (
     IssuedEndpointCredential,
 )
 from northgate_rmm.errors import ServiceUnavailableError, ValidationError
+from northgate_rmm.secure_files import private_key_reference
 
 ISSUER_PATH = "/v1/endpoint-certificates"
 MAX_ISSUER_RESPONSE_BYTES = 65_536
@@ -116,7 +117,10 @@ class MTLSIssuerClient:
                     "Content-Type": "application/json",
                     "Content-Length": str(len(body)),
                     "Accept": "application/json",
-                    "Host": self._configuration.authority,
+                    "Host": _http_authority(
+                        self._configuration.authority,
+                        self._configuration.port,
+                    ),
                     "Connection": "close",
                 },
             )
@@ -127,10 +131,10 @@ class MTLSIssuerClient:
                 or not content_length.isdigit()
                 or int(content_length) > MAX_ISSUER_RESPONSE_BYTES
             ):
-                raise ValidationError("issuer response length is invalid")
+                raise ServiceUnavailableError("issuer response is invalid")
             encoded = response.read(MAX_ISSUER_RESPONSE_BYTES + 1)
             if len(encoded) > MAX_ISSUER_RESPONSE_BYTES or response.read(1):
-                raise ValidationError("issuer response is too large")
+                raise ServiceUnavailableError("issuer response is invalid")
             if response.status in {401, 403}:
                 raise ServiceUnavailableError("issuer workload identity was rejected")
             if response.status in {408, 425, 429} or 500 <= response.status <= 599:
@@ -239,6 +243,10 @@ def _remaining(deadline: float) -> float:
     return remaining
 
 
+def _http_authority(authority: str, port: int) -> str:
+    return authority if port == 443 else f"{authority}:{port}"
+
+
 def _build_client_context(configuration: IssuerClientConfiguration) -> ssl.SSLContext:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.minimum_version = ssl.TLSVersion.TLSv1_3
@@ -247,10 +255,14 @@ def _build_client_context(configuration: IssuerClientConfiguration) -> ssl.SSLCo
     context.check_hostname = True
     context.options |= ssl.OP_NO_TICKET
     context.load_verify_locations(cafile=str(configuration.ca_certificate))
-    context.load_cert_chain(
-        certfile=str(configuration.client_certificate),
-        keyfile=str(configuration.client_private_key),
-    )
+    with private_key_reference(
+        configuration.client_private_key,
+        label="issuer client private key",
+    ) as key_path:
+        context.load_cert_chain(
+            certfile=str(configuration.client_certificate),
+            keyfile=str(key_path),
+        )
     return context
 
 

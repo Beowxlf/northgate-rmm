@@ -134,6 +134,30 @@ class FailingRecordStore(RecordingEnrollmentStore):
         raise OperationalError("private database detail")
 
 
+class RejectingRecordStore(FailingRecordStore):
+    def record_issued_endpoint_identity(
+        self,
+        identity_id: UUID,
+        *,
+        certificate_serial: str,
+        certificate_issuer: str,
+        certificate_not_before: datetime,
+        certificate_not_after: datetime,
+        now: datetime,
+        actor_id: str = "enrollment-service",
+    ) -> EndpointIdentity:
+        del (
+            identity_id,
+            certificate_serial,
+            certificate_issuer,
+            certificate_not_before,
+            certificate_not_after,
+            now,
+            actor_id,
+        )
+        raise ValidationError("issuer certificate lifetime is too long")
+
+
 @dataclass
 class FakeIssuer:
     root_certificate: x509.Certificate
@@ -334,7 +358,10 @@ def test_enrollment_requires_a_pinned_issuer_root() -> None:
         )
 
 
-@pytest.mark.parametrize("store_type", [FailingBeginStore, FailingRecordStore])
+@pytest.mark.parametrize(
+    "store_type",
+    [FailingBeginStore, FailingRecordStore, RejectingRecordStore],
+)
 def test_enrollment_maps_database_outages_to_service_unavailable(
     store_type: type[RecordingEnrollmentStore],
 ) -> None:

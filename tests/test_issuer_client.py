@@ -7,15 +7,18 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from cryptography.hazmat.primitives import serialization
 
 from northgate_rmm.enrollment import EndpointIssuanceRequest
 from northgate_rmm.errors import ServiceUnavailableError, ValidationError
 from northgate_rmm.issuer_client import (
     IssuerClientConfiguration,
     MTLSIssuerClient,
+    _build_client_context,
     _DeadlineSocket,
     _decode_issuer_response,
 )
+from tests.support.pki import issue_test_endpoint_credential
 
 NOW = datetime(2026, 9, 4, 10, 0, tzinfo=UTC)
 
@@ -142,6 +145,9 @@ def test_issuer_client_sends_exact_request_and_bounds_public_response(
     assert observed["path"] == "/v1/endpoint-certificates"
     assert observed["context"] is synthetic_context
     assert observed["closed"] is True
+    headers = observed["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Host"] == "issuer.northgate.internal:9443"
     sent = json.loads(observed["body"])  # type: ignore[arg-type]
     assert sent == {
         "identity_id": str(request.identity_id),
@@ -222,16 +228,23 @@ def test_issuer_client_maps_service_failure_generically(
         client.issue_endpoint_certificate(request, now=NOW)
 
 
+@pytest.mark.parametrize(
+    ("response_status", "content_length"),
+    [(200, "0"), (201, "invalid")],
+)
 def test_issuer_client_maps_invalid_upstream_response_to_service_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    response_status: int,
+    content_length: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import northgate_rmm.issuer_client as issuer_module
 
     class InvalidResponse:
-        status = 200
+        status = response_status
 
         def getheader(self, name: str) -> str | None:
-            return "0" if name == "Content-Length" else None
+            return content_length if name == "Content-Length" else None
 
         def read(self, _amount: int) -> bytes:
             return b""
@@ -262,6 +275,32 @@ def test_issuer_client_maps_invalid_upstream_response_to_service_failure(
         MTLSIssuerClient(configuration(tmp_path)).issue_endpoint_certificate(
             request, now=NOW
         )
+
+
+def test_issuer_client_rejects_symlinked_private_key(tmp_path: Path) -> None:
+    material = issue_test_endpoint_credential(
+        UUID("11111111-1111-4111-8111-111111111111"),
+        now=NOW,
+    )
+    ca_path = tmp_path / "issuer-ca.crt"
+    ca_path.write_bytes(
+        material.root_certificate.public_bytes(serialization.Encoding.PEM)
+    )
+    key_target = tmp_path / "target.key"
+    key_target.write_text("not loaded", encoding="ascii")
+    key_link = tmp_path / "linked.key"
+    try:
+        key_link.symlink_to(key_target)
+    except OSError:
+        pytest.skip("test account cannot create symlinks")
+    config = configuration(
+        tmp_path,
+        ca_certificate=ca_path,
+        client_private_key=key_link,
+    )
+
+    with pytest.raises(ValidationError, match="opened safely"):
+        _build_client_context(config)
 
 
 def test_issuer_socket_enforces_one_monotonic_deadline(

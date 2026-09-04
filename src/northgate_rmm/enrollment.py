@@ -234,7 +234,7 @@ class EnrollmentService:
                 certificate_not_after=leaf.not_valid_after_utc,
                 now=server_time,
             )
-        except (PsycopgError, TimeoutError) as error:
+        except (PsycopgError, TimeoutError, ValidationError) as error:
             raise ServiceUnavailableError("enrollment store is unavailable") from error
         return EnrollmentResult(
             endpoint_id=endpoint.endpoint_id,

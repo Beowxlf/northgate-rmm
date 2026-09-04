@@ -874,6 +874,20 @@ def test_rotation_lineage_is_same_endpoint_chronological_and_immutable(
     )
 
     with (
+        pytest.raises(psycopg.errors.ForeignKeyViolation),
+        psycopg.connect(postgres_dsn) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            """
+            UPDATE endpoints
+            SET identity_id = %s
+            WHERE endpoint_id = %s
+            """,
+            (second_agent.identity_id, first_agent.endpoint_id),
+        )
+
+    with (
         pytest.raises(psycopg.errors.CheckViolation),
         psycopg.connect(postgres_dsn) as connection,
         connection.cursor() as cursor,

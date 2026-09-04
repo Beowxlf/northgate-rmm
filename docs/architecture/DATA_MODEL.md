@@ -101,8 +101,10 @@ certificate-lifecycle, and rotation lineage constraints added by
 issued-before-active transition in
 `src/northgate_rmm/migrations/0005_issued_identity_status.sql` and immutable,
 same-endpoint, older-predecessor rotation lineage in
-`src/northgate_rmm/migrations/0006_rotation_lineage.sql`. Jobs, leases, results,
-and approvals remain future schema and are not executable capabilities.
+`src/northgate_rmm/migrations/0006_rotation_lineage.sql`, then current-identity
+endpoint binding in
+`src/northgate_rmm/migrations/0007_current_identity_binding.sql`. Jobs, leases,
+results, and approvals remain future schema and are not executable capabilities.
 
 ## Retention
 

@@ -341,6 +341,118 @@ def test_enrollment_grant_expiry_uses_absolute_utc_time(postgres_dsn: str) -> No
     assert plane.get_enrollment_grant(grant.grant_id) == grant
 
 
+def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
+    postgres_dsn: str,
+) -> None:
+    plane = PostgresControlPlane(postgres_dsn)
+    _grant, token = plane.create_enrollment_grant(
+        display_name="pending-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+        actor_id="release-operator",
+    )
+    endpoint, identity = plane.begin_endpoint_enrollment(
+        token=token,
+        public_key_fingerprint="sha256:" + "8" * 64,
+        now=NOW + timedelta(seconds=1),
+    )
+    with pytest.raises(AuthorizationError, match="unauthorized"):
+        plane.authenticate_endpoint_certificate(
+            endpoint_id=endpoint.endpoint_id,
+            public_key_fingerprint=identity.public_key_fingerprint,
+            authenticated_at=NOW + timedelta(seconds=2),
+            correlation_id=uuid4(),
+        )
+
+    not_before = NOW - timedelta(minutes=1)
+    not_after = NOW + timedelta(hours=23)
+    issued = plane.record_issued_endpoint_identity(
+        identity.identity_id,
+        certificate_serial="abc123",
+        certificate_issuer="CN=NorthGate Endpoint Issuer",
+        certificate_not_before=not_before,
+        certificate_not_after=not_after,
+        now=NOW + timedelta(seconds=3),
+    )
+    assert issued == identity
+    authenticated = plane.authenticate_endpoint_certificate(
+        endpoint_id=endpoint.endpoint_id,
+        public_key_fingerprint=identity.public_key_fingerprint,
+        authenticated_at=NOW + timedelta(seconds=4),
+        correlation_id=uuid4(),
+    )
+    assert authenticated == identity
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT identity_status, activated_at FROM endpoint_identities "
+            "WHERE identity_id = %s",
+            (identity.identity_id,),
+        )
+        assert cursor.fetchone() == ("issued", None)
+    retry = plane.record_issued_endpoint_identity(
+        identity.identity_id,
+        certificate_serial="abc123",
+        certificate_issuer="CN=NorthGate Endpoint Issuer",
+        certificate_not_before=not_before,
+        certificate_not_after=not_after,
+        now=NOW + timedelta(seconds=5),
+    )
+    assert retry == identity
+    pending_agent = SyntheticAgent(
+        endpoint_id=endpoint.endpoint_id,
+        identity_id=identity.identity_id,
+        platform=Platform.LINUX,
+        architecture="amd64",
+    )
+    with pytest.raises(AuthorizationError, match="activation heartbeat"):
+        plane.ingest_inventory(
+            authenticated_identity_id=identity.identity_id,
+            message=pending_agent.inventory(
+                now=NOW + timedelta(seconds=6),
+                fields={"os.id": "debian"},
+            ),
+            received_at=NOW + timedelta(seconds=7),
+        )
+    plane.ingest_heartbeat(
+        authenticated_identity_id=identity.identity_id,
+        message=pending_agent.heartbeat(now=NOW + timedelta(seconds=8)),
+        received_at=NOW + timedelta(seconds=9),
+    )
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT identity_status, certificate_serial, certificate_issuer,
+                   certificate_not_before, certificate_not_after, activated_at
+            FROM endpoint_identities
+            WHERE identity_id = %s
+            """,
+            (identity.identity_id,),
+        )
+        row = cursor.fetchone()
+    assert row == (
+        "active",
+        "abc123",
+        "CN=NorthGate Endpoint Issuer",
+        not_before,
+        not_after,
+        NOW + timedelta(seconds=9),
+    )
+    activation_decisions = [
+        event.decision
+        for event in plane.audit_events
+        if event.action == "identity.issue"
+    ]
+    assert activation_decisions == ["accepted", "no_change"]
+    endpoint_activations = [
+        event
+        for event in plane.audit_events
+        if event.action == "identity.activate" and event.decision == "accepted"
+    ]
+    assert len(endpoint_activations) == 1
+    assert endpoint_activations[0].reason == "first authenticated heartbeat accepted"
+
+
 def test_enrollment_grant_rejections_are_generic_and_audited(
     postgres_dsn: str,
 ) -> None:

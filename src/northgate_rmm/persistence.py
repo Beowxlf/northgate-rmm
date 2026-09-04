@@ -53,6 +53,7 @@ MIGRATION_LOCK_ID = 7_104_771_001
 GRANT_NAMESPACE = "ngr1_"
 ENROLLMENT_TOKEN_PATTERN = re.compile(r"ngr1_[A-Za-z0-9_-]{43}\Z")
 ENROLLMENT_REJECTION = "enrollment grant is invalid or unavailable"
+MAX_ENDPOINT_CERTIFICATE_TTL = timedelta(hours=24)
 DEFAULT_DATABASE_OPERATION_TIMEOUT_SECONDS = 8.0
 
 
@@ -314,6 +315,43 @@ class PostgresControlPlane:
         now: datetime,
         actor_id: str = "enrollment-service",
     ) -> tuple[Endpoint, EndpointIdentity]:
+        """Exchange a grant for an active legacy/synthetic endpoint identity."""
+
+        return self._consume_enrollment_grant(
+            token=token,
+            public_key_fingerprint=public_key_fingerprint,
+            now=now,
+            actor_id=actor_id,
+            identity_status="active",
+        )
+
+    def begin_endpoint_enrollment(
+        self,
+        *,
+        token: str,
+        public_key_fingerprint: str,
+        now: datetime,
+        actor_id: str = "enrollment-service",
+    ) -> tuple[Endpoint, EndpointIdentity]:
+        """Consume a grant into an inspectable non-authenticating pending identity."""
+
+        return self._consume_enrollment_grant(
+            token=token,
+            public_key_fingerprint=public_key_fingerprint,
+            now=now,
+            actor_id=actor_id,
+            identity_status="pending",
+        )
+
+    def _consume_enrollment_grant(
+        self,
+        *,
+        token: str,
+        public_key_fingerprint: str,
+        now: datetime,
+        actor_id: str,
+        identity_status: str,
+    ) -> tuple[Endpoint, EndpointIdentity]:
         """Atomically exchange one valid grant for one endpoint identity."""
 
         require_aware(now, "now")
@@ -418,14 +456,16 @@ class PostgresControlPlane:
                     cursor.execute(
                         """
                         INSERT INTO endpoint_identities (
-                            identity_id, endpoint_id, public_key_fingerprint, created_at
-                        ) VALUES (%s, %s, %s, %s)
+                            identity_id, endpoint_id, public_key_fingerprint,
+                            created_at, identity_status
+                        ) VALUES (%s, %s, %s, %s, %s)
                         """,
                         (
                             identity.identity_id,
                             identity.endpoint_id,
                             identity.public_key_fingerprint,
                             identity.created_at,
+                            identity_status,
                         ),
                     )
                     cursor.execute(
@@ -450,6 +490,7 @@ class PostgresControlPlane:
                         correlation_id=correlation_id,
                         metadata=(
                             ("endpoint_id", str(endpoint.endpoint_id)),
+                            ("identity_status", identity_status),
                             ("identity_id", str(identity.identity_id)),
                         ),
                     )
@@ -491,6 +532,132 @@ class PostgresControlPlane:
         if endpoint is None or identity is None:
             raise AssertionError("accepted grant consumption must create an identity")
         return endpoint, identity
+
+    def record_issued_endpoint_identity(
+        self,
+        identity_id: UUID,
+        *,
+        certificate_serial: str,
+        certificate_issuer: str,
+        certificate_not_before: datetime,
+        certificate_not_after: datetime,
+        now: datetime,
+        actor_id: str = "enrollment-service",
+    ) -> EndpointIdentity:
+        """Record issuance; the first accepted heartbeat activates the identity."""
+
+        require_aware(certificate_not_before, "certificate_not_before")
+        require_aware(certificate_not_after, "certificate_not_after")
+        require_aware(now, "now")
+        server_time = now.astimezone(UTC)
+        not_before = certificate_not_before.astimezone(UTC)
+        not_after = certificate_not_after.astimezone(UTC)
+        if re.fullmatch(r"[1-9a-f][0-9a-f]{0,63}", certificate_serial) is None:
+            raise ValidationError("certificate serial is invalid")
+        if not certificate_issuer or len(certificate_issuer) > 256:
+            raise ValidationError("certificate issuer is invalid")
+        if not not_before <= server_time < not_after:
+            raise ValidationError("certificate is not valid at activation time")
+        if not_after - not_before > MAX_ENDPOINT_CERTIFICATE_TTL:
+            raise ValidationError("certificate lifetime exceeds the v1 limit")
+        if not actor_id or len(actor_id) > 256:
+            raise ValidationError("actor_id is empty or too long")
+
+        correlation_id = uuid4()
+        identity: EndpointIdentity | None = None
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT i.identity_id, i.endpoint_id, i.public_key_fingerprint,
+                           i.created_at, i.revoked_at, i.revocation_reason,
+                           i.identity_status,
+                           i.certificate_serial, i.certificate_issuer,
+                           i.certificate_not_before, i.certificate_not_after,
+                           i.activated_at,
+                           e.identity_id = i.identity_id AS is_current
+                    FROM endpoint_identities AS i
+                    JOIN endpoints AS e ON e.endpoint_id = i.endpoint_id
+                    WHERE i.identity_id = %s
+                    FOR UPDATE OF i, e
+                    """,
+                    (identity_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    raise NotFoundError("identity does not exist")
+                identity = self._identity_from_row(row)
+                exact_retry = (
+                    row["identity_status"] in {"issued", "active"}
+                    and row["certificate_serial"] == certificate_serial
+                    and row["certificate_issuer"] == certificate_issuer
+                    and row["certificate_not_before"] == not_before
+                    and row["certificate_not_after"] == not_after
+                )
+                if exact_retry:
+                    self._insert_audit(
+                        cursor,
+                        server_time=server_time,
+                        actor_type="service",
+                        actor_id=actor_id,
+                        subject=f"identity:{identity_id}",
+                        action="identity.issue",
+                        decision="no_change",
+                        reason="exact certificate issuance retry",
+                        correlation_id=correlation_id,
+                    )
+                    return identity
+                if row["identity_status"] != "pending" or not row["is_current"]:
+                    raise AuthorizationError("identity is not pending and current")
+                cursor.execute(
+                    """
+                    UPDATE endpoint_identities
+                    SET identity_status = 'issued',
+                        certificate_serial = %s,
+                        certificate_issuer = %s,
+                        certificate_not_before = %s,
+                        certificate_not_after = %s
+                    WHERE identity_id = %s
+                    """,
+                    (
+                        certificate_serial,
+                        certificate_issuer,
+                        not_before,
+                        not_after,
+                        identity_id,
+                    ),
+                )
+                self._insert_audit(
+                    cursor,
+                    server_time=server_time,
+                    actor_type="service",
+                    actor_id=actor_id,
+                    subject=f"identity:{identity_id}",
+                    action="identity.issue",
+                    decision="accepted",
+                    reason="external endpoint certificate recorded",
+                    correlation_id=correlation_id,
+                    metadata=(
+                        ("certificate_issuer", certificate_issuer),
+                        ("certificate_serial", certificate_serial),
+                        ("endpoint_id", str(identity.endpoint_id)),
+                    ),
+                )
+        except UniqueViolation as exc:
+            self._record_audit(
+                server_time=server_time,
+                actor_type="service",
+                actor_id=actor_id,
+                subject=f"identity:{identity_id}",
+                action="identity.issue",
+                decision="rejected",
+                reason="certificate issuer and serial are already registered",
+                correlation_id=correlation_id,
+            )
+            raise ValidationError("certificate identity metadata conflicts") from exc
+        if identity is None:
+            raise AssertionError("issued identity must exist")
+        return identity
 
     def enroll_synthetic_endpoint(
         self,
@@ -654,7 +821,10 @@ class PostgresControlPlane:
                 identity = self._identity_from_row(row)
                 if identity.revoked_at is not None:
                     failure_reason = "certificate identity is revoked"
-                elif row["identity_status"] != "active" or not row["is_current"]:
+                elif (
+                    row["identity_status"] not in {"issued", "active"}
+                    or not row["is_current"]
+                ):
                     failure_reason = "certificate identity is not current"
             self._insert_audit(
                 cursor,
@@ -664,7 +834,7 @@ class PostgresControlPlane:
                 subject=f"endpoint:{endpoint_id}",
                 action="certificate.authenticate",
                 decision="rejected" if failure_reason is not None else "accepted",
-                reason=failure_reason or "verified certificate key is active",
+                reason=failure_reason or "verified certificate key is current",
                 correlation_id=correlation_id,
             )
         if failure_reason is not None or identity is None:
@@ -812,11 +982,24 @@ class PostgresControlPlane:
                 if (
                     failure is None
                     and row is not None
-                    and (row["identity_status"] != "active" or not row["is_current"])
+                    and (
+                        row["identity_status"] not in {"issued", "active"}
+                        or not row["is_current"]
+                    )
                 ):
                     failure = (
                         AuthorizationError,
                         "authenticated identity is not current",
+                    )
+                if (
+                    failure is None
+                    and row is not None
+                    and row["identity_status"] == "issued"
+                    and observation_type != "heartbeat"
+                ):
+                    failure = (
+                        AuthorizationError,
+                        "issued identity requires an activation heartbeat",
                     )
                 if (
                     failure is None
@@ -990,6 +1173,27 @@ class PostgresControlPlane:
                                 identity.endpoint_id,
                             ),
                         )
+                        cursor.execute(
+                            """
+                            UPDATE endpoint_identities
+                            SET identity_status = 'active', activated_at = %s
+                            WHERE identity_id = %s AND identity_status = 'issued'
+                            RETURNING identity_id
+                            """,
+                            (received_at, identity.identity_id),
+                        )
+                        if cursor.fetchone() is not None:
+                            self._insert_audit(
+                                cursor,
+                                server_time=received_at,
+                                actor_type="endpoint_identity",
+                                actor_id=str(identity.identity_id),
+                                subject=f"endpoint:{identity.endpoint_id}",
+                                action="identity.activate",
+                                decision="accepted",
+                                reason="first authenticated heartbeat accepted",
+                                correlation_id=envelope.correlation_id,
+                            )
                     else:
                         cursor.execute(
                             """

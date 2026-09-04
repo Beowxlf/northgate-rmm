@@ -459,6 +459,17 @@ def extract_verified_client_certificate(
         raise ValidationError("verified client certificate is required")
     try:
         certificate = x509.load_der_x509_certificate(encoded)
+    except ValueError as error:
+        raise ValidationError("client certificate profile is invalid") from error
+    return validate_endpoint_certificate(certificate)
+
+
+def validate_endpoint_certificate(
+    certificate: x509.Certificate,
+) -> VerifiedClientCertificate:
+    """Validate the endpoint leaf profile and return its bound identity facts."""
+
+    try:
         constraints = certificate.extensions.get_extension_for_class(
             x509.BasicConstraints
         ).value
@@ -469,7 +480,7 @@ def extract_verified_client_certificate(
         names = certificate.extensions.get_extension_for_class(
             x509.SubjectAlternativeName
         ).value
-    except (ValueError, x509.ExtensionNotFound, x509.DuplicateExtension) as error:
+    except (x509.ExtensionNotFound, x509.DuplicateExtension) as error:
         raise ValidationError("client certificate profile is invalid") from error
     if constraints.ca or not usage.digital_signature:
         raise ValidationError("client certificate purpose is invalid")

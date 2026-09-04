@@ -65,11 +65,21 @@ again before any future job or remote-session dispatch.
 1. Operator creates a single-use, short-lived grant bound to intended scope.
 2. Agent generates a key pair locally using an operating-system CSPRNG.
 3. Agent validates server trust and submits public key plus grant.
-4. Server atomically consumes the grant, creates endpoint and identity records,
-   and returns certificate/trust metadata.
-5. Agent protects key material using supported OS permissions or secure storage.
-6. First mTLS heartbeat confirms activation; failure leaves an inspectable pending
-   state rather than silently repeating enrollment.
+4. The enrollment service verifies proof of possession from a bounded,
+   claim-free CSR and atomically consumes the grant into a pending endpoint and
+   identity. The V1 profile accepts P-256, P-384, or RSA keys of at least 2048
+   bits.
+5. A separately authenticated endpoint issuer uses the identity ID as its
+   idempotency key and returns public certificate material. The control plane
+   has no CA signing key or certificate-signing primitive.
+6. The control plane independently validates the pinned issuer chain, client
+   purpose, exact endpoint URI, CSR public-key binding, validity, and lifetime
+   before recording the current identity as issued and returning the credential.
+7. Agent protects key material using supported OS permissions or secure storage.
+8. The issued identity may authenticate only to send its first heartbeat;
+   inventory remains denied. Accepting that heartbeat atomically marks the current
+   identity active. A failure leaves inspectable pending or issued state rather
+   than silently repeating enrollment.
 
 The endpoint certificate contains exactly one URI subject alternative name in
 the form `urn:northgate-rmm:endpoint:<canonical-endpoint-uuid>`. The agent must

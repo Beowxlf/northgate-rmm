@@ -417,6 +417,10 @@ def test_listener_rate_limits_one_authenticated_identity(tmp_path: Path) -> None
     asyncio.run(run_listener_rate_limit_scenario(tmp_path))
 
 
+def test_listener_isolates_limits_by_rotated_certificate(tmp_path: Path) -> None:
+    asyncio.run(run_listener_rotated_identity_limit_scenario(tmp_path))
+
+
 def test_listener_rebinds_fixed_port_after_force_closed_request(tmp_path: Path) -> None:
     asyncio.run(run_listener_restart_scenario(tmp_path))
 
@@ -654,6 +658,98 @@ async def run_listener_rate_limit_scenario(tmp_path: Path) -> None:
         assert len(store.authentications) == 32
         assert len(store.inventories) == 32
     finally:
+        await listener.close()
+
+
+async def run_listener_rotated_identity_limit_scenario(tmp_path: Path) -> None:
+    now = datetime.now(UTC)
+    material = issue_material(now)
+    paths = write_material(tmp_path, material)
+    current_fingerprint = public_key_fingerprint(material.client_key.public_key())
+    retired_key = Ed25519PrivateKey.generate()
+    retired_certificate = issue_client_certificate(
+        material.root_certificate,
+        material.root_key,
+        retired_key,
+        now,
+        [
+            x509.UniformResourceIdentifier(
+                "urn:northgate-rmm:endpoint:" + str(material.endpoint_id)
+            )
+        ],
+    )
+    retired_paths = dict(paths)
+    retired_paths["client_certificate"] = tmp_path / "retired-client.pem"
+    retired_paths["client_private_key"] = tmp_path / "retired-client-key.pem"
+    retired_paths["client_certificate"].write_bytes(
+        retired_certificate.public_bytes(serialization.Encoding.PEM)
+    )
+    retired_paths["client_private_key"].write_bytes(private_key_bytes(retired_key))
+
+    store = RecordingStore(material.endpoint_id, current_fingerprint)
+    listener = AgentTLSListener(listener_configuration(paths), store)
+    await listener.start()
+    retired_connections: list[tuple[asyncio.StreamReader, asyncio.StreamWriter]] = []
+    try:
+        host, port = listener.addresses[0]
+        current_context = client_ssl_context(paths)
+        retired_context = client_ssl_context(retired_paths)
+
+        for _ in range(4):
+            retired_connections.append(
+                await open_https_connection(host, port, retired_context)
+            )
+        response = await raw_https_request(
+            host,
+            port,
+            current_context,
+            request_bytes(inventory_body(material.endpoint_id, now)),
+        )
+        assert response.startswith(b"HTTP/1.1 200 OK\r\n")
+
+        for _reader, writer in retired_connections:
+            writer.close()
+        await asyncio.gather(
+            *(writer.wait_closed() for _reader, writer in retired_connections),
+            return_exceptions=True,
+        )
+        retired_connections.clear()
+
+        invalid_request = (
+            b"POST /v1/agent/messages HTTP/1.1\r\n"
+            b"Host: rmm.test\r\n"
+            b"Content-Length: 0\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        retired_responses = [
+            await raw_https_request(host, port, retired_context, invalid_request)
+            for _ in range(32)
+        ]
+        assert all(
+            response.startswith(b"HTTP/1.1 400 Bad Request\r\n")
+            for response in retired_responses
+        )
+        retired_limited = await raw_https_request(
+            host, port, retired_context, invalid_request
+        )
+        assert retired_limited.startswith(b"HTTP/1.1 429 Too Many Requests\r\n")
+
+        current_response = await raw_https_request(
+            host,
+            port,
+            current_context,
+            request_bytes(inventory_body(material.endpoint_id, datetime.now(UTC))),
+        )
+        assert current_response.startswith(b"HTTP/1.1 200 OK\r\n")
+        assert len(store.authentications) == 2
+        assert len(store.inventories) == 2
+    finally:
+        for _reader, writer in retired_connections:
+            writer.close()
+        await asyncio.gather(
+            *(writer.wait_closed() for _reader, writer in retired_connections),
+            return_exceptions=True,
+        )
         await listener.close()
 
 

@@ -138,6 +138,10 @@ if (
 ) {
   error("GitHub baseline permits force pushes or deletions on main.");
 }
+if (githubBaseline.mainProtection.requireBranchesUpToDate !== true)
+  error(
+    "GitHub baseline must require pull-request branches to be current with main.",
+  );
 if (
   githubBaseline.mainProtection.reviewMode !== "single-maintainer" ||
   githubBaseline.mainProtection.requiredApprovingReviewCount !== 0 ||

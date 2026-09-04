@@ -28,12 +28,16 @@ baseline or a plan-limited control is replaced by the documented local check.
 - stale approvals dismissed;
 - all review conversations resolved;
 - linear history;
+- strict status checks require the pull-request branch to be current with
+  `main`, forcing revocation validation to rerun when the protected base moves;
 - administrators included where the account plan permits enforcement.
 
 Required status checks after their first successful run:
 
 - `Pre-code governance audit`;
-- `Free-software security checks`.
+- `Free-software security checks`;
+- `Debian 12 systemd qualification`;
+- `Release-candidate trust qualification`.
 
 Initial repository creation and baseline push are the only bootstrap direct push.
 The bootstrap exception ends when protection is verified.

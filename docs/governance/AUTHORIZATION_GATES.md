@@ -75,6 +75,9 @@ protected-main tip. Removing or replacing one revokes it; restoring an older
 still-unexpired approval snapshot does not restore authority. Validation also
 checks the protected-main path history after the audited commit, so a later
 byte-identical restoration still requires a new approval and audited commit.
+The protected branch requires strict up-to-date status checks, so any `main`
+advance between validation and merge makes the authority-opening pull request
+stale and forces these checks to rerun against the new protected-main tip.
 The Factory plan expiry must cover the full authorization lifetime.
 At every governance validation, the plan must be no more than two hours old and
 its issue-to-expiry lifetime must not exceed 24 hours; older or longer-lived

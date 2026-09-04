@@ -58,6 +58,9 @@ an older still-valid snapshot cannot be replayed after that revocation.
 The validator inspects every protected-main commit after the audited commit for
 changes to those paths; a byte-identical later restoration therefore remains
 revoked until a new approval names a newer audited commit.
+Strict branch protection requires the authority-opening branch to remain current
+with `main`; a concurrent protected-main revocation therefore invalidates the
+green check and forces merge-time revalidation.
 
 V1D-SV cannot install an endpoint package, issue an endpoint-usable grant or
 identity, admit endpoint traffic, publish or update artifacts, expand the plan,

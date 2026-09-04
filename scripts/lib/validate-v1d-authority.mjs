@@ -753,6 +753,17 @@ function validateApprovedBindings(
   const bindingsExpireAt = validDate(approval.expiresAt);
   const issuedAt = validDate(fields.get("Issued at"));
   const authorizationExpiresAt = validDate(fields.get("Expires at"));
+  const bindingsIntroducedAt = Date.parse(
+    pathIntroductionTime(recordPath) ?? "",
+  );
+  if (
+    !Number.isFinite(bindingsIntroducedAt) ||
+    issuedAt === null ||
+    bindingsIntroducedAt >= issuedAt
+  )
+    errors.push(
+      "V1D-SV approved bindings introduction must predate authorization issuance.",
+    );
   if (approvedAt === null || approvedAt > now.getTime())
     errors.push("V1D-SV bindings approval time is invalid or in the future.");
   if (bindingsExpireAt === null || bindingsExpireAt <= now.getTime())

@@ -398,6 +398,7 @@ function expectFailure(
     trustPredatesReceipt = true,
     trustIntroductionTime = "2026-09-04T12:53:00Z",
     prerequisiteIntroductionTime = "2026-09-04T12:30:00Z",
+    bindingsIntroductionTime = "2026-09-04T13:02:30Z",
   } = {},
 ) {
   const config = clone();
@@ -470,6 +471,7 @@ function expectFailure(
       laterPath === factoryReceiptPath,
     pathIntroductionTime: (path) => {
       if (path === factoryTrustPath) return trustIntroductionTime;
+      if (path === bindingPath) return bindingsIntroductionTime;
       return path in prerequisites ? prerequisiteIntroductionTime : null;
     },
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
@@ -859,6 +861,12 @@ expectFailure(
       (approval.approvedAt = validFields["Issued at"]),
   },
 );
+expectFailure(
+  "bindings merged at authorization issuance",
+  open,
+  "bindings introduction must predate authorization issuance",
+  { bindingsIntroductionTime: validFields["Issued at"] },
+);
 expectFailure("excessive bindings lifetime", open, "seven-day lifetime", {
   mutateApproval: (approval) => (approval.expiresAt = "2026-09-12T13:02:01Z"),
 });
@@ -1164,6 +1172,7 @@ assert.deepEqual(
       earlierPath === factoryTrustPath && laterPath === factoryReceiptPath,
     pathIntroductionTime: (path) => {
       if (path === factoryTrustPath) return "2026-09-04T12:53:00Z";
+      if (path === bindingPath) return "2026-09-04T13:02:30Z";
       return path in exactPrerequisites ? "2026-09-04T12:30:00Z" : null;
     },
     verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>

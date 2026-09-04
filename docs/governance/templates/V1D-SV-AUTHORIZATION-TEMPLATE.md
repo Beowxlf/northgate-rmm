@@ -54,6 +54,8 @@ The approved-bindings JSON must be committed first. `Audited commit` identifies
 the repository commit that already contains it. The governance audit loads that
 exact historical file, requires the current content to remain identical, and
 compares every operational field in this authorization with the approved value.
+Its protected-main introduction commit must strictly predate authorization
+issuance; a backdated manifest cannot authorize an already-issued record.
 The audited commit must also contain the canonical Factory-exported plan
 approval receipt built from
 [`V1D-FACTORY-PLAN-RECEIPT-TEMPLATE.json`](V1D-FACTORY-PLAN-RECEIPT-TEMPLATE.json).

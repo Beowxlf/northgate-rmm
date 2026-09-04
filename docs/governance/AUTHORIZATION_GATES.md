@@ -61,7 +61,8 @@ plan issue time. The trust record, receipt, and signature each use an immutable,
 single-use protected-main path.
 Its sanitized approved-bindings manifest must already exist at the audited
 commit; changing it in the authority-opening change or substituting any bound
-value fails validation.
+value fails validation. Its protected-main introduction commit must predate
+authorization issuance.
 The manifest must also bind the exact authorization issuance and expiry; the
 authority window cannot be extended by editing the later authorization record.
 That manifest must hash and reference a protected-main V1C pass record and the

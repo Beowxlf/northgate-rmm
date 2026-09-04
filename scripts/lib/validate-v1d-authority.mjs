@@ -94,6 +94,8 @@ function parseRecord(text) {
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const MAX_AUTHORITY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const MAX_BINDINGS_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_PLAN_AGE_MS = 2 * 60 * 60 * 1000;
+const MAX_PLAN_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const EXPECTED_DEPENDENCY_IDS = [
   "V1D-DEP-DNS-TIME",
   "V1D-DEP-SERVER-PKI",
@@ -568,6 +570,8 @@ function validateRecord(text, options) {
     errors.push("V1D-SV authorization issue time is in the future.");
   if (planIssuedAt !== null && planIssuedAt > now.getTime())
     errors.push("V1D-SV Factory plan issue time is in the future.");
+  if (planIssuedAt !== null && now.getTime() - planIssuedAt > MAX_PLAN_AGE_MS)
+    errors.push("V1D-SV Factory plan is stale.");
   if (planApprovedAt !== null && planApprovedAt > now.getTime())
     errors.push("V1D-SV Factory plan approval time is in the future.");
   if (planExpiresAt !== null && planExpiresAt <= now.getTime())
@@ -584,6 +588,12 @@ function validateRecord(text, options) {
     planExpiresAt <= planApprovedAt
   )
     errors.push("V1D-SV Factory plan expiry must follow plan approval.");
+  if (
+    planIssuedAt !== null &&
+    planExpiresAt !== null &&
+    planExpiresAt - planIssuedAt > MAX_PLAN_LIFETIME_MS
+  )
+    errors.push("V1D-SV Factory plan exceeds the 24-hour lifetime limit.");
   if (issuedAt !== null && planApprovedAt !== null && issuedAt < planApprovedAt)
     errors.push(
       "V1D-SV authorization must be issued after Factory plan approval.",

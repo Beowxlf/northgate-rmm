@@ -67,6 +67,9 @@ scope values in the immutable approved-bindings manifest; recomputing inner
 receipt and prerequisite digests cannot substitute evidence from another
 environment.
 The Factory plan expiry must cover the full authorization lifetime.
+At every governance validation, the plan must be no more than two hours old and
+its issue-to-expiry lifetime must not exceed 24 hours; older or longer-lived
+plans fail closed and require a fresh host state validation and plan.
 
 The authorization permits installation and operation of the named private
 control-plane server only to complete V1D backup/restore, telemetry-outage,

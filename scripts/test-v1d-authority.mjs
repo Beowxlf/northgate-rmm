@@ -483,6 +483,14 @@ expectFailure("future plan approval", open, "approval time is in the future", {
   mutateFields: (fields) =>
     (fields["Factory plan approved at"] = "2026-09-04T15:01:00Z"),
 });
+expectFailure("stale Factory plan", open, "Factory plan is stale", {
+  mutateFields: (fields) =>
+    (fields["Factory plan issued at"] = "2026-09-04T11:59:59Z"),
+});
+expectFailure("excessive Factory plan lifetime", open, "24-hour lifetime", {
+  mutateFields: (fields) =>
+    (fields["Factory plan expires at"] = "2026-09-05T13:00:01Z"),
+});
 expectFailure("expired Factory plan", open, "Factory plan is expired", {
   mutateFields: (fields) =>
     (fields["Factory plan expires at"] = "2026-09-04T13:59:59Z"),

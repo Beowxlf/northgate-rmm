@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import ssl
 import threading
 from datetime import UTC, datetime, timedelta
@@ -18,6 +19,7 @@ from northgate_rmm.enrollment import EnrollmentRequest, EnrollmentResult
 from northgate_rmm.enrollment_listener import (
     EnrollmentListenerConfiguration,
     EnrollmentTLSListener,
+    _build_server_context,
     _read_request,
     _RequestError,
     _SourceRateLimiter,
@@ -85,6 +87,41 @@ def test_enrollment_listener_configuration_is_exact(
         configuration(tmp_path, **{change: value})
 
 
+def test_enrollment_listener_rejects_symlinked_server_key(tmp_path: Path) -> None:
+    _root, certificate_path, key_path = _write_server_identity(tmp_path)
+    linked_key = tmp_path / "linked-server-key.pem"
+    try:
+        linked_key.symlink_to(key_path)
+    except OSError:
+        pytest.skip("test account cannot create symlinks")
+
+    with pytest.raises(ValidationError, match="opened safely"):
+        _build_server_context(
+            configuration(
+                tmp_path,
+                server_certificate=certificate_path,
+                server_private_key=linked_key,
+            )
+        )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission contract")
+def test_enrollment_listener_rejects_broad_server_key_permissions(
+    tmp_path: Path,
+) -> None:
+    _root, certificate_path, key_path = _write_server_identity(tmp_path)
+    key_path.chmod(0o640)
+
+    with pytest.raises(ValidationError, match="permissions"):
+        _build_server_context(
+            configuration(
+                tmp_path,
+                server_certificate=certificate_path,
+                server_private_key=key_path,
+            )
+        )
+
+
 def test_enrollment_request_parser_accepts_one_bounded_http_request() -> None:
     body = json.dumps({"grant": "g", "csr": "eA=="}).encode("ascii")
     request = asyncio.run(
@@ -102,6 +139,18 @@ def test_enrollment_request_parser_accepts_one_bounded_http_request() -> None:
     assert request.path == "/v1/enrollment"
     assert request.content_type == "application/json"
     assert request.body == body
+
+
+def test_enrollment_request_parser_requires_non_default_port_in_host() -> None:
+    encoded = (
+        b"POST /v1/enrollment HTTP/1.1\r\n"
+        b"Host: enroll.northgate.internal:8444\r\n"
+        b"Content-Length: 0\r\n\r\n"
+    )
+
+    request = asyncio.run(_parse_request(encoded, port=8444))
+
+    assert request.path == "/v1/enrollment"
 
 
 @pytest.mark.parametrize(
@@ -290,11 +339,15 @@ def test_incomplete_tls_handshakes_are_bounded_per_source(tmp_path: Path) -> Non
     asyncio.run(scenario())
 
 
-async def _parse_request(encoded: bytes) -> EnrollmentRequest:
+async def _parse_request(encoded: bytes, *, port: int = 443) -> EnrollmentRequest:
     reader = asyncio.StreamReader(limit=2_052)
     reader.feed_data(encoded)
     reader.feed_eof()
-    return await _read_request(reader, authority="enroll.northgate.internal")
+    return await _read_request(
+        reader,
+        authority="enroll.northgate.internal",
+        port=port,
+    )
 
 
 async def _send_enrollment(host: str, port: int, context: ssl.SSLContext) -> bytes:
@@ -367,4 +420,6 @@ def _write_server_identity(tmp_path: Path) -> tuple[Path, Path, Path]:
             serialization.NoEncryption(),
         )
     )
+    if os.name == "posix":
+        key_path.chmod(0o600)
     return root_path, certificate_path, key_path

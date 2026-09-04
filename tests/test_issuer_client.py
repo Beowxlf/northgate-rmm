@@ -9,11 +9,7 @@ from uuid import UUID
 import pytest
 
 from northgate_rmm.enrollment import EndpointIssuanceRequest
-from northgate_rmm.errors import (
-    AuthorizationError,
-    ServiceUnavailableError,
-    ValidationError,
-)
+from northgate_rmm.errors import ServiceUnavailableError, ValidationError
 from northgate_rmm.issuer_client import (
     IssuerClientConfiguration,
     MTLSIssuerClient,
@@ -193,7 +189,7 @@ def test_issuer_client_maps_workload_rejection_generically(
         csr_der=b"csr",
     )
 
-    with pytest.raises(AuthorizationError, match="workload identity"):
+    with pytest.raises(ServiceUnavailableError, match="workload identity"):
         client.issue_endpoint_certificate(request, now=NOW)
 
 

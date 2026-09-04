@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import os
 import re
 import ssl
+import stat
 from collections import OrderedDict, deque
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
@@ -223,6 +226,7 @@ class EnrollmentTLSListener:
                     request = await _read_request(
                         reader,
                         authority=self._configuration.authority,
+                        port=self._configuration.port,
                     )
                     operation_task = asyncio.create_task(
                         asyncio.to_thread(
@@ -306,6 +310,7 @@ async def _read_request(
     reader: asyncio.StreamReader,
     *,
     authority: str,
+    port: int,
 ) -> EnrollmentRequest:
     try:
         encoded_headers = await reader.readuntil(b"\r\n\r\n")
@@ -336,7 +341,8 @@ async def _read_request(
         if not value or any(byte < 32 or byte > 126 for byte in value):
             raise _RequestError(400, "invalid_request")
         headers[normalized_name] = value.decode("ascii")
-    if headers.get("host") != authority:
+    expected_host = authority if port in {0, 443} else f"{authority}:{port}"
+    if headers.get("host") != expected_host:
         raise _RequestError(421, "misdirected_request")
     if "transfer-encoding" in headers or "expect" in headers:
         raise _RequestError(400, "invalid_request")
@@ -400,11 +406,59 @@ def _build_server_context(
     context.verify_mode = ssl.CERT_NONE
     context.options |= ssl.OP_NO_TICKET
     context.num_tickets = 0
-    context.load_cert_chain(
-        certfile=str(configuration.server_certificate),
-        keyfile=str(configuration.server_private_key),
-    )
+    with _private_key_reference(configuration.server_private_key) as key_path:
+        context.load_cert_chain(
+            certfile=str(configuration.server_certificate),
+            keyfile=str(key_path),
+        )
     return context
+
+
+@contextmanager
+def _private_key_reference(path: Path) -> Iterator[Path]:
+    """Hold the validated key inode open while OpenSSL loads it on Debian."""
+
+    if path.is_symlink():
+        raise ValidationError(
+            "enrollment server private key could not be opened safely"
+        )
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, flags)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 65_536:
+            raise ValidationError(
+                "enrollment server private key is not a bounded regular file"
+            )
+        if os.name == "posix":
+            get_effective_user = getattr(os, "geteuid", None)
+            effective_user = get_effective_user() if get_effective_user else None
+            if (
+                type(effective_user) is not int
+                or metadata.st_uid not in {0, effective_user}
+                or metadata.st_mode & 0o077
+            ):
+                raise ValidationError(
+                    "enrollment server private key permissions are too broad"
+                )
+            yield Path(f"/proc/self/fd/{descriptor}")
+        else:
+            yield path
+    except ValidationError:
+        raise
+    except OSError as error:
+        raise ValidationError(
+            "enrollment server private key could not be opened safely"
+        ) from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 async def _write_error(

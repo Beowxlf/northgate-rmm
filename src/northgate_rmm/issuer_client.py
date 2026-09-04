@@ -21,11 +21,7 @@ from northgate_rmm.enrollment import (
     EndpointIssuanceRequest,
     IssuedEndpointCredential,
 )
-from northgate_rmm.errors import (
-    AuthorizationError,
-    ServiceUnavailableError,
-    ValidationError,
-)
+from northgate_rmm.errors import ServiceUnavailableError, ValidationError
 
 ISSUER_PATH = "/v1/endpoint-certificates"
 MAX_ISSUER_RESPONSE_BYTES = 65_536
@@ -136,7 +132,7 @@ class MTLSIssuerClient:
             if len(encoded) > MAX_ISSUER_RESPONSE_BYTES or response.read(1):
                 raise ValidationError("issuer response is too large")
             if response.status in {401, 403}:
-                raise AuthorizationError("issuer rejected workload identity")
+                raise ServiceUnavailableError("issuer workload identity was rejected")
             if response.status in {408, 425, 429} or 500 <= response.status <= 599:
                 raise ServiceUnavailableError("issuer is unavailable")
             if response.status != 201:

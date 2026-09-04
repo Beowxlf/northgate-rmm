@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "authority": "V1D-SV",
+  "status": "Approved",
+  "approver": "Beowxlf",
+  "approvedAt": "PLACEHOLDER",
+  "expiresAt": "PLACEHOLDER",
+  "bindings": {
+    "Server binding": "sha256:PLACEHOLDER",
+    "Signed release digest": "sha256:PLACEHOLDER",
+    "Factory plan ID": "PLACEHOLDER",
+    "Authenticated state hash": "sha256:PLACEHOLDER",
+    "Factory plan issued at": "PLACEHOLDER",
+    "Factory plan approved at": "PLACEHOLDER",
+    "Factory plan approver": "Beowxlf",
+    "External dependency set binding": "sha256:PLACEHOLDER",
+    "Service identity binding": "sha256:PLACEHOLDER",
+    "Database identity binding": "sha256:PLACEHOLDER",
+    "Synthetic identity profile binding": "sha256:PLACEHOLDER",
+    "Private network policy binding": "sha256:PLACEHOLDER",
+    "Endpoint routes": "blocked",
+    "Rollback binding": "sha256:PLACEHOLDER",
+    "Recovery binding": "sha256:PLACEHOLDER",
+    "Evidence boundary binding": "sha256:PLACEHOLDER"
+  }
+}

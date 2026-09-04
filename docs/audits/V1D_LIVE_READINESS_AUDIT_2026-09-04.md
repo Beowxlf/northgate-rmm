@@ -78,10 +78,11 @@ and evidence records.
 8. Only after V1C and every required external-dependency implementation pass,
    use the Factory's non-deployment planning path to generate the fresh
    control-plane plan after current-state validation. Obtain exact owner approval
-   of that plan ID and authenticated state hash after issuance. Then commit the
-   exact bounded V1D server-validation record, open `V1D-SV`, and use it only to
-   execute that approved plan and harden the control plane without installing an
-   endpoint.
+   of that plan ID and authenticated state hash after issuance. Commit the
+   sanitized approved-bindings manifest to protected `main`. In a later change,
+   commit the exact bounded V1D server-validation record, open `V1D-SV`, and use
+   it only to execute that approved plan and harden the control plane without
+   installing an endpoint.
    Prove database-consistent backup and isolated restore, telemetry-outage and
    capacity behavior, certificate revocation, containment, and rollback; V1D
    remains open until every required proof passes.

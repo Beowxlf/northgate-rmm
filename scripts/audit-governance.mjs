@@ -35,6 +35,23 @@ function isCommit(commit) {
   );
 }
 
+function isProtectedMainCommit(commit) {
+  return (
+    spawnSync("git", ["merge-base", "--is-ancestor", commit, "origin/main"], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
+}
+
+function readAtCommit(commit, relativePath) {
+  const result = spawnSync("git", ["show", `${commit}:${relativePath}`], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return result.status === 0 ? result.stdout : null;
+}
+
 function walk(directory) {
   if (!exists(directory)) return [];
   return fs
@@ -121,7 +138,9 @@ for (let number = 0; number <= 8; number += 1) {
 for (const authorityError of validateV1dAuthority(gates, {
   isRegularFile,
   readText: read,
+  readAtCommit,
   isCommit,
+  isProtectedMainCommit,
 }))
   error(authorityError);
 

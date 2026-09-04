@@ -20,6 +20,7 @@ const REQUIRED_RECORD_FIELDS = [
   "Status",
   "Approver",
   "Audited commit",
+  "Approved bindings record",
   "Issued at",
   "Expires at",
   "Server binding",
@@ -54,6 +55,25 @@ const DIGEST_FIELDS = [
   "Evidence boundary binding",
 ];
 
+const APPROVED_BINDING_FIELDS = [
+  "Server binding",
+  "Signed release digest",
+  "Factory plan ID",
+  "Authenticated state hash",
+  "Factory plan issued at",
+  "Factory plan approved at",
+  "Factory plan approver",
+  "External dependency set binding",
+  "Service identity binding",
+  "Database identity binding",
+  "Synthetic identity profile binding",
+  "Private network policy binding",
+  "Endpoint routes",
+  "Rollback binding",
+  "Recovery binding",
+  "Evidence boundary binding",
+];
+
 function parseRecord(text) {
   const fields = new Map();
   const duplicates = new Set();
@@ -75,8 +95,77 @@ function validDate(value) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function validateRecord(text, now, isCommit) {
+function validateApprovedBindings(
+  fields,
+  auditedCommit,
+  { isRegularFile, readText, readAtCommit, now },
+) {
   const errors = [];
+  const recordPath = fields.get("Approved bindings record") ?? "";
+  if (
+    !/^docs\/governance\/authorizations\/bindings\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+      recordPath,
+    ) ||
+    !isRegularFile(recordPath)
+  ) {
+    return ["V1D-SV lacks its exact approved bindings record."];
+  }
+
+  const currentText = readText(recordPath);
+  const approvedText = readAtCommit(auditedCommit, recordPath);
+  if (
+    typeof currentText !== "string" ||
+    typeof approvedText !== "string" ||
+    approvedText.trim() === ""
+  ) {
+    return ["V1D-SV approved bindings are absent from the audited commit."];
+  }
+  if (
+    currentText.replaceAll("\r\n", "\n") !==
+    approvedText.replaceAll("\r\n", "\n")
+  )
+    errors.push("V1D-SV approved bindings changed after the audited commit.");
+
+  let approval;
+  try {
+    approval = JSON.parse(approvedText);
+  } catch {
+    return [...errors, "V1D-SV approved bindings record is not valid JSON."];
+  }
+  if (approval.schemaVersion !== 1)
+    errors.push("V1D-SV approved bindings have an invalid schema version.");
+  if (approval.authority !== "V1D-SV" || approval.status !== "Approved")
+    errors.push("V1D-SV approved bindings have the wrong authority or status.");
+  if (approval.approver !== "Beowxlf")
+    errors.push("V1D-SV approved bindings lack project owner approval.");
+
+  const approvedAt = validDate(approval.approvedAt);
+  const bindingsExpireAt = validDate(approval.expiresAt);
+  const issuedAt = validDate(fields.get("Issued at"));
+  const authorizationExpiresAt = validDate(fields.get("Expires at"));
+  if (approvedAt === null || approvedAt > now.getTime())
+    errors.push("V1D-SV bindings approval time is invalid or in the future.");
+  if (bindingsExpireAt === null || bindingsExpireAt <= now.getTime())
+    errors.push("V1D-SV approved bindings are invalid or expired.");
+  if (approvedAt !== null && issuedAt !== null && approvedAt > issuedAt)
+    errors.push("V1D-SV authorization predates its approved bindings.");
+  if (
+    bindingsExpireAt !== null &&
+    authorizationExpiresAt !== null &&
+    authorizationExpiresAt > bindingsExpireAt
+  )
+    errors.push("V1D-SV authorization outlives its approved bindings.");
+
+  for (const field of APPROVED_BINDING_FIELDS) {
+    if (approval.bindings?.[field] !== fields.get(field))
+      errors.push(`V1D-SV ${field} mismatches its approved binding.`);
+  }
+  return errors;
+}
+
+function validateRecord(text, options) {
+  const errors = [];
+  const { now, isCommit, isProtectedMainCommit } = options;
   const { fields, duplicates } = parseRecord(text);
   for (const field of duplicates)
     errors.push(`V1D-SV authorization record duplicates ${field}.`);
@@ -102,6 +191,10 @@ function validateRecord(text, now, isCommit) {
   else if (!isCommit(auditedCommit))
     errors.push(
       "V1D-SV authorization record audited commit is not in the repository.",
+    );
+  else if (!isProtectedMainCommit(auditedCommit))
+    errors.push(
+      "V1D-SV authorization record audited commit is not on protected main.",
     );
   if (
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(
@@ -134,6 +227,12 @@ function validateRecord(text, now, isCommit) {
     errors.push("V1D-SV authorization expiry must follow issuance.");
   if (expiresAt !== null && expiresAt <= now.getTime())
     errors.push("V1D-SV authorization record is expired.");
+  if (issuedAt !== null && issuedAt > now.getTime())
+    errors.push("V1D-SV authorization issue time is in the future.");
+  if (planIssuedAt !== null && planIssuedAt > now.getTime())
+    errors.push("V1D-SV Factory plan issue time is in the future.");
+  if (planApprovedAt !== null && planApprovedAt > now.getTime())
+    errors.push("V1D-SV Factory plan approval time is in the future.");
   if (
     planIssuedAt !== null &&
     planApprovedAt !== null &&
@@ -151,6 +250,13 @@ function validateRecord(text, now, isCommit) {
   )
     errors.push("V1D-SV Factory plan approval must precede authority expiry.");
 
+  if (
+    /^[a-f0-9]{40}$/.test(auditedCommit) &&
+    isCommit(auditedCommit) &&
+    isProtectedMainCommit(auditedCommit)
+  )
+    errors.push(...validateApprovedBindings(fields, auditedCommit, options));
+
   return errors;
 }
 
@@ -159,7 +265,9 @@ export function validateV1dAuthority(
   {
     isRegularFile = () => false,
     readText = () => null,
+    readAtCommit = () => null,
     isCommit = () => false,
+    isProtectedMainCommit = () => false,
     now = new Date(),
   } = {},
 ) {
@@ -209,7 +317,17 @@ export function validateV1dAuthority(
         errors.push(
           "Open V1D-SV authority has an unreadable authorization record.",
         );
-      else errors.push(...validateRecord(record, now, isCommit));
+      else
+        errors.push(
+          ...validateRecord(record, {
+            isRegularFile,
+            readText,
+            readAtCommit,
+            isCommit,
+            isProtectedMainCommit,
+            now,
+          }),
+        );
     }
   }
   const g2 = gates.gates?.find((gate) => gate.id === "G2");

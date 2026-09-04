@@ -5,6 +5,7 @@ import { validateV1dAuthority } from "./lib/validate-v1d-authority.mjs";
 
 const baseline = JSON.parse(fs.readFileSync("governance/gates.json", "utf8"));
 const exactPath = "docs/governance/authorizations/V1D-SV-EXACT.md";
+const bindingPath = "docs/governance/authorizations/bindings/V1D-SV-EXACT.json";
 const fixedNow = new Date("2026-09-04T14:00:00Z");
 const digest = `sha256:${"a".repeat(64)}`;
 const validFields = {
@@ -12,14 +13,15 @@ const validFields = {
   Status: "Authorized",
   Approver: "Beowxlf",
   "Audited commit": "b".repeat(40),
-  "Issued at": "2099-01-01T00:02:00Z",
-  "Expires at": "2100-01-01T00:00:00Z",
+  "Approved bindings record": bindingPath,
+  "Issued at": "2026-09-04T13:03:00Z",
+  "Expires at": "2026-09-05T00:00:00Z",
   "Server binding": digest,
   "Signed release digest": digest,
   "Factory plan ID": "plan-v1d-0001",
   "Authenticated state hash": digest,
-  "Factory plan issued at": "2099-01-01T00:00:00Z",
-  "Factory plan approved at": "2099-01-01T00:01:00Z",
+  "Factory plan issued at": "2026-09-04T13:00:00Z",
+  "Factory plan approved at": "2026-09-04T13:01:00Z",
   "Factory plan approver": "Beowxlf",
   "External dependency set binding": digest,
   "Service identity binding": digest,
@@ -48,6 +50,39 @@ function renderRecord(fields = validFields) {
     .join("\n");
 }
 
+function renderApprovedBindings(fields = validFields, overrides = {}) {
+  const bindingFields = [
+    "Server binding",
+    "Signed release digest",
+    "Factory plan ID",
+    "Authenticated state hash",
+    "Factory plan issued at",
+    "Factory plan approved at",
+    "Factory plan approver",
+    "External dependency set binding",
+    "Service identity binding",
+    "Database identity binding",
+    "Synthetic identity profile binding",
+    "Private network policy binding",
+    "Endpoint routes",
+    "Rollback binding",
+    "Recovery binding",
+    "Evidence boundary binding",
+  ];
+  return JSON.stringify({
+    schemaVersion: 1,
+    authority: "V1D-SV",
+    status: "Approved",
+    approver: "Beowxlf",
+    approvedAt: "2026-09-04T13:02:00Z",
+    expiresAt: "2026-09-05T00:00:00Z",
+    bindings: Object.fromEntries(
+      bindingFields.map((field) => [field, fields[field]]),
+    ),
+    ...overrides,
+  });
+}
+
 function open(config) {
   authority(config).status = "open";
   authority(config).authorization = exactPath;
@@ -58,16 +93,38 @@ function expectFailure(
   name,
   mutateConfig,
   expected,
-  { mutateFields, regularFile = true, recordText } = {},
+  {
+    mutateFields,
+    mutateApproval,
+    regularFile = true,
+    protectedMain = true,
+    recordText,
+    approvedText,
+    currentApprovedText,
+  } = {},
 ) {
   const config = clone();
   mutateConfig(config);
   const fields = structuredClone(validFields);
   mutateFields?.(fields);
+  const approval = JSON.parse(renderApprovedBindings(fields));
+  mutateApproval?.(approval);
+  const priorApproval = approvedText ?? JSON.stringify(approval);
   const errors = validateV1dAuthority(config, {
-    isRegularFile: (path) => regularFile && path === exactPath,
-    readText: () => recordText ?? renderRecord(fields),
+    isRegularFile: (path) =>
+      regularFile && (path === exactPath || path === bindingPath),
+    readText: (path) => {
+      if (path === exactPath) return recordText ?? renderRecord(fields);
+      if (path === bindingPath) return currentApprovedText ?? priorApproval;
+      return null;
+    },
+    readAtCommit: (commit, path) =>
+      commit === validFields["Audited commit"] && path === bindingPath
+        ? priorApproval
+        : null,
     isCommit: (commit) => commit === validFields["Audited commit"],
+    isProtectedMainCommit: (commit) =>
+      protectedMain && commit === validFields["Audited commit"],
     now: fixedNow,
   });
   assert(
@@ -203,6 +260,9 @@ expectFailure("bad audited commit", open, "invalid audited commit", {
 expectFailure("unknown audited commit", open, "not in the repository", {
   mutateFields: (fields) => (fields["Audited commit"] = "c".repeat(40)),
 });
+expectFailure("audited commit off main", open, "not on protected main", {
+  protectedMain: false,
+});
 expectFailure("bad plan ID", open, "invalid Factory plan ID", {
   mutateFields: (fields) => (fields["Factory plan ID"] = "short"),
 });
@@ -217,24 +277,49 @@ expectFailure("expired authority", open, "record is expired", {
 });
 expectFailure("plan approval before issuance", open, "approval must follow", {
   mutateFields: (fields) =>
-    (fields["Factory plan approved at"] = "2098-12-31T23:59:00Z"),
+    (fields["Factory plan approved at"] = "2026-09-04T12:59:00Z"),
 });
 expectFailure(
   "authority before plan approval",
   open,
   "issued after Factory plan",
   {
-    mutateFields: (fields) => (fields["Issued at"] = "2099-01-01T00:00:30Z"),
+    mutateFields: (fields) => (fields["Issued at"] = "2026-09-04T13:00:30Z"),
   },
 );
+expectFailure("future authorization", open, "issue time is in the future", {
+  mutateFields: (fields) => (fields["Issued at"] = "2026-09-04T15:03:00Z"),
+});
+expectFailure("future plan approval", open, "approval time is in the future", {
+  mutateFields: (fields) =>
+    (fields["Factory plan approved at"] = "2026-09-04T15:01:00Z"),
+});
+expectFailure("changed approved bindings", open, "changed after the audited", {
+  currentApprovedText: "{}",
+});
+expectFailure(
+  "mismatched approved binding",
+  open,
+  "Server binding mismatches",
+  {
+    mutateApproval: (approval) =>
+      (approval.bindings["Server binding"] = `sha256:${"c".repeat(64)}`),
+  },
+);
+expectFailure("future bindings approval", open, "approval time is invalid", {
+  mutateApproval: (approval) => (approval.approvedAt = "2026-09-04T15:02:00Z"),
+});
 
 const exactOpen = clone();
 open(exactOpen);
 assert.deepEqual(
   validateV1dAuthority(exactOpen, {
-    isRegularFile: (path) => path === exactPath,
-    readText: () => renderRecord(),
+    isRegularFile: (path) => path === exactPath || path === bindingPath,
+    readText: (path) =>
+      path === exactPath ? renderRecord() : renderApprovedBindings(),
+    readAtCommit: () => renderApprovedBindings(),
     isCommit: (commit) => commit === validFields["Audited commit"],
+    isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
     now: fixedNow,
   }),
   [],

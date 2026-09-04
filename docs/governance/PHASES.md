@@ -79,7 +79,8 @@ Pre-G2 V1D validation boundary:
   required external dependency implementation pass;
 - the Factory's non-deployment planning path must first issue a fresh plan and
   authenticated state hash for exact owner approval;
-- a separate exact record may then open `V1D-SV` and permit execution only for
+- a sanitized approved-bindings manifest must then reach protected `main`;
+- a separate later exact record may open `V1D-SV` and permit execution only for
   the named private control-plane server and synthetic validation identities;
 - canary and endpoint routes remain blocked, and no endpoint-usable grant,
   identity, package, or traffic is permitted; and

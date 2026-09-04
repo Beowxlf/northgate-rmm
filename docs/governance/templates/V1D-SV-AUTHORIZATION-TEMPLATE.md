@@ -5,8 +5,8 @@ has issued a fresh non-deployment plan and the owner has approved its exact plan
 ID and authenticated state hash. Replace every placeholder. The governance
 audit rejects an open `V1D-SV` authority if any required field is missing,
 duplicated, malformed, expired, or still contains a placeholder.
-The audited commit must resolve to a commit in this repository. All timestamps
-use UTC `YYYY-MM-DDTHH:MM:SSZ` form.
+The audited commit must resolve to an existing protected `main` commit. All
+timestamps use UTC `YYYY-MM-DDTHH:MM:SSZ` form.
 
 Exact private infrastructure facts remain in the protected evidence system.
 Public fields ending in `binding` contain SHA-256 digests of the canonical
@@ -16,6 +16,7 @@ Authority: V1D-SV
 Status: Authorized  
 Approver: Beowxlf  
 Audited commit: PLACEHOLDER  
+Approved bindings record: docs/governance/authorizations/bindings/PLACEHOLDER.json  
 Issued at: PLACEHOLDER  
 Expires at: PLACEHOLDER  
 Server binding: sha256:PLACEHOLDER  
@@ -39,3 +40,11 @@ The record authorizes only execution of the already approved Factory plan. It
 does not authorize plan expansion, endpoint package installation,
 endpoint-usable enrollment or identity material, canary or endpoint traffic,
 artifact publication or update, or opening G2.
+
+The approved-bindings JSON must be committed first. `Audited commit` identifies
+the repository commit that already contains it. The governance audit loads that
+exact historical file, requires the current content to remain identical, and
+compares every operational field in this authorization with the approved value.
+Use
+[`V1D-SV-APPROVED-BINDINGS-TEMPLATE.json`](V1D-SV-APPROVED-BINDINGS-TEMPLATE.json)
+for its schema.

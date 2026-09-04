@@ -34,11 +34,14 @@ and operationally unusable by endpoints and removed or revoked at cleanup.
 
 The machine-readable record format is defined by the
 [V1D-SV authorization template](../../governance/templates/V1D-SV-AUTHORIZATION-TEMPLATE.md).
-The governance audit parses the record and rejects missing, duplicate,
-placeholder, malformed, expired, or mismatched authority, owner, commit, time,
-server, release, plan, state-hash, dependency, identity, network, rollback,
-recovery, and evidence bindings. Plan approval must follow plan issuance, and
-the V1D-SV record must be issued after that approval.
+The separately approved binding manifest must already exist at the audited
+protected-`main` commit. The governance audit loads that historical version,
+requires the current content to remain identical, compares every operational binding,
+and rejects missing, duplicate, placeholder, malformed, expired, future-dated,
+or mismatched authority, owner, commit, time, server, release, plan, state-hash,
+dependency, identity, network, rollback, recovery, and evidence values. Plan
+approval must follow plan issuance, and the V1D-SV record must be issued after
+that approval.
 
 V1D-SV cannot install an endpoint package, issue an endpoint-usable grant or
 identity, admit endpoint traffic, publish or update artifacts, expand the plan,

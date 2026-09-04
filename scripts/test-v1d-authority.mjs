@@ -141,6 +141,7 @@ function buildPrerequisites() {
     records[rollbackPath(id)] = renderRollbackEvidence(id);
   }
   records[v1cPath] = renderPrerequisite("V1C", "Passed", records, {
+    releaseDigest: digest,
     controls: v1cControls,
   });
   for (const [id, path] of dependencyRecords)
@@ -577,6 +578,15 @@ expectFailure("V1C controls are not an array", open, "invalid control set", {
     records[v1cPath] = canonical(record);
   },
 });
+expectFailure(
+  "V1C evidence substituted for another signed release",
+  open,
+  "release digest mismatches the authorized signed release",
+  {
+    mutateFields: (fields) =>
+      (fields["Signed release digest"] = `sha256:${"c".repeat(64)}`),
+  },
+);
 expectFailure(
   "V1C approval after Factory planning",
   open,

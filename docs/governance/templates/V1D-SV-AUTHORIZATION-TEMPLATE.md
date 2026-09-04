@@ -56,6 +56,9 @@ JSON is rejected. The manifest must hash and reference the protected-main
 [`V1C-PASS-TEMPLATE.json`](V1C-PASS-TEMPLATE.json) record and all seven separate
 external-dependency records built from
 [`V1D-DEPENDENCY-APPROVAL-TEMPLATE.json`](V1D-DEPENDENCY-APPROVAL-TEMPLATE.json).
+The V1C pass record's `releaseDigest` must be the exact `Signed release digest`
+authorized here, preventing trust evidence for one release from qualifying a
+different release.
 Each prerequisite must reference immutable scoped provision/verification and
 rollback receipts built from
 [`V1D-PREREQUISITE-EVIDENCE-TEMPLATE.json`](V1D-PREREQUISITE-EVIDENCE-TEMPLATE.json)

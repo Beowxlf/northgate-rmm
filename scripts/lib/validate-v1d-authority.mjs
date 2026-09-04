@@ -356,6 +356,12 @@ function validatePrerequisite(
     ),
   );
   if (expectedId === "V1C") {
+    if (!/^sha256:[a-f0-9]{64}$/.test(record.releaseDigest ?? ""))
+      errors.push("V1D-SV V1C pass record has an invalid release digest.");
+    if (record.releaseDigest !== options.authorizedReleaseDigest)
+      errors.push(
+        "V1D-SV V1C pass record release digest mismatches the authorized signed release.",
+      );
     const controls = record.controls;
     if (
       !Array.isArray(controls) ||
@@ -490,6 +496,7 @@ function validateApprovedBindings(
       authorityExpiresAt: authorizationExpiresAt,
       planIssuedAt: validDate(fields.get("Factory plan issued at")),
       bindingsApprovedAt: approvedAt,
+      authorizedReleaseDigest: fields.get("Signed release digest"),
     }),
   );
   return errors;

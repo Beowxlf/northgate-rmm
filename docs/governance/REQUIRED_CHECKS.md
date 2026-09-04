@@ -21,6 +21,8 @@ network attempts fail the check; a later response cannot erase a confirmed
 finding.
 Locked dependency installation disables npm's implicit advisory call so this
 explicit bounded, classified audit is the only network-dependent npm audit gate.
+Its failure is retained while deterministic checks continue, then an always-run
+final enforcement step keeps the required security check failed.
 
 ## Python control-plane checks
 

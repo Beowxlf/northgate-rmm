@@ -55,6 +55,8 @@ jobs:
           go-version-file: agent/go.mod
           cache: false
       - name: Audit locked npm dependencies
+        id: npm-audit
+        continue-on-error: true
         run: |
           npm ci --ignore-scripts --no-audit
           node --test scripts/classify-npm-audit-result.test.mjs
@@ -189,3 +191,6 @@ jobs:
           --exclude 'github.com/Beowxlf/northgate-rmm/security/advisories/new'
           --accept '200,204,206,429'
           .
+      - name: Enforce npm advisory audit result
+        if: ${{ always() }}
+        run: test "${{ steps.npm-audit.outcome }}" = "success"

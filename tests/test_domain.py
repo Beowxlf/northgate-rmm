@@ -7,6 +7,7 @@ import pytest
 from northgate_rmm.domain import (
     Endpoint,
     EndpointIdentity,
+    EndpointLifecycle,
     EnrollmentGrant,
     FreshnessPolicy,
     HeartbeatPayload,
@@ -91,6 +92,7 @@ def test_endpoint_and_identity_validate_bounded_fields() -> None:
             endpoint_id=endpoint_id,
             public_key_fingerprint="sha256:" + "a" * 64,
             created_at=NOW,
+            status=EndpointLifecycle.REVOKED,
             revoked_at=NOW,
         )
     with pytest.raises(ValidationError, match="predate"):
@@ -99,8 +101,19 @@ def test_endpoint_and_identity_validate_bounded_fields() -> None:
             endpoint_id=endpoint_id,
             public_key_fingerprint="sha256:" + "a" * 64,
             created_at=NOW,
+            status=EndpointLifecycle.REVOKED,
             revoked_at=NOW - timedelta(seconds=1),
             revocation_reason="invalid chronology",
+        )
+    with pytest.raises(ValidationError, match="only a revoked identity"):
+        EndpointIdentity(
+            identity_id=identity_id,
+            endpoint_id=endpoint_id,
+            public_key_fingerprint="sha256:" + "a" * 64,
+            created_at=NOW,
+            status=EndpointLifecycle.ISSUED,
+            revoked_at=NOW,
+            revocation_reason="inconsistent state",
         )
     with pytest.raises(ValidationError, match="display_name"):
         Endpoint(

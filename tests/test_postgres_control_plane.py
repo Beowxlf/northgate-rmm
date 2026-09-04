@@ -341,6 +341,148 @@ def test_enrollment_grant_expiry_uses_absolute_utc_time(postgres_dsn: str) -> No
     assert plane.get_enrollment_grant(grant.grant_id) == grant
 
 
+def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
+    postgres_dsn: str,
+) -> None:
+    plane = PostgresControlPlane(postgres_dsn)
+    _grant, token = plane.create_enrollment_grant(
+        display_name="pending-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+        actor_id="release-operator",
+    )
+    endpoint, identity = plane.begin_endpoint_enrollment(
+        token=token,
+        public_key_fingerprint="sha256:" + "8" * 64,
+        now=NOW + timedelta(seconds=1),
+    )
+    assert identity.lifecycle is EndpointLifecycle.PENDING
+    retry_endpoint, retry_identity = plane.begin_endpoint_enrollment(
+        token=token,
+        public_key_fingerprint="sha256:" + "8" * 64,
+        now=NOW + timedelta(seconds=2),
+    )
+    assert retry_endpoint == endpoint
+    assert retry_identity == identity
+    with pytest.raises(AuthorizationError, match="unavailable"):
+        plane.begin_endpoint_enrollment(
+            token=token,
+            public_key_fingerprint="sha256:" + "9" * 64,
+            now=NOW + timedelta(seconds=2),
+        )
+    with pytest.raises(AuthorizationError, match="unauthorized"):
+        plane.authenticate_endpoint_certificate(
+            endpoint_id=endpoint.endpoint_id,
+            public_key_fingerprint=identity.public_key_fingerprint,
+            authenticated_at=NOW + timedelta(seconds=2),
+            correlation_id=uuid4(),
+        )
+
+    not_before = NOW - timedelta(minutes=1)
+    not_after = NOW + timedelta(hours=23)
+    issued = plane.record_issued_endpoint_identity(
+        identity.identity_id,
+        certificate_serial="abc123",
+        certificate_issuer="CN=NorthGate Endpoint Issuer",
+        certificate_not_before=not_before,
+        certificate_not_after=not_after,
+        now=NOW + timedelta(seconds=3),
+    )
+    assert issued.identity_id == identity.identity_id
+    assert issued.lifecycle is EndpointLifecycle.ISSUED
+    authenticated = plane.authenticate_endpoint_certificate(
+        endpoint_id=endpoint.endpoint_id,
+        public_key_fingerprint=identity.public_key_fingerprint,
+        authenticated_at=NOW + timedelta(seconds=4),
+        correlation_id=uuid4(),
+    )
+    assert authenticated == issued
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT identity_status, activated_at FROM endpoint_identities "
+            "WHERE identity_id = %s",
+            (identity.identity_id,),
+        )
+        assert cursor.fetchone() == ("issued", None)
+    retry = plane.record_issued_endpoint_identity(
+        identity.identity_id,
+        certificate_serial="abc123",
+        certificate_issuer="CN=NorthGate Endpoint Issuer",
+        certificate_not_before=not_before,
+        certificate_not_after=not_after,
+        now=NOW + timedelta(seconds=5),
+    )
+    assert retry == issued
+    pending_agent = SyntheticAgent(
+        endpoint_id=endpoint.endpoint_id,
+        identity_id=identity.identity_id,
+        platform=Platform.LINUX,
+        architecture="amd64",
+    )
+    with pytest.raises(AuthorizationError, match="activation heartbeat"):
+        plane.ingest_inventory(
+            authenticated_identity_id=identity.identity_id,
+            message=pending_agent.inventory(
+                now=NOW + timedelta(seconds=6),
+                fields={"os.id": "debian"},
+            ),
+            received_at=NOW + timedelta(seconds=7),
+        )
+    plane.ingest_heartbeat(
+        authenticated_identity_id=identity.identity_id,
+        message=pending_agent.heartbeat(now=NOW + timedelta(seconds=8)),
+        received_at=NOW + timedelta(seconds=9),
+    )
+    assert (
+        plane.get_identity(identity.identity_id).lifecycle is EndpointLifecycle.ACTIVE
+    )
+    with pytest.raises(AuthorizationError, match="unavailable"):
+        plane.begin_endpoint_enrollment(
+            token=token,
+            public_key_fingerprint=identity.public_key_fingerprint,
+            now=NOW + timedelta(seconds=10),
+        )
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT identity_status, certificate_serial, certificate_issuer,
+                   certificate_not_before, certificate_not_after, activated_at
+            FROM endpoint_identities
+            WHERE identity_id = %s
+            """,
+            (identity.identity_id,),
+        )
+        row = cursor.fetchone()
+    assert row == (
+        "active",
+        "abc123",
+        "CN=NorthGate Endpoint Issuer",
+        not_before,
+        not_after,
+        NOW + timedelta(seconds=9),
+    )
+    activation_decisions = [
+        event.decision
+        for event in plane.audit_events
+        if event.action == "identity.issue"
+    ]
+    assert activation_decisions == ["accepted", "no_change"]
+    grant_decisions = [
+        event.decision
+        for event in plane.audit_events
+        if event.action == "enrollment_grant.consume"
+    ]
+    assert grant_decisions == ["accepted", "no_change", "rejected", "rejected"]
+    endpoint_activations = [
+        event
+        for event in plane.audit_events
+        if event.action == "identity.activate" and event.decision == "accepted"
+    ]
+    assert len(endpoint_activations) == 1
+    assert endpoint_activations[0].reason == "first authenticated heartbeat accepted"
+
+
 def test_enrollment_grant_rejections_are_generic_and_audited(
     postgres_dsn: str,
 ) -> None:
@@ -429,7 +571,7 @@ def test_enrollment_grant_rejections_are_generic_and_audited(
             public_key_fingerprint="sha256:" + "d" * 64,
             now=NOW + timedelta(minutes=20),
         )
-    assert plane.audit_events[-1].reason == "grant is already consumed"
+    assert plane.audit_events[-1].reason == "grant is expired"
 
 
 def test_concurrent_enrollment_grant_consumption_has_one_winner(
@@ -650,6 +792,208 @@ def test_agent_message_api_rejects_unknown_and_revoked_certificates(
         "certificate identity is revoked",
     ]
     assert plane.observations == ()
+
+
+def test_rotation_keeps_history_and_rejects_the_previous_identity(
+    postgres_dsn: str,
+) -> None:
+    plane, agent = enrolled_plane(postgres_dsn)
+    previous = plane.get_identity(agent.identity_id)
+    replacement_id = uuid4()
+    replacement_fingerprint = "sha256:" + "9" * 64
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+        cursor.execute(
+            """
+            INSERT INTO endpoint_identities (
+                identity_id, endpoint_id, public_key_fingerprint, created_at,
+                identity_status, previous_identity_id
+            ) VALUES (%s, %s, %s, %s, 'active', %s)
+            """,
+            (
+                replacement_id,
+                agent.endpoint_id,
+                replacement_fingerprint,
+                NOW + timedelta(minutes=1),
+                previous.identity_id,
+            ),
+        )
+        cursor.execute(
+            """
+            UPDATE endpoint_identities
+            SET identity_status = 'retired'
+            WHERE identity_id = %s
+            """,
+            (previous.identity_id,),
+        )
+        cursor.execute(
+            "UPDATE endpoints SET identity_id = %s WHERE endpoint_id = %s",
+            (replacement_id, agent.endpoint_id),
+        )
+
+    with pytest.raises(AuthorizationError, match="unauthorized"):
+        plane.authenticate_endpoint_certificate(
+            endpoint_id=agent.endpoint_id,
+            public_key_fingerprint=previous.public_key_fingerprint,
+            authenticated_at=NOW + timedelta(minutes=2),
+            correlation_id=uuid4(),
+        )
+    replacement = plane.authenticate_endpoint_certificate(
+        endpoint_id=agent.endpoint_id,
+        public_key_fingerprint=replacement_fingerprint,
+        authenticated_at=NOW + timedelta(minutes=2),
+        correlation_id=uuid4(),
+    )
+    assert replacement.identity_id == replacement_id
+    assert plane.get_endpoint(agent.endpoint_id).identity_id == replacement_id
+    assert plane.get_identity(previous.identity_id) == replace(
+        previous,
+        status=EndpointLifecycle.RETIRED,
+    )
+    with pytest.raises(AuthorizationError, match="not current"):
+        plane.ingest_heartbeat(
+            authenticated_identity_id=previous.identity_id,
+            message=agent.heartbeat(now=NOW + timedelta(minutes=2)),
+            received_at=NOW + timedelta(minutes=2, seconds=1),
+        )
+    rejected_authentication = next(
+        event
+        for event in plane.audit_events
+        if event.action == "certificate.authenticate" and event.decision == "rejected"
+    )
+    assert rejected_authentication.reason == "certificate identity is not current"
+
+
+def test_rotation_lineage_is_same_endpoint_chronological_and_immutable(
+    postgres_dsn: str,
+) -> None:
+    plane, first_agent = enrolled_plane(postgres_dsn)
+    second_agent = SyntheticAgent.enroll(
+        plane,
+        display_name="second-linux-db-sim",
+        platform=Platform.LINUX,
+        architecture="x86_64",
+        now=NOW,
+    )
+
+    second_replacement_id = uuid4()
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+        cursor.execute(
+            """
+            INSERT INTO endpoint_identities (
+                identity_id, endpoint_id, public_key_fingerprint, created_at,
+                identity_status, previous_identity_id
+            ) VALUES (%s, %s, %s, %s, 'active', %s)
+            """,
+            (
+                second_replacement_id,
+                second_agent.endpoint_id,
+                "sha256:" + "4" * 64,
+                NOW + timedelta(minutes=1),
+                second_agent.identity_id,
+            ),
+        )
+        cursor.execute(
+            """
+            UPDATE endpoint_identities
+            SET identity_status = 'retired'
+            WHERE identity_id = %s
+            """,
+            (second_agent.identity_id,),
+        )
+        cursor.execute(
+            "UPDATE endpoints SET identity_id = %s WHERE endpoint_id = %s",
+            (second_replacement_id, second_agent.endpoint_id),
+        )
+
+    with (
+        pytest.raises(psycopg.errors.ForeignKeyViolation),
+        psycopg.connect(postgres_dsn) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            """
+            UPDATE endpoints
+            SET identity_id = %s
+            WHERE endpoint_id = %s
+            """,
+            (second_agent.identity_id, first_agent.endpoint_id),
+        )
+
+    with (
+        pytest.raises(psycopg.errors.CheckViolation),
+        psycopg.connect(postgres_dsn) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            """
+                INSERT INTO endpoint_identities (
+                    identity_id, endpoint_id, public_key_fingerprint, created_at,
+                    identity_status, previous_identity_id
+                ) VALUES (%s, %s, %s, %s, 'active', %s)
+                """,
+            (
+                uuid4(),
+                first_agent.endpoint_id,
+                "sha256:" + "7" * 64,
+                NOW + timedelta(minutes=1),
+                second_agent.identity_id,
+            ),
+        )
+
+    with (
+        pytest.raises(psycopg.errors.CheckViolation),
+        psycopg.connect(postgres_dsn) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            """
+                INSERT INTO endpoint_identities (
+                    identity_id, endpoint_id, public_key_fingerprint, created_at,
+                    identity_status, previous_identity_id
+                ) VALUES (%s, %s, %s, %s, 'active', %s)
+                """,
+            (
+                uuid4(),
+                first_agent.endpoint_id,
+                "sha256:" + "6" * 64,
+                NOW,
+                first_agent.identity_id,
+            ),
+        )
+
+    replacement_id = uuid4()
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO endpoint_identities (
+                identity_id, endpoint_id, public_key_fingerprint, created_at,
+                identity_status, previous_identity_id
+            ) VALUES (%s, %s, %s, %s, 'active', %s)
+            """,
+            (
+                replacement_id,
+                first_agent.endpoint_id,
+                "sha256:" + "5" * 64,
+                NOW + timedelta(minutes=1),
+                first_agent.identity_id,
+            ),
+        )
+
+    with (
+        pytest.raises(psycopg.errors.CheckViolation),
+        psycopg.connect(postgres_dsn) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            """
+                UPDATE endpoint_identities
+                SET previous_identity_id = NULL
+                WHERE identity_id = %s
+                """,
+            (replacement_id,),
+        )
 
 
 def test_inventory_binding_and_both_replay_classes_fail_closed(

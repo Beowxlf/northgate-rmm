@@ -51,6 +51,8 @@ MAX_REQUESTS_PER_IDENTITY_WINDOW = 32
 MAX_GLOBAL_REQUESTS_PER_WINDOW = 160
 MAX_TRACKED_IDENTITIES = 4_096
 
+_IdentityQuotaKey = tuple[UUID, str]
+
 
 class PeerCertificate(Protocol):
     def getpeercert(self, binary_form: bool = False) -> bytes | dict[str, object]: ...
@@ -266,7 +268,7 @@ class _AgentTLSAdapter:
         self._authority = authority
         self._request_timeout_seconds = request_timeout_seconds
         self._request_slots = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-        self._active_identity_requests: dict[UUID, int] = {}
+        self._active_identity_requests: dict[_IdentityQuotaKey, int] = {}
         self._rate_limiter = _AgentRateLimiter()
 
     async def handle(self, request: web.Request) -> web.Response:
@@ -275,7 +277,7 @@ class _AgentTLSAdapter:
         if _single_header(request, "Host") != self._authority:
             return _response(421, b'{"error":"misdirected_request"}')
         operation_task: asyncio.Task[AgentMessageResponse] | None = None
-        admitted_endpoint_id: UUID | None = None
+        admitted_identity_key: _IdentityQuotaKey | None = None
         try:
             async with asyncio.timeout(self._request_timeout_seconds):
                 ssl_object = (
@@ -287,8 +289,12 @@ class _AgentTLSAdapter:
                     peer = extract_verified_client_certificate(ssl_object)
                 except ValidationError:
                     return _response(403, b'{"error":"unauthorized"}')
+                identity_key = (
+                    peer.endpoint_id,
+                    peer.public_key_fingerprint,
+                )
                 if not self._rate_limiter.allow(
-                    peer.endpoint_id, asyncio.get_running_loop().time()
+                    identity_key, asyncio.get_running_loop().time()
                 ):
                     return _response(429, b'{"error":"rate_limited"}')
                 content_type = _single_header(request, "Content-Type")
@@ -296,7 +302,7 @@ class _AgentTLSAdapter:
                 if content_type is None or content_encoding is _DUPLICATE_HEADER:
                     return _response(400, b'{"error":"invalid_headers"}')
                 active_for_identity = self._active_identity_requests.get(
-                    peer.endpoint_id, 0
+                    identity_key, 0
                 )
                 if (
                     self._request_slots.locked()
@@ -304,10 +310,8 @@ class _AgentTLSAdapter:
                 ):
                     return _response(503, b'{"error":"listener_busy"}')
                 await self._request_slots.acquire()
-                self._active_identity_requests[peer.endpoint_id] = (
-                    active_for_identity + 1
-                )
-                admitted_endpoint_id = peer.endpoint_id
+                self._active_identity_requests[identity_key] = active_for_identity + 1
+                admitted_identity_key = identity_key
                 body = await request.read()
                 received_at = datetime.now(UTC)
                 operation_task = asyncio.create_task(
@@ -335,53 +339,53 @@ class _AgentTLSAdapter:
             if (
                 operation_task is not None
                 and not operation_task.done()
-                and admitted_endpoint_id is not None
+                and admitted_identity_key is not None
             ):
                 operation_task.add_done_callback(
                     partial(
                         self._release_request_slot_after_task,
-                        endpoint_id=admitted_endpoint_id,
+                        identity_key=admitted_identity_key,
                     )
                 )
-                admitted_endpoint_id = None
+                admitted_identity_key = None
             return _response(408, b'{"error":"request_timeout"}')
         except (ConnectionError, asyncio.CancelledError):
             if (
                 operation_task is not None
                 and not operation_task.done()
-                and admitted_endpoint_id is not None
+                and admitted_identity_key is not None
             ):
                 operation_task.add_done_callback(
                     partial(
                         self._release_request_slot_after_task,
-                        endpoint_id=admitted_endpoint_id,
+                        identity_key=admitted_identity_key,
                     )
                 )
-                admitted_endpoint_id = None
+                admitted_identity_key = None
             raise
         finally:
-            if admitted_endpoint_id is not None:
-                self._release_request_slot(admitted_endpoint_id)
+            if admitted_identity_key is not None:
+                self._release_request_slot(admitted_identity_key)
 
         return _application_response(result)
 
-    def _release_request_slot(self, endpoint_id: UUID) -> None:
-        active = self._active_identity_requests.get(endpoint_id)
+    def _release_request_slot(self, identity_key: _IdentityQuotaKey) -> None:
+        active = self._active_identity_requests.get(identity_key)
         if active is None or active < 1:
             raise AssertionError("request admission accounting is inconsistent")
         if active == 1:
-            del self._active_identity_requests[endpoint_id]
+            del self._active_identity_requests[identity_key]
         else:
-            self._active_identity_requests[endpoint_id] = active - 1
+            self._active_identity_requests[identity_key] = active - 1
         self._request_slots.release()
 
     def _release_request_slot_after_task(
         self,
         _task: asyncio.Task[AgentMessageResponse],
         *,
-        endpoint_id: UUID,
+        identity_key: _IdentityQuotaKey,
     ) -> None:
-        self._release_request_slot(endpoint_id)
+        self._release_request_slot(identity_key)
 
 
 class _AgentRateLimiter:
@@ -389,19 +393,19 @@ class _AgentRateLimiter:
 
     def __init__(self) -> None:
         self._global: deque[float] = deque()
-        self._identities: OrderedDict[UUID, deque[float]] = OrderedDict()
+        self._identities: OrderedDict[_IdentityQuotaKey, deque[float]] = OrderedDict()
 
-    def allow(self, endpoint_id: UUID, now: float) -> bool:
+    def allow(self, identity_key: _IdentityQuotaKey, now: float) -> bool:
         cutoff = now - RATE_LIMIT_WINDOW_SECONDS
         _discard_before(self._global, cutoff)
-        identity = self._identities.get(endpoint_id)
+        identity = self._identities.get(identity_key)
         if identity is None:
             if len(self._identities) >= MAX_TRACKED_IDENTITIES:
                 self._identities.popitem(last=False)
             identity = deque()
-            self._identities[endpoint_id] = identity
+            self._identities[identity_key] = identity
         else:
-            self._identities.move_to_end(endpoint_id)
+            self._identities.move_to_end(identity_key)
         _discard_before(identity, cutoff)
         if (
             len(self._global) >= MAX_GLOBAL_REQUESTS_PER_WINDOW
@@ -423,28 +427,28 @@ class _ConnectionAdmission:
 
     def __init__(self) -> None:
         self._active = 0
-        self._active_by_identity: dict[UUID, int] = {}
+        self._active_by_identity: dict[_IdentityQuotaKey, int] = {}
 
-    def acquire(self, endpoint_id: UUID) -> bool:
-        active_for_identity = self._active_by_identity.get(endpoint_id, 0)
+    def acquire(self, identity_key: _IdentityQuotaKey) -> bool:
+        active_for_identity = self._active_by_identity.get(identity_key, 0)
         if (
             self._active >= MAX_CONCURRENT_REQUESTS
             or active_for_identity >= MAX_CONCURRENT_REQUESTS_PER_IDENTITY
         ):
             return False
         self._active += 1
-        self._active_by_identity[endpoint_id] = active_for_identity + 1
+        self._active_by_identity[identity_key] = active_for_identity + 1
         return True
 
-    def release(self, endpoint_id: UUID) -> None:
-        active_for_identity = self._active_by_identity.get(endpoint_id)
+    def release(self, identity_key: _IdentityQuotaKey) -> None:
+        active_for_identity = self._active_by_identity.get(identity_key)
         if self._active < 1 or active_for_identity is None:
             raise AssertionError("connection admission accounting is inconsistent")
         self._active -= 1
         if active_for_identity == 1:
-            del self._active_by_identity[endpoint_id]
+            del self._active_by_identity[identity_key]
         else:
-            self._active_by_identity[endpoint_id] = active_for_identity - 1
+            self._active_by_identity[identity_key] = active_for_identity - 1
 
 
 def extract_verified_client_certificate(
@@ -459,6 +463,17 @@ def extract_verified_client_certificate(
         raise ValidationError("verified client certificate is required")
     try:
         certificate = x509.load_der_x509_certificate(encoded)
+    except ValueError as error:
+        raise ValidationError("client certificate profile is invalid") from error
+    return validate_endpoint_certificate(certificate)
+
+
+def validate_endpoint_certificate(
+    certificate: x509.Certificate,
+) -> VerifiedClientCertificate:
+    """Validate the endpoint leaf profile and return its bound identity facts."""
+
+    try:
         constraints = certificate.extensions.get_extension_for_class(
             x509.BasicConstraints
         ).value
@@ -679,7 +694,7 @@ class _HardenedRequestHandler(RequestHandler):
         self._header_timeout_seconds = header_timeout_seconds
         self._header_timeout_handle: asyncio.TimerHandle | None = None
         self._connection_admission = connection_admission
-        self._admitted_endpoint_id: UUID | None = None
+        self._admitted_identity_key: _IdentityQuotaKey | None = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         super().connection_made(transport)
@@ -689,10 +704,11 @@ class _HardenedRequestHandler(RequestHandler):
         except ValidationError:
             self.force_close()
             return
-        if not self._connection_admission.acquire(peer.endpoint_id):
+        identity_key = (peer.endpoint_id, peer.public_key_fingerprint)
+        if not self._connection_admission.acquire(identity_key):
             self.force_close()
             return
-        self._admitted_endpoint_id = peer.endpoint_id
+        self._admitted_identity_key = identity_key
         self._header_timeout_handle = self._loop.call_later(
             self._header_timeout_seconds, self._expire_incomplete_headers
         )
@@ -708,9 +724,9 @@ class _HardenedRequestHandler(RequestHandler):
 
     def connection_lost(self, exc: BaseException | None) -> None:
         self._cancel_header_timeout()
-        if self._admitted_endpoint_id is not None:
-            self._connection_admission.release(self._admitted_endpoint_id)
-            self._admitted_endpoint_id = None
+        if self._admitted_identity_key is not None:
+            self._connection_admission.release(self._admitted_identity_key)
+            self._admitted_identity_key = None
         super().connection_lost(exc)
 
     def _expire_incomplete_headers(self) -> None:

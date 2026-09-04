@@ -56,7 +56,10 @@ class Platform(StrEnum):
 class EndpointLifecycle(StrEnum):
     """Identity lifecycle, kept separate from communication freshness."""
 
+    PENDING = "pending"
+    ISSUED = "issued"
     ACTIVE = "active"
+    RETIRED = "retired"
     REVOKED = "revoked"
 
 
@@ -90,6 +93,7 @@ class EndpointIdentity:
     endpoint_id: UUID
     public_key_fingerprint: str
     created_at: datetime
+    status: EndpointLifecycle = EndpointLifecycle.ACTIVE
     revoked_at: datetime | None = None
     revocation_reason: str | None = None
 
@@ -97,20 +101,19 @@ class EndpointIdentity:
         require_aware(self.created_at, "created_at")
         if re.fullmatch(r"sha256:[0-9a-f]{64}", self.public_key_fingerprint) is None:
             raise ValidationError("fingerprint must be a lowercase SHA-256 value")
+        if self.status is EndpointLifecycle.REVOKED:
+            if self.revoked_at is None or not self.revocation_reason:
+                raise ValidationError("revoked identity requires time and reason")
+        elif self.revoked_at is not None or self.revocation_reason is not None:
+            raise ValidationError("only a revoked identity may have revocation facts")
         if self.revoked_at is not None:
             require_aware(self.revoked_at, "revoked_at")
-            if not self.revocation_reason:
-                raise ValidationError("revoked identity requires a reason")
             if self.revoked_at < self.created_at:
                 raise ValidationError("revocation cannot predate identity creation")
 
     @property
     def lifecycle(self) -> EndpointLifecycle:
-        return (
-            EndpointLifecycle.REVOKED
-            if self.revoked_at is not None
-            else EndpointLifecycle.ACTIVE
-        )
+        return self.status
 
 
 @dataclass(frozen=True, slots=True)

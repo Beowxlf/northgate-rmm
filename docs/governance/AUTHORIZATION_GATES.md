@@ -29,6 +29,20 @@ exact scope, and an evidence result digest must recompute from its embedded,
 non-empty exact result; opaque unchecked digests fail closed. The exact required
 evidence IDs are enforced as follows:
 
+Each gate also permits exactly one operation string and one target string. The
+machine validator enforces these semantic prefixes so a correctly hashed scope
+cannot borrow authority from another gate:
+
+| Gate | Operation prefix                         | Target prefix                                  |
+| ---- | ---------------------------------------- | ---------------------------------------------- |
+| G2   | `install:linux-agent-read-only:`         | `linux-canary:`                                |
+| G3   | `install:windows-agent-read-only:`       | `windows-canary:`                              |
+| G4   | `execute:typed-read-only-job:`           | `canary-endpoint:`                             |
+| G5   | `execute:typed-state-change:`            | `canary-endpoint:`                             |
+| G6   | `release:signed-agent-update:`           | `canary-ring:`                                 |
+| G7   | `access:brokered-interactive:`           | `canary-endpoint:`                             |
+| G8   | `deploy:production:` or `expose:public:` | `production-environment:` or `public-service:` |
+
 | Gate | Required evidence IDs                                                                                                                                                                                                                        |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | G2   | `data-collection-inventory-approved`, `endpoint-target-approved`, `linux-package-qualified`, `linux-service-reviewed`, `resource-limits-verified`, `uninstall-revoke-plan-verified`, `v1d-closeout-accepted`, `vm-factory-plan-approved`     |

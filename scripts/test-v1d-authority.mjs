@@ -192,7 +192,10 @@ function renderCloseout(
   });
 }
 
-function buildProductGateFixture({ omitEvidenceId = null } = {}) {
+function buildProductGateFixture({
+  omitEvidenceId = null,
+  scopeOverrides = {},
+} = {}) {
   const records = {};
   const scopes = [
     ["Operation", "Operation record", "Operation binding"],
@@ -208,13 +211,14 @@ function buildProductGateFixture({ omitEvidenceId = null } = {}) {
     ],
   ];
   const exactScopes = {
-    Operation: ["install:northgate-rmm-agent"],
-    TargetSet: ["asset:linux-canary-01"],
+    Operation: ["install:linux-agent-read-only:northgate-rmm-agent"],
+    TargetSet: ["linux-canary:linux-canary-01"],
     ArtifactSet: ["artifact:northgate-rmm-agent-test-package"],
     IdentitySet: ["identity:linux-canary-agent"],
     NetworkPolicy: ["flow:linux-canary-to-control-plane:443/tcp"],
     Rollback: ["action:uninstall-package-and-revoke-identity"],
     EvidenceBoundary: ["repository:protected-main-records-only"],
+    ...scopeOverrides,
   };
   const targetScopeDigest = hash(canonical(exactScopes.TargetSet));
   const requiredEvidence = [
@@ -322,6 +326,19 @@ function closeoutOptions(
   } = {},
 ) {
   const productRecords = productGateFixture?.records ?? {};
+  const prerequisiteRecords = buildPrerequisites();
+  const factoryTrustText = renderFactoryApprovalTrust();
+  const factoryReceiptText = renderFactoryPlanReceipt();
+  const v1dRecords = {
+    ...prerequisiteRecords,
+    [bindingPath]: renderApprovedBindings(validFields, {}, prerequisiteRecords),
+    [factoryReceiptPath]: factoryReceiptText,
+    [factorySignaturePath]: renderFactorySignature(
+      factoryReceiptText,
+      JSON.parse(factoryTrustText).certificateSha256,
+    ),
+    [factoryTrustPath]: factoryTrustText,
+  };
   return {
     isRegularFile: (path) =>
       !missingPaths.includes(path) &&
@@ -329,6 +346,7 @@ function closeoutOptions(
         path === closeoutPath ||
         path === cleanupEvidencePath ||
         (productGateFixture !== null && path === g2AuthorizationPath) ||
+        Object.hasOwn(v1dRecords, path) ||
         Object.hasOwn(productRecords, path)),
     readText: (path) => {
       if (missingPaths.includes(path)) return null;
@@ -338,6 +356,7 @@ function closeoutOptions(
       if (path === cleanupEvidencePath) return evidenceText;
       if (path === g2AuthorizationPath)
         return productGateFixture?.authorizationText ?? null;
+      if (Object.hasOwn(v1dRecords, path)) return v1dRecords[path];
       return productRecords[path] ?? null;
     },
     readAtCommit: (_commit, path) => productRecords[path] ?? null,
@@ -353,6 +372,7 @@ function closeoutOptions(
       if (path === g2AuthorizationPath && productAuthorizationOnProtectedMain)
         return productGateFixture?.authorizationText ?? null;
       if (Object.hasOwn(productRecords, path)) return productRecords[path];
+      if (Object.hasOwn(v1dRecords, path)) return v1dRecords[path];
       if (artifactsOnProtectedMain && path === closeoutPath)
         return closeoutText;
       if (artifactsOnProtectedMain && path === cleanupEvidencePath)
@@ -368,6 +388,7 @@ function closeoutOptions(
       )
         return 1;
       if (Object.hasOwn(productRecords, path)) return 1;
+      if (Object.hasOwn(v1dRecords, path)) return 1;
       if (
         artifactsOnProtectedMain &&
         (path === closeoutPath || path === cleanupEvidencePath)
@@ -1601,6 +1622,18 @@ passed += 1;
 
 assert(
   validateV1dAuthority(
+    reopenedWithHistory,
+    closeoutOptions(reopenedWithHistory, {
+      artifactsOnProtectedMain: true,
+      missingPaths: [bindingPath],
+    }),
+  ).some((item) => item.includes("transitive consumed-lifecycle record")),
+  "an open-to-open change deleted older V1D approved bindings",
+);
+passed += 1;
+
+assert(
+  validateV1dAuthority(
     closedWithCloseout,
     closeoutOptions(priorOpen, { artifactsOnProtectedMain: true }),
   ).some((item) =>
@@ -1653,6 +1686,44 @@ assert.deepEqual(
     }),
   ),
   [],
+);
+passed += 1;
+
+const multiTargetG2Fixture = buildProductGateFixture({
+  scopeOverrides: {
+    TargetSet: ["linux-canary:one", "linux-canary:two"],
+  },
+});
+assert(
+  validateV1dAuthority(
+    g2AfterCloseout,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: multiTargetG2Fixture,
+    }),
+  ).some((item) =>
+    item.includes("TargetSet scope exceeds the gate semantic boundary"),
+  ),
+  "G2 accepted more than one disposable Linux canary",
+);
+passed += 1;
+
+const privilegedOperationG2Fixture = buildProductGateFixture({
+  scopeOverrides: {
+    Operation: ["execute:typed-state-change:root-shell"],
+  },
+});
+assert(
+  validateV1dAuthority(
+    g2AfterCloseout,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: privilegedOperationG2Fixture,
+    }),
+  ).some((item) =>
+    item.includes("Operation scope exceeds the gate semantic boundary"),
+  ),
+  "G2 accepted a privileged action operation",
 );
 passed += 1;
 

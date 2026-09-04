@@ -97,6 +97,36 @@ const PRODUCT_GATE_CLEANUP_FIELDS = [
   "rollbackVerified",
   "verifiedAt",
 ];
+const PRODUCT_GATE_SCOPE_POLICY = {
+  G2: {
+    operation: /^install:linux-agent-read-only:[A-Za-z0-9._-]+$/,
+    target: /^linux-canary:[A-Za-z0-9._-]+$/,
+  },
+  G3: {
+    operation: /^install:windows-agent-read-only:[A-Za-z0-9._-]+$/,
+    target: /^windows-canary:[A-Za-z0-9._-]+$/,
+  },
+  G4: {
+    operation: /^execute:typed-read-only-job:[A-Za-z0-9._-]+$/,
+    target: /^canary-endpoint:[A-Za-z0-9._-]+$/,
+  },
+  G5: {
+    operation: /^execute:typed-state-change:[A-Za-z0-9._-]+$/,
+    target: /^canary-endpoint:[A-Za-z0-9._-]+$/,
+  },
+  G6: {
+    operation: /^release:signed-agent-update:[A-Za-z0-9._-]+$/,
+    target: /^canary-ring:[A-Za-z0-9._-]+$/,
+  },
+  G7: {
+    operation: /^access:brokered-interactive:[A-Za-z0-9._-]+$/,
+    target: /^canary-endpoint:[A-Za-z0-9._-]+$/,
+  },
+  G8: {
+    operation: /^(?:deploy:production|expose:public):[A-Za-z0-9._-]+$/,
+    target: /^(?:production-environment|public-service):[A-Za-z0-9._-]+$/,
+  },
+};
 const PRODUCT_GATE_REQUIRED_EVIDENCE = {
   G2: [
     "data-collection-inventory-approved",
@@ -853,6 +883,54 @@ function validateV1dCloseoutHistory(
       )
         errors.push(`V1D-SV must preserve every prior lifecycle ${label}.`);
     }
+
+    const consumedAuthorizationText = readAtProtectedMain(
+      closeout.authorizationRecord,
+    );
+    if (typeof consumedAuthorizationText !== "string") continue;
+    const { fields } = parseRecord(consumedAuthorizationText);
+    const queue = [...fields.values()].filter(
+      (value) =>
+        typeof value === "string" &&
+        /^docs\/governance\/[A-Za-z0-9_./-]+$/.test(value),
+    );
+    const visited = new Set();
+    const enqueueGovernancePaths = (value) => {
+      if (typeof value === "string") {
+        if (/^docs\/governance\/[A-Za-z0-9_./-]+$/.test(value))
+          queue.push(value);
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) enqueueGovernancePaths(item);
+        return;
+      }
+      if (value && typeof value === "object")
+        for (const item of Object.values(value)) enqueueGovernancePaths(item);
+    };
+    while (queue.length > 0) {
+      const recordPath = queue.shift();
+      if (visited.has(recordPath)) continue;
+      visited.add(recordPath);
+      const protectedText = readAtProtectedMain(recordPath);
+      const currentText = readText(recordPath);
+      if (
+        !isRegularFile(recordPath) ||
+        typeof protectedText !== "string" ||
+        typeof currentText !== "string" ||
+        normalizeText(currentText) !== normalizeText(protectedText) ||
+        protectedMainPathVersionCount(recordPath) !== 1
+      ) {
+        errors.push(
+          `V1D-SV must preserve every transitive consumed-lifecycle record: ${recordPath}.`,
+        );
+        continue;
+      }
+      if (recordPath.endsWith(".json")) {
+        const record = parseCanonicalJson(protectedText);
+        if (record) enqueueGovernancePaths(record);
+      }
+    }
   }
   return errors;
 }
@@ -1398,6 +1476,17 @@ export function validateProductGateAuthorization(
       resolvedScopeDigest === scope.scopeDigest
     )
       targetSetScopeDigest = resolvedScopeDigest;
+    const scopePolicy = PRODUCT_GATE_SCOPE_POLICY[gate.id];
+    if (
+      (bindingType === "Operation" &&
+        (exactScope?.length !== 1 ||
+          !scopePolicy?.operation.test(exactScope[0]))) ||
+      (bindingType === "TargetSet" &&
+        (exactScope?.length !== 1 || !scopePolicy?.target.test(exactScope[0])))
+    )
+      errors.push(
+        `${gate.id} ${bindingType} scope exceeds the gate semantic boundary.`,
+      );
     const approvedAt = validDate(scope.approvedAt);
     const scopeExpiresAt = validDate(scope.expiresAt);
     const scopeIntroducedAt = Date.parse(

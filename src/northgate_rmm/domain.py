@@ -294,6 +294,20 @@ class Observation:
     boot_id: UUID
     sequence: int
     payload_digest: str
+    encoded_message_digest: str | None = None
+
+    def __post_init__(self) -> None:
+        require_aware(self.source_time, "source_time")
+        require_aware(self.received_at, "received_at")
+        if re.fullmatch(r"[0-9a-f]{64}", self.payload_digest) is None:
+            raise ValidationError("payload_digest must be a lowercase SHA-256 value")
+        if (
+            self.encoded_message_digest is not None
+            and re.fullmatch(r"[0-9a-f]{64}", self.encoded_message_digest) is None
+        ):
+            raise ValidationError(
+                "encoded_message_digest must be a lowercase SHA-256 value"
+            )
 
 
 @dataclass(frozen=True, slots=True)

@@ -75,6 +75,9 @@ sanitized metadata.
 - endpoint key fingerprint is unique;
 - message ID is globally unique and each identity/boot sequence increases
   atomically under a database constraint;
+- service-ingested messages retain an exact encoded digest so a byte-identical
+  retry can receive the original acknowledgement without creating another
+  observation; legacy synthetic observations intentionally retain `NULL`;
 - observations and audit events are append-oriented; the Phase 1 application API
   exposes no update, delete, or truncate operation for either record type;
 - an enrollment grant is short-lived, stores only a token digest, and is consumed
@@ -90,8 +93,10 @@ sanitized metadata.
 
 The executable schema is migrations
 `src/northgate_rmm/migrations/0001_phase1.sql` and
-`src/northgate_rmm/migrations/0002_enrollment_grants.sql`. Jobs, leases, results,
-and approvals remain future schema and are not executable capabilities.
+`src/northgate_rmm/migrations/0002_enrollment_grants.sql`, with exact retry
+digests added by
+`src/northgate_rmm/migrations/0003_message_idempotency.sql`. Jobs, leases,
+results, and approvals remain future schema and are not executable capabilities.
 
 ## Retention
 

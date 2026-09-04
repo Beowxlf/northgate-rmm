@@ -48,11 +48,13 @@ development**.
 G2 remains closed: endpoint or VM installation, live identity, live collection,
 networking, and infrastructure changes remain prohibited.
 
-The Phase 1 implementation includes a strict message decoder, transactional
-PostgreSQL adapter and migrations, restart/concurrency/recovery tests, escaped
-server-rendered read models, and an in-memory test-only certificate authority.
-It remains a synthetic control-plane proof: no HTTP listener, real endpoint
-collector, job scheduler, or command-execution primitive is present.
+The control-plane source includes a strict message decoder, transactional
+PostgreSQL adapter and migrations, digest-only single-use enrollment grants,
+certificate-key-to-endpoint authorization, exact-message retry acknowledgement,
+restart/concurrency/recovery tests, escaped server-rendered read models, and an
+in-memory test-only certificate authority. Its agent-message HTTP contract is an
+in-process boundary only: no socket listener, operational certificate issuer,
+job scheduler, or command-execution primitive is present.
 
 The executable Go agent includes strict non-secret configuration, bounded
 allowlisted Linux collectors, the Phase 1-compatible inventory envelope, a
@@ -68,8 +70,8 @@ resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
 Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
 test-only signature verification have also passed. Evidence-complete G2A and
 G2B qualification records retain every required digest. The repository still
-has no deployable control-plane listener or live enrollment network flow,
-command runner, or privileged helper.
+has no deployable control-plane listener, certificate-issuing enrollment network
+flow, command runner, or privileged helper.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.

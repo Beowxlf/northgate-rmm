@@ -1,4 +1,4 @@
-"""PostgreSQL persistence for the Phase 1 synthetic control plane.
+"""PostgreSQL persistence for the synthetic and V1B control-plane slices.
 
 The adapter intentionally exposes only enrollment, heartbeat, inventory,
 revocation, audit, and read-model operations. It contains no job or command
@@ -141,7 +141,7 @@ class PostgresControlPlane:
                 """
                 SELECT observation_id, endpoint_id, message_id, observation_type,
                        schema_version, source_time, received_at, boot_id, sequence,
-                       payload_digest
+                       payload_digest, encoded_message_digest
                 FROM observations
                 ORDER BY received_at, observation_id
                 """
@@ -566,6 +566,7 @@ class PostgresControlPlane:
         authenticated_identity_id: UUID,
         message: HeartbeatMessage,
         received_at: datetime,
+        encoded_message_digest: str | None = None,
     ) -> Observation:
         return self._ingest(
             authenticated_identity_id=authenticated_identity_id,
@@ -575,6 +576,7 @@ class PostgresControlPlane:
             payload_digest=message.payload.digest(),
             received_at=received_at,
             inventory_binding=None,
+            encoded_message_digest=encoded_message_digest,
         )
 
     def ingest_inventory(
@@ -583,6 +585,7 @@ class PostgresControlPlane:
         authenticated_identity_id: UUID,
         message: InventoryMessage,
         received_at: datetime,
+        encoded_message_digest: str | None = None,
     ) -> Observation:
         return self._ingest(
             authenticated_identity_id=authenticated_identity_id,
@@ -592,7 +595,55 @@ class PostgresControlPlane:
             payload_digest=message.payload.digest(),
             received_at=received_at,
             inventory_binding=(message.payload.platform, message.payload.architecture),
+            encoded_message_digest=encoded_message_digest,
         )
+
+    def authenticate_endpoint_certificate(
+        self,
+        *,
+        endpoint_id: UUID,
+        public_key_fingerprint: str,
+        authenticated_at: datetime,
+        correlation_id: UUID,
+    ) -> EndpointIdentity:
+        """Authorize one TLS-verified certificate by endpoint and public key."""
+
+        require_aware(authenticated_at, "authenticated_at")
+        server_time = authenticated_at.astimezone(UTC)
+        identity: EndpointIdentity | None = None
+        failure_reason: str | None = None
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT identity_id, endpoint_id, public_key_fingerprint, created_at,
+                       revoked_at, revocation_reason
+                FROM endpoint_identities
+                WHERE endpoint_id = %s AND public_key_fingerprint = %s
+                FOR UPDATE
+                """,
+                (endpoint_id, public_key_fingerprint),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                failure_reason = "certificate endpoint or public key is unknown"
+            else:
+                identity = self._identity_from_row(row)
+                if identity.revoked_at is not None:
+                    failure_reason = "certificate identity is revoked"
+            self._insert_audit(
+                cursor,
+                server_time=server_time,
+                actor_type="endpoint_certificate",
+                actor_id=str(endpoint_id),
+                subject=f"endpoint:{endpoint_id}",
+                action="certificate.authenticate",
+                decision="rejected" if failure_reason is not None else "accepted",
+                reason=failure_reason or "verified certificate key is active",
+                correlation_id=correlation_id,
+            )
+        if failure_reason is not None or identity is None:
+            raise AuthorizationError("endpoint certificate is unauthorized")
+        return identity
 
     def endpoint_status(
         self,
@@ -700,8 +751,10 @@ class PostgresControlPlane:
         payload_digest: str,
         received_at: datetime,
         inventory_binding: tuple[Platform, str] | None,
+        encoded_message_digest: str | None,
     ) -> Observation:
         require_aware(received_at, "received_at")
+        received_at = received_at.astimezone(UTC)
         failure: Failure | None = None
         observation: Observation | None = None
         try:
@@ -736,18 +789,60 @@ class PostgresControlPlane:
                         AuthorizationError,
                         "message endpoint does not match transport identity",
                     )
+                if failure is None:
+                    cursor.execute(
+                        """
+                        SELECT observation_id, endpoint_id, identity_id, message_id,
+                               observation_type, schema_version, source_time,
+                               received_at, boot_id, sequence, payload_digest,
+                               encoded_message_digest
+                        FROM observations
+                        WHERE message_id = %s
+                        """,
+                        (envelope.message_id,),
+                    )
+                    existing = cursor.fetchone()
+                    if existing is not None:
+                        if (
+                            encoded_message_digest is not None
+                            and existing["encoded_message_digest"]
+                            == encoded_message_digest
+                            and existing["identity_id"] == authenticated_identity_id
+                            and existing["endpoint_id"] == envelope.endpoint_id
+                        ):
+                            observation = self._observation_from_row(existing)
+                            self._insert_audit(
+                                cursor,
+                                server_time=received_at,
+                                actor_type="endpoint_identity",
+                                actor_id=str(authenticated_identity_id),
+                                subject=f"endpoint:{envelope.endpoint_id}",
+                                action=f"{observation_type}.ingest",
+                                decision="no_change",
+                                reason="exact accepted message retry acknowledged",
+                                correlation_id=envelope.correlation_id,
+                                metadata=(("message_id", str(envelope.message_id)),),
+                            )
+                        else:
+                            failure = (ReplayError, "message ID reused with conflict")
                 if (
                     failure is None
+                    and observation is None
                     and envelope.created_at > received_at + MAX_CLOCK_SKEW
                 ):
                     failure = (
                         ValidationError,
                         "message creation time exceeds allowed clock skew",
                     )
-                if failure is None and received_at >= envelope.expires_at:
+                if (
+                    failure is None
+                    and observation is None
+                    and received_at >= envelope.expires_at
+                ):
                     failure = (ValidationError, "message expired before receipt")
                 if (
                     failure is None
+                    and observation is None
                     and inventory_binding is not None
                     and row is not None
                 ):
@@ -760,14 +855,7 @@ class PostgresControlPlane:
                             ValidationError,
                             "inventory binding does not match enrolled endpoint",
                         )
-                if failure is None:
-                    cursor.execute(
-                        "SELECT 1 FROM observations WHERE message_id = %s",
-                        (envelope.message_id,),
-                    )
-                    if cursor.fetchone() is not None:
-                        failure = (ReplayError, "message ID replayed")
-                if failure is None:
+                if failure is None and observation is None:
                     cursor.execute(
                         """
                         INSERT INTO message_sequences (
@@ -801,7 +889,7 @@ class PostgresControlPlane:
                         correlation_id=envelope.correlation_id,
                         received_at=received_at,
                     )
-                else:
+                elif observation is None:
                     if identity is None:
                         raise AssertionError(
                             "authorized ingestion requires an identity"
@@ -817,14 +905,17 @@ class PostgresControlPlane:
                         boot_id=envelope.boot_id,
                         sequence=envelope.sequence,
                         payload_digest=payload_digest,
+                        encoded_message_digest=encoded_message_digest,
                     )
                     cursor.execute(
                         """
                         INSERT INTO observations (
                             observation_id, endpoint_id, identity_id, message_id,
                             observation_type, schema_version, source_time, received_at,
-                            boot_id, sequence, payload_digest
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            boot_id, sequence, payload_digest, encoded_message_digest
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
                         """,
                         (
                             observation.observation_id,
@@ -838,6 +929,7 @@ class PostgresControlPlane:
                             observation.boot_id,
                             observation.sequence,
                             observation.payload_digest,
+                            observation.encoded_message_digest,
                         ),
                     )
                     if observation_type == "heartbeat":
@@ -1064,6 +1156,7 @@ class PostgresControlPlane:
             boot_id=cast(UUID, row["boot_id"]),
             sequence=cast(int, row["sequence"]),
             payload_digest=cast(str, row["payload_digest"]),
+            encoded_message_digest=cast(str | None, row.get("encoded_message_digest")),
         )
 
     @staticmethod

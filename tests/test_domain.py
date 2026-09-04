@@ -12,6 +12,7 @@ from northgate_rmm.domain import (
     HeartbeatPayload,
     InventoryPayload,
     MessageEnvelope,
+    Observation,
     Platform,
     canonical_digest,
 )
@@ -207,6 +208,28 @@ def test_payloads_enforce_bounds_and_stable_digests() -> None:
             platform=Platform.LINUX,
             architecture="x86_64",
             fields=(("os", "first"), ("os", "second")),
+        )
+
+
+def test_observation_rejects_invalid_digests() -> None:
+    values: dict[str, object] = {
+        "observation_id": uuid4(),
+        "endpoint_id": uuid4(),
+        "message_id": uuid4(),
+        "observation_type": "inventory",
+        "schema_version": 1,
+        "source_time": NOW,
+        "received_at": NOW,
+        "boot_id": uuid4(),
+        "sequence": 1,
+        "payload_digest": "a" * 64,
+    }
+    with pytest.raises(ValidationError, match="payload_digest"):
+        Observation(**(values | {"payload_digest": "invalid"}))  # type: ignore[arg-type]
+    with pytest.raises(ValidationError, match="encoded_message_digest"):
+        Observation(
+            **values,  # type: ignore[arg-type]
+            encoded_message_digest="invalid",
         )
 
 

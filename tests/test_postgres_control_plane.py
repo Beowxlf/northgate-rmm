@@ -18,6 +18,11 @@ import psycopg
 import pytest
 from psycopg import sql
 
+from northgate_rmm.agent_api import (
+    AgentMessageApplication,
+    AgentMessageRequest,
+    VerifiedClientCertificate,
+)
 from northgate_rmm.domain import (
     EndpointHealth,
     EndpointLifecycle,
@@ -473,6 +478,162 @@ def test_fingerprint_collision_does_not_consume_enrollment_grant(
     assert plane.get_enrollment_grant(grant.grant_id).consumed_at is None
     assert len(plane.list_endpoints()) == 1
     assert plane.audit_events[-1].reason == "public key fingerprint is already enrolled"
+
+
+def test_agent_message_api_authenticates_and_acknowledges_exact_retries(
+    postgres_dsn: str,
+) -> None:
+    plane, agent = enrolled_plane(postgres_dsn)
+    message = agent.inventory(
+        now=NOW,
+        fields={"os.id": "debian", "os.version_id": "12"},
+    )
+    body = json.dumps(
+        {
+            "type": "inventory",
+            "envelope": {
+                "message_id": str(message.envelope.message_id),
+                "endpoint_id": str(message.envelope.endpoint_id),
+                "boot_id": str(message.envelope.boot_id),
+                "sequence": message.envelope.sequence,
+                "created_at": message.envelope.created_at.isoformat(),
+                "expires_at": message.envelope.expires_at.isoformat(),
+                "correlation_id": str(message.envelope.correlation_id),
+                "protocol_version": message.envelope.protocol_version,
+            },
+            "payload": {
+                "platform": message.payload.platform.value,
+                "architecture": message.payload.architecture,
+                "fields": dict(message.payload.fields),
+                "collector_complete": message.payload.collector_complete,
+                "schema_version": message.payload.schema_version,
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
+    request = AgentMessageRequest(
+        method="POST",
+        path="/v1/agent/messages",
+        content_type="application/json",
+        content_encoding=None,
+        body=body,
+    )
+    identity = plane.get_identity(agent.identity_id)
+    peer = VerifiedClientCertificate(
+        endpoint_id=agent.endpoint_id,
+        public_key_fingerprint=identity.public_key_fingerprint,
+    )
+    app = AgentMessageApplication(plane)
+
+    first = app.handle(request, peer=peer, received_at=NOW + timedelta(seconds=1))
+    retry = app.handle(request, peer=peer, received_at=NOW + timedelta(seconds=2))
+    conflict = app.handle(
+        replace(request, body=body + b" "),
+        peer=peer,
+        received_at=NOW + timedelta(seconds=3),
+    )
+
+    assert first.status == retry.status == 200
+    assert first.body == retry.body
+    assert json.loads(first.body) == {
+        "message_id": str(message.envelope.message_id),
+        "accepted": True,
+    }
+    assert (conflict.status, conflict.body) == (
+        409,
+        b'{"error":"message_conflict"}',
+    )
+    assert len(plane.observations) == 1
+    assert (
+        plane.observations[0].encoded_message_digest == hashlib.sha256(body).hexdigest()
+    )
+    inventory_outcomes = [
+        event.decision
+        for event in plane.audit_events
+        if event.action == "inventory.ingest"
+    ]
+    assert inventory_outcomes == ["accepted", "no_change", "rejected"]
+    accepted_flow = [
+        event
+        for event in plane.audit_events
+        if event.decision == "accepted"
+        and event.action in {"certificate.authenticate", "inventory.ingest"}
+    ]
+    assert len(accepted_flow) >= 2
+    assert accepted_flow[0].correlation_id == message.envelope.correlation_id
+    assert accepted_flow[1].correlation_id == message.envelope.correlation_id
+
+
+def test_agent_message_api_rejects_unknown_and_revoked_certificates(
+    postgres_dsn: str,
+) -> None:
+    plane, agent = enrolled_plane(postgres_dsn)
+    body = json.dumps(
+        {
+            "type": "heartbeat",
+            "envelope": {
+                "message_id": str(uuid4()),
+                "endpoint_id": str(agent.endpoint_id),
+                "boot_id": str(uuid4()),
+                "sequence": 1,
+                "created_at": NOW.isoformat(),
+                "expires_at": (NOW + timedelta(minutes=1)).isoformat(),
+                "correlation_id": str(uuid4()),
+                "protocol_version": 1,
+            },
+            "payload": {
+                "agent_version": "0.2.0",
+                "capabilities": ["inventory.v1"],
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
+    request = AgentMessageRequest(
+        method="POST",
+        path="/v1/agent/messages",
+        content_type="application/json",
+        content_encoding=None,
+        body=body,
+    )
+    app = AgentMessageApplication(plane)
+    unknown = VerifiedClientCertificate(agent.endpoint_id, "sha256:" + "f" * 64)
+    unknown_response = app.handle(request, peer=unknown, received_at=NOW)
+
+    identity = plane.get_identity(agent.identity_id)
+    plane.revoke_identity(
+        identity.identity_id,
+        reason="certificate compromise drill",
+        actor_id="security-admin",
+        now=NOW + timedelta(seconds=1),
+    )
+    revoked = VerifiedClientCertificate(
+        agent.endpoint_id,
+        identity.public_key_fingerprint,
+    )
+    revoked_response = app.handle(
+        request,
+        peer=revoked,
+        received_at=NOW + timedelta(seconds=2),
+    )
+
+    assert (unknown_response.status, unknown_response.body) == (
+        403,
+        b'{"error":"unauthorized"}',
+    )
+    assert (revoked_response.status, revoked_response.body) == (
+        403,
+        b'{"error":"unauthorized"}',
+    )
+    auth_rejections = [
+        event
+        for event in plane.audit_events
+        if event.action == "certificate.authenticate" and event.decision == "rejected"
+    ]
+    assert [event.reason for event in auth_rejections] == [
+        "certificate endpoint or public key is unknown",
+        "certificate identity is revoked",
+    ]
+    assert plane.observations == ()
 
 
 def test_inventory_binding_and_both_replay_classes_fail_closed(

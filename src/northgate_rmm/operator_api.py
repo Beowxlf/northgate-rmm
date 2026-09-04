@@ -282,9 +282,7 @@ class OperatorApplication:
     ) -> OperatorPrincipal:
         try:
             encoded_authorization = (
-                authorization.encode("utf-8")
-                if type(authorization) is str
-                else b""
+                authorization.encode("utf-8") if type(authorization) is str else b""
             )
         except UnicodeEncodeError:
             encoded_authorization = b""

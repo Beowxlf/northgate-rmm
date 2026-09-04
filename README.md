@@ -3,6 +3,13 @@
 This workspace begins a security-first, cross-platform remote monitoring and
 management (RMM) software project.
 
+The current working branch extends the next monitoring release to Windows
+under the [2026-09-04 owner request](docs/governance/authorizations/V1-CROSS-PLATFORM-OWNER-REQUEST-2026-09-04.md).
+The [Windows runtime candidate](docs/operations/WINDOWS_AGENT_RUNTIME.md) records
+the new source and remaining platform qualification work. This branch is not a
+completed or deployed release; historical qualification below applies to the
+previous Linux-only baseline.
+
 The first objective is not to reproduce every feature in TacticalRMM. It is to
 learn the problem deeply and build one trustworthy vertical slice:
 

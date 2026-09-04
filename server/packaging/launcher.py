@@ -9,6 +9,7 @@ from pathlib import Path
 
 PACKAGE_ROOT = "/usr/lib/northgate-rmm-server/site-packages"
 ENTRY_POINTS = {
+    "northgate-rmm-admin": "northgate_rmm.admin",
     "northgate-rmm-agent-service": "northgate_rmm.agent_service",
     "northgate-rmm-enrollment-service": "northgate_rmm.enrollment_service",
     "northgate-rmm-operator-service": "northgate_rmm.operator_service",

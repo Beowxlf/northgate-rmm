@@ -6,6 +6,7 @@ license text supplied by each upstream distribution.
 
 | Component           | Version | Use                                     | SPDX expression            | Upstream                                       |
 | ------------------- | ------- | --------------------------------------- | -------------------------- | ---------------------------------------------- |
+| golang.org/x/sys | 0.47.0 | Windows native inventory, ACLs, locking and service integration | BSD-3-Clause | <https://go.googlesource.com/sys> |
 | aiohttp             | 3.14.3  | Bounded private HTTP/TLS listener       | Apache-2.0 AND MIT         | <https://docs.aiohttp.org/>                    |
 | aiohappyeyeballs    | 2.7.1   | aiohttp runtime dependency              | PSF-2.0                    | <https://github.com/aio-libs/aiohappyeyeballs> |
 | aiosignal           | 1.4.0   | aiohttp runtime dependency              | Apache-2.0                 | <https://github.com/aio-libs/aiosignal>        |

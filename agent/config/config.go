@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/url"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -154,8 +155,8 @@ func (cfg Config) Validate() error {
 	if !utf8.ValidString(cfg.StateDirectory) {
 		return errors.New("state_directory contains invalid UTF-8")
 	}
-	if cfg.StateDirectory == "/" || !path.IsAbs(cfg.StateDirectory) || path.Clean(cfg.StateDirectory) != cfg.StateDirectory {
-		return errors.New("state_directory must be an absolute clean Linux path")
+	if !validStatePath(cfg.StateDirectory) {
+		return errors.New("state_directory must be an absolute clean local path")
 	}
 	if containsControl(cfg.StateDirectory) {
 		return errors.New("state_directory contains a control character")
@@ -173,6 +174,15 @@ func (cfg Config) Validate() error {
 		return errors.New("max_spool_bytes is outside the supported range")
 	}
 	return nil
+}
+
+func validStatePath(value string) bool {
+	if strings.Contains(value, `\`) || (len(value) >= 2 && value[1] == ':') {
+		return len(value) > 3 && value[1:3] == `:\` &&
+			((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) &&
+			!strings.ContainsAny(value[2:], ":/") && filepath.Clean(value) == value && filepath.IsAbs(value)
+	}
+	return value != "/" && path.IsAbs(value) && path.Clean(value) == value
 }
 
 func validControlPlaneHostname(hostname string) bool {

@@ -25,7 +25,12 @@ import (
 
 var version = "0.2.0"
 
+const bootstrapEndpointID = "00000000-0000-4000-8000-000000000000"
+
 func main() {
+	if platformService() {
+		return
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	os.Exit(execute(ctx, os.Args[1:], os.Stdout))
@@ -36,6 +41,10 @@ func execute(ctx context.Context, args []string, output io.Writer) int {
 	flags.SetOutput(io.Discard)
 	configPath := flags.String("config", "", "")
 	showVersion := flags.Bool("version", false, "")
+	enrollOrigin := flags.String("enroll", "", "")
+	grantFile := flags.String("grant-file", "", "")
+	serverRoots := flags.String("server-roots", "", "")
+	issuerRoots := flags.String("issuer-roots", "", "")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return 2
 	}
@@ -49,6 +58,19 @@ func execute(ctx context.Context, args []string, output io.Writer) int {
 		return 0
 	}
 	if *configPath == "" {
+		return 2
+	}
+	if *enrollOrigin != "" {
+		if *grantFile == "" || *serverRoots == "" || *issuerRoots == "" {
+			return 2
+		}
+		if enroll(ctx, *configPath, *enrollOrigin, *grantFile, *serverRoots, *issuerRoots) != nil {
+			emitSetupFailure(output)
+			return 1
+		}
+		return 0
+	}
+	if *grantFile != "" || *serverRoots != "" || *issuerRoots != "" {
 		return 2
 	}
 	if err := run(ctx, *configPath, output); err != nil {
@@ -71,8 +93,14 @@ func run(ctx context.Context, configPath string, output io.Writer) error {
 	if closeErr != nil {
 		return closeErr
 	}
+	if err := validatePlatformState(cfg.StateDirectory); err != nil {
+		return err
+	}
 
 	loadedIdentity, err := identity.Load(filepath.Join(cfg.StateDirectory, "identity"), time.Now())
+	if err == nil && cfg.EndpointID == bootstrapEndpointID {
+		cfg.EndpointID = loadedIdentity.EndpointID
+	}
 	if err != nil || loadedIdentity.EndpointID != cfg.EndpointID {
 		return agentruntime.ErrRuntimeFailed
 	}

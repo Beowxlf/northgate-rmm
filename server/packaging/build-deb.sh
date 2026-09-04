@@ -84,6 +84,8 @@ done
 
 sed "s/@VERSION@/$version/g" "$script_directory/debian/control.in" > \
   "$stage/DEBIAN/control"
+install -m 0755 "$script_directory/launcher.py" \
+  "$stage/usr/libexec/northgate-rmm-server/northgate-rmm-admin"
 install -m 0644 "$script_directory/debian/conffiles" "$stage/DEBIAN/conffiles"
 for maintainer_script in preinst postinst prerm postrm; do
   install -m 0755 "$script_directory/debian/$maintainer_script" \

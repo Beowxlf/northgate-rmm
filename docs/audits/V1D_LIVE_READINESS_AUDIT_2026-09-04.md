@@ -69,18 +69,22 @@ Hyper-V outage.
 3. Resolve the exact DNS, authenticated time, PKI, operator verifier, PostgreSQL,
    protected audit, monitoring, backup, recovery, encryption, retention, RPO,
    RTO, and named-owner decisions in one reviewed V1D packet.
-4. Obtain separate approval for the backup-bound VLAN 170/180 network change;
+4. Open a bounded G6 ceremony for the exact production package, manifest, SBOM,
+   provenance, signing profile, trust root, distribution location, canary ring,
+   expiry, and rollback boundary. Sign and independently verify those artifacts
+   without activating automatic updates or signing the final acceptance record.
+5. Obtain separate approval for the backup-bound VLAN 170/180 network change;
    apply it in isolation and retain positive and negative path evidence.
-5. Install and promote the new Factory release only through its own reviewed
+6. Install and promote the new Factory release only through its own reviewed
    bootstrap and activation ceremony.
-6. Open G2 with the exact RMM server, canary, release, network policy, identities,
+7. Open G2 with the exact RMM server, canary, signed release, network policy, identities,
    expiry, rollback, and evidence. Generate fresh host-issued plans only after
    the merge and current-state validation.
-7. Deploy and harden the control plane, prove backup/restore and containment,
+8. Deploy and harden the control plane, prove backup/restore and containment,
    then deploy one disposable Debian canary and complete the soak.
-8. After every other V1F prerequisite passes, open G6 only for the exact
-   independently verified artifacts and make the signed immutable `1.0.0`
-   release record the final V1F acceptance action.
+9. After every other V1F prerequisite passes, use an exact G6 acceptance
+   authorization to sign the immutable `1.0.0` release record as the final V1F
+   action.
 
 ## Gate decision
 

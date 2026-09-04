@@ -57,26 +57,33 @@ and evidence records.
 3. Resolve the exact DNS, authenticated time, PKI, operator verifier, PostgreSQL,
    protected audit, monitoring, backup, recovery, encryption, retention, RPO,
    RTO, and named-owner decisions in one reviewed V1D packet.
-4. Open a bounded G6 ceremony for the exact production package, manifest, SBOM,
+4. Through separate bounded implementation records, approve, provision, and
+   verify the exact DNS and authenticated-time dependencies, server PKI,
+   synthetic-only endpoint issuer and status path, operator verifier, protected
+   Z5 telemetry and audit destinations, Z6 backup/recovery target, and external
+   encryption-key custody. Each record must name its targets, identities,
+   permitted flows, expiry, rollback, and evidence and grant no endpoint or
+   canary authority.
+5. Open a bounded G6 ceremony for the exact production package, manifest, SBOM,
    provenance, signing profile, trust root, distribution location, canary ring,
    expiry, and rollback boundary. Sign and independently verify those artifacts
    without activating automatic updates or signing the final acceptance record.
    Establish and verify the protected distribution and bootstrap procedure, and
    complete the signing-key loss and compromise tests. V1C remains open until
    every production-release-trust control in the release criteria passes.
-5. Obtain separate approval for the backup-bound VLAN 170/180 network change;
+6. Obtain separate approval for the backup-bound VLAN 170/180 network change;
    apply it in isolation and retain positive and negative path evidence.
-6. Install and promote the new Factory release only through its own reviewed
+7. Install and promote the new Factory release only through its own reviewed
    bootstrap and activation ceremony.
-7. Only after V1C passes, under a separate bounded V1D server-validation
-   authorization, generate the fresh control-plane Factory plan after
-   current-state validation. Obtain exact owner approval of that plan ID and
-   authenticated state hash after issuance, then deploy and harden only the
-   control plane without installing an endpoint. Prove database-consistent
-   backup and isolated restore, telemetry-outage and capacity behavior,
-   certificate revocation, containment, and rollback; V1D remains open until
-   every required proof passes.
-8. Only after V1D passes and the owner accepts the hardened-server and recovery
+8. Only after V1C and every required external-dependency implementation pass,
+   under a separate bounded V1D server-validation authorization, generate the
+   fresh control-plane Factory plan after current-state validation. Obtain exact
+   owner approval of that plan ID and authenticated state hash after issuance,
+   then deploy and harden only the control plane without installing an endpoint.
+   Prove database-consistent backup and isolated restore, telemetry-outage and
+   capacity behavior, certificate revocation, containment, and rollback; V1D
+   remains open until every required proof passes.
+9. Only after V1D passes and the owner accepts the hardened-server and recovery
    evidence, open G2 for only the disposable canary while binding the exact
    deployed server, signed release, network policy, identities, expiry,
    rollback, server plan and receipt, and reviewed V1D evidence as fixed
@@ -84,9 +91,9 @@ and evidence records.
    validation, obtain exact owner approval of its plan ID and authenticated
    state hash after issuance, and only then deploy the canary and complete the
    approved lifecycle test and soak.
-9. After every other V1F prerequisite passes, use an exact G6 acceptance
-   authorization to sign the immutable `1.0.0` release record as the final V1F
-   action.
+10. After every other V1F prerequisite passes, use an exact G6 acceptance
+    authorization to sign the immutable `1.0.0` release record as the final V1F
+    action.
 
 ## Gate decision
 

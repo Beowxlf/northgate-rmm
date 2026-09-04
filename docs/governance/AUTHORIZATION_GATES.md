@@ -33,11 +33,12 @@ pre-code audit. Evidence record:
 ## Pre-G2 V1D control-plane validation authority
 
 This is an exact, bounded change authorization, not an opened product gate. It
-may be issued only after V1C passes and must name the control-plane server,
-signed release, private network policy, service and database identities,
-synthetic validation identities, expiry, rollback, and evidence boundary. Its
-fresh host-issued VM Factory plan ID and authenticated state hash require exact
-owner approval after issuance.
+may be issued only after V1C passes and the required external V1D dependencies
+have been separately approved, provisioned, and verified. It must name the
+control-plane server, signed release, private network policy, service and
+database identities, synthetic validation identities, expiry, rollback, and
+evidence boundary. Its fresh host-issued VM Factory plan ID and authenticated
+state hash require exact owner approval after issuance.
 
 The authorization permits installation and operation of the named private
 control-plane server only to complete V1D backup/restore, telemetry-outage,

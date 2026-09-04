@@ -352,10 +352,13 @@ The following decisions remain separate:
 
 1. approve the candidate asset IDs, names, network numbers, and addresses;
 2. approve and merge the Factory capability/catalog/manifest changes;
-3. approve the exact OPNsense backup-bound network change;
-4. approve the fresh host-issued server VM plan ID and state hash;
-5. accept the hardened server and recovery evidence;
-6. open G2 for only `NG-VM-023 / NG-RMM-CAN01`;
-7. approve the fresh canary plan and the single endpoint installation.
+3. separately approve, provision, and verify each external V1D identity,
+   telemetry/audit, backup/recovery, DNS, authenticated-time, and key-custody
+   dependency;
+4. approve the exact OPNsense backup-bound network change;
+5. approve the fresh host-issued server VM plan ID and state hash;
+6. accept the hardened server and recovery evidence;
+7. open G2 for only `NG-VM-023 / NG-RMM-CAN01`;
+8. approve the fresh canary plan and the single endpoint installation.
 
 This packet authorizes none of those actions by itself.

@@ -1,0 +1,3 @@
+/etc/northgate-rmm/agent-service.json.example
+/etc/northgate-rmm/enrollment-service.json.example
+/etc/northgate-rmm/operator-service.json.example

@@ -1,5 +1,5 @@
 [Unit]
-Description=NorthGate RMM private agent message service
+Description=NorthGate RMM private agent message ingress
 Documentation=https://github.com/Beowxlf/northgate-rmm
 After=network-online.target
 Wants=network-online.target

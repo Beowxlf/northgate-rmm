@@ -1,0 +1,45 @@
+#!/bin/sh
+set -eu
+
+action="${1:-}"
+case "$action" in
+  install|upgrade)
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+
+for marker in \
+  /var/lib/northgate-rmm-server-purge-transaction \
+  /var/lib/northgate-rmm-server-purge-transaction.tmp; do
+  if [ -e "$marker" ] || [ -L "$marker" ]; then
+    echo "refusing installation while prior purge evidence remains unarchived" >&2
+    exit 39
+  fi
+done
+for path in \
+  /etc/northgate-rmm \
+  /etc/northgate-rmm/secrets \
+  /etc/northgate-rmm/tls \
+  /var/lib/northgate-rmm-server; do
+  if [ -L "$path" ]; then
+    echo "refusing installation through a symlinked server path" >&2
+    exit 38
+  fi
+done
+
+if [ -d /run/systemd/system ]; then
+  for service in operator enrollment agent; do
+    unit="northgate-rmm-${service}.service"
+    if [ "$service" = "agent" ]; then
+      unit=northgate-rmm-agent-ingress.service
+    fi
+    if systemctl is-active --quiet "$unit"; then
+      echo "refusing package installation while $unit is active" >&2
+      exit 40
+    fi
+  done
+fi
+
+exit 0

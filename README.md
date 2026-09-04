@@ -44,6 +44,7 @@ The first executable lesson is
 - [Agent service runtime](docs/operations/AGENT_SERVICE_RUNTIME.md)
 - [Enrollment service runtime](docs/operations/ENROLLMENT_SERVICE_RUNTIME.md)
 - [Operator service runtime](docs/operations/OPERATOR_SERVICE_RUNTIME.md)
+- [Server package lifecycle](docs/operations/SERVER_PACKAGE_LIFECYCLE.md)
 
 The Phase 1 trustworthy vertical-slice simulation is complete. Separate,
 bounded authorizations permit **Phase 2 Linux-agent and control-plane source
@@ -98,9 +99,9 @@ resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
 Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
 test-only signature verification have also passed. Evidence-complete G2A and
 G2B qualification records retain every required digest. The repository still
-has no operational issuer/IdP integration, server package or approved deployment
-configuration, command
-runner, or privileged helper.
+includes a source-built, disabled Debian 12 server-package definition and
+networkless qualification, but no operational issuer/IdP integration, approved
+deployment configuration, command runner, or privileged helper.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.
@@ -109,11 +110,11 @@ remain G2 blockers.
 
 ```powershell
 python -m pip install --requirement requirements-dev.txt
-ruff format --check src tests
-ruff check src tests
-mypy src tests
+ruff format --check src tests server/packaging/launcher.py
+ruff check src tests server/packaging/launcher.py
+mypy src tests server/packaging/launcher.py
 pytest --cov=northgate_rmm --cov-branch --cov-fail-under=90
-bandit --recursive src --severity-level medium
+bandit --recursive src server/packaging/launcher.py --severity-level medium
 ```
 
 ## Phase 2 agent developer checks

@@ -39,6 +39,15 @@ evidence IDs are enforced as follows:
 | G7   | `break-glass-tested`, `consent-policy-approved`, `exact-target-approved`, `jit-expiry-tested`, `operator-identity-approved`, `protocol-reviewed`, `recording-audit-verified`                                                                 |
 | G8   | `backup-recovery-verified`, `capacity-slo-verified`, `data-retention-approved`, `incident-response-ready`, `multi-tenant-isolation-verified`, `public-exposure-approved`, `topology-approved`                                                |
 
+Every G2 through G8 gate carries an ordered `closeouts` history. Closing an
+open gate or replacing its authorization must append exactly one canonical
+cleanup closeout and name it as `closeout`. The closeout binds the consumed
+authorization and separate cleanup evidence proving targets and identities were
+revoked, network access was removed, artifacts were withdrawn, and rollback was
+verified. Later closed, reopened, or unchanged-open states must preserve every
+closeout and its referenced records byte for byte with single-use protected-main
+history. Use the adjacent product-gate closeout and cleanup-evidence templates.
+
 Phase-specific source development may be authorized by a separate committed
 development record that states an exact non-deployment boundary. Such a record
 does not open the corresponding installation or capability gate. In particular,
@@ -91,7 +100,10 @@ release, plan, identities, network, expiry, or any other authorization content
 requires closing and cleaning the current lifecycle, then beginning a
 separately approved lifecycle with a new plan and authorization. Reopening must
 preserve the prior closeout, consumed authorization, and cleanup-evidence files
-byte for byte with their complete single-use protected-main history.
+byte for byte with their complete single-use protected-main history. The
+ordered `closeouts` list is permanent across all later open and closed states;
+each verified close adds exactly one entry and no later change may remove,
+replace, or reorder one.
 Its protected-main introduction commit time must also predate the authenticated
 plan issue time. The trust record, receipt, and signature each use an immutable,
 single-use protected-main path.

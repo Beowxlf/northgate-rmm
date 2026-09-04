@@ -16,6 +16,7 @@
       "name": "Pre-G2 control-plane validation",
       "phase": 2,
       "status": "closed",
+      "closeouts": [],
       "opensGate": false,
       "requiresClosedGates": ["G2", "G3", "G4", "G5", "G6", "G7", "G8"],
       "requirements": [
@@ -52,37 +53,44 @@
     {
       "id": "G2",
       "name": "Linux endpoint installation",
-      "status": "closed"
+      "status": "closed",
+      "closeouts": []
     },
     {
       "id": "G3",
       "name": "Windows endpoint installation",
-      "status": "closed"
+      "status": "closed",
+      "closeouts": []
     },
     {
       "id": "G4",
       "name": "Remote job delivery",
-      "status": "closed"
+      "status": "closed",
+      "closeouts": []
     },
     {
       "id": "G5",
       "name": "State-changing or privileged action",
-      "status": "closed"
+      "status": "closed",
+      "closeouts": []
     },
     {
       "id": "G6",
       "name": "Agent update release",
-      "status": "closed"
+      "status": "closed",
+      "closeouts": []
     },
     {
       "id": "G7",
       "name": "Interactive remote access",
-      "status": "closed"
+      "status": "closed",
+      "closeouts": []
     },
     {
       "id": "G8",
       "name": "Production or public deployment",
-      "status": "closed"
+      "status": "closed",
+      "closeouts": []
     }
   ],
   "requiredPhase0Artifacts": [

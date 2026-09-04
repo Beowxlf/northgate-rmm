@@ -73,6 +73,30 @@ const PRODUCT_GATE_EVIDENCE_FIELDS = [
   "result",
   "resultBinding",
 ];
+const PRODUCT_GATE_CLOSEOUT_FIELDS = [
+  "schemaVersion",
+  "gate",
+  "status",
+  "approver",
+  "authorizationRecord",
+  "authorizationDigest",
+  "cleanupEvidenceRecord",
+  "cleanupEvidenceDigest",
+  "closedAt",
+];
+const PRODUCT_GATE_CLEANUP_FIELDS = [
+  "schemaVersion",
+  "gate",
+  "status",
+  "approver",
+  "authorizationDigest",
+  "targetsRevoked",
+  "identitiesRevoked",
+  "networkAccessRemoved",
+  "artifactsWithdrawn",
+  "rollbackVerified",
+  "verifiedAt",
+];
 const PRODUCT_GATE_REQUIRED_EVIDENCE = {
   G2: [
     "data-collection-inventory-approved",
@@ -377,6 +401,17 @@ function protectedMainAuthority(readAtProtectedMain) {
         (item) => item.id === "V1D-SV",
       ) ?? null
     );
+  } catch {
+    return null;
+  }
+}
+
+function protectedMainGate(readAtProtectedMain, gateId) {
+  const text = readAtProtectedMain("governance/gates.json");
+  if (typeof text !== "string") return null;
+  try {
+    const config = JSON.parse(text);
+    return config.gates?.find((item) => item.id === gateId) ?? null;
   } catch {
     return null;
   }
@@ -725,6 +760,310 @@ function validateReopen(
     errors.push(
       "Reopened V1D-SV requires a new authorization and Factory plan issued after prior closeout.",
     );
+  return errors;
+}
+
+function validateV1dCloseoutHistory(
+  authority,
+  priorAuthority,
+  {
+    isRegularFile,
+    readText,
+    readAtProtectedMain,
+    protectedMainPathVersionCount,
+  },
+) {
+  const errors = [];
+  const currentHistory = authority.closeouts;
+  const priorHistory = priorAuthority?.closeouts ?? [];
+  const validCurrentHistory =
+    Array.isArray(currentHistory) &&
+    new Set(currentHistory).size === currentHistory.length &&
+    currentHistory.every(
+      (path) =>
+        typeof path === "string" &&
+        /^docs\/governance\/authorizations\/closeouts\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+          path,
+        ),
+    );
+  const validPriorHistory =
+    Array.isArray(priorHistory) &&
+    new Set(priorHistory).size === priorHistory.length;
+  if (!validCurrentHistory)
+    return ["V1D-SV has an invalid lifecycle closeout history."];
+  if (!validPriorHistory)
+    return ["Protected-main V1D-SV has an invalid closeout history."];
+  if (priorHistory.some((path, index) => currentHistory[index] !== path))
+    errors.push(
+      "V1D-SV must preserve every prior lifecycle closeout in order.",
+    );
+  if (
+    Object.hasOwn(authority, "closeout") &&
+    authority.closeout !== currentHistory.at(-1)
+  )
+    errors.push("V1D-SV latest closeout must end its lifecycle history.");
+  if (currentHistory.length === 0 && Object.hasOwn(authority, "closeout"))
+    errors.push("V1D-SV cannot name a closeout outside its lifecycle history.");
+
+  for (const closeoutPath of priorHistory) {
+    const protectedCloseoutText = readAtProtectedMain(closeoutPath);
+    const currentCloseoutText = readText(closeoutPath);
+    const closeout =
+      typeof protectedCloseoutText === "string"
+        ? parseCanonicalJson(protectedCloseoutText)
+        : null;
+    if (
+      !currentHistory.includes(closeoutPath) ||
+      !isRegularFile(closeoutPath) ||
+      !closeout ||
+      typeof currentCloseoutText !== "string" ||
+      normalizeText(currentCloseoutText) !==
+        normalizeText(protectedCloseoutText) ||
+      protectedMainPathVersionCount(closeoutPath) !== 1
+    ) {
+      errors.push(
+        "V1D-SV must preserve every immutable prior lifecycle closeout.",
+      );
+      continue;
+    }
+    for (const [label, recordPath, digest] of [
+      [
+        "authorization",
+        closeout.authorizationRecord,
+        closeout.authorizationRecordDigest,
+      ],
+      [
+        "cleanup evidence",
+        closeout.cleanupEvidenceRecord,
+        closeout.cleanupEvidenceDigest,
+      ],
+    ]) {
+      const protectedText =
+        typeof recordPath === "string" ? readAtProtectedMain(recordPath) : null;
+      const currentText =
+        typeof recordPath === "string" ? readText(recordPath) : null;
+      if (
+        typeof recordPath !== "string" ||
+        !isRegularFile(recordPath) ||
+        typeof protectedText !== "string" ||
+        typeof currentText !== "string" ||
+        normalizeText(currentText) !== normalizeText(protectedText) ||
+        protectedMainPathVersionCount(recordPath) !== 1 ||
+        sha256(protectedText) !== digest
+      )
+        errors.push(`V1D-SV must preserve every prior lifecycle ${label}.`);
+    }
+  }
+  return errors;
+}
+
+function validateProductGateLifecycle(
+  gate,
+  priorGate,
+  {
+    isRegularFile,
+    readText,
+    readAtProtectedMain,
+    pathIntroductionTime,
+    protectedMainPathVersionCount,
+    now,
+  },
+) {
+  const errors = [];
+  const pathPattern = new RegExp(
+    `^docs/governance/authorizations/product-gates/closeouts/${gate.id}-[A-Za-z0-9][A-Za-z0-9._-]*\\.json$`,
+  );
+  const cleanupPathPattern = new RegExp(
+    `^docs/governance/authorizations/product-gates/closeouts/evidence/${gate.id}-[A-Za-z0-9][A-Za-z0-9._-]*\\.json$`,
+  );
+  const currentHistory = gate.closeouts;
+  const priorHistory = priorGate?.closeouts ?? [];
+  const validCurrentHistory =
+    Array.isArray(currentHistory) &&
+    new Set(currentHistory).size === currentHistory.length &&
+    currentHistory.every(
+      (path) => typeof path === "string" && pathPattern.test(path),
+    );
+  const validPriorHistory =
+    Array.isArray(priorHistory) &&
+    new Set(priorHistory).size === priorHistory.length;
+  if (!validCurrentHistory)
+    return [`${gate.id} has an invalid lifecycle closeout history.`];
+  if (!validPriorHistory)
+    return [`Protected-main ${gate.id} has an invalid closeout history.`];
+  if (priorHistory.some((path, index) => currentHistory[index] !== path))
+    errors.push(`${gate.id} must preserve every prior lifecycle closeout.`);
+  if (
+    Object.hasOwn(gate, "closeout") &&
+    gate.closeout !== currentHistory.at(-1)
+  )
+    errors.push(`${gate.id} latest closeout must end its lifecycle history.`);
+  if (currentHistory.length === 0 && Object.hasOwn(gate, "closeout"))
+    errors.push(`${gate.id} cannot name a closeout outside its history.`);
+
+  const scopeChanged =
+    priorGate?.status === "open" &&
+    gate.status === "open" &&
+    gate.authorization !== priorGate.authorization;
+  const requiresNewCloseout =
+    priorGate?.status === "open" && (gate.status !== "open" || scopeChanged);
+  if (
+    requiresNewCloseout &&
+    (currentHistory.length !== priorHistory.length + 1 ||
+      gate.closeout !== currentHistory.at(-1))
+  )
+    errors.push(
+      `${gate.id} cannot close or replace scope without appending one cleanup closeout.`,
+    );
+  if (!requiresNewCloseout && currentHistory.length !== priorHistory.length)
+    errors.push(
+      `${gate.id} lifecycle history may change only during cleanup closeout.`,
+    );
+
+  const preserveLifecycle = (closeoutPath) => {
+    const protectedCloseoutText = readAtProtectedMain(closeoutPath);
+    const currentCloseoutText = readText(closeoutPath);
+    const closeout =
+      typeof protectedCloseoutText === "string"
+        ? parseCanonicalJson(protectedCloseoutText)
+        : null;
+    if (
+      !currentHistory.includes(closeoutPath) ||
+      !isRegularFile(closeoutPath) ||
+      !closeout ||
+      typeof currentCloseoutText !== "string" ||
+      normalizeText(currentCloseoutText) !==
+        normalizeText(protectedCloseoutText) ||
+      protectedMainPathVersionCount(closeoutPath) !== 1
+    ) {
+      errors.push(`${gate.id} must preserve every immutable prior closeout.`);
+      return;
+    }
+    for (const [label, recordPath, digest] of [
+      [
+        "authorization",
+        closeout.authorizationRecord,
+        closeout.authorizationDigest,
+      ],
+      [
+        "cleanup evidence",
+        closeout.cleanupEvidenceRecord,
+        closeout.cleanupEvidenceDigest,
+      ],
+    ]) {
+      const protectedText =
+        typeof recordPath === "string" ? readAtProtectedMain(recordPath) : null;
+      const currentText =
+        typeof recordPath === "string" ? readText(recordPath) : null;
+      if (
+        typeof recordPath !== "string" ||
+        !isRegularFile(recordPath) ||
+        typeof protectedText !== "string" ||
+        typeof currentText !== "string" ||
+        normalizeText(currentText) !== normalizeText(protectedText) ||
+        protectedMainPathVersionCount(recordPath) !== 1 ||
+        sha256(protectedText) !== digest
+      )
+        errors.push(`${gate.id} must preserve every prior ${label}.`);
+    }
+  };
+  for (const closeoutPath of priorHistory) preserveLifecycle(closeoutPath);
+
+  if (!requiresNewCloseout) return errors;
+  const closeoutPath = gate.closeout;
+  const closeoutText =
+    typeof closeoutPath === "string" ? readText(closeoutPath) : null;
+  const closeout =
+    typeof closeoutText === "string" ? parseCanonicalJson(closeoutText) : null;
+  if (
+    typeof closeoutPath !== "string" ||
+    !pathPattern.test(closeoutPath) ||
+    !isRegularFile(closeoutPath) ||
+    !closeout
+  ) {
+    errors.push(`${gate.id} cleanup closeout is missing or non-canonical.`);
+    return errors;
+  }
+  if (
+    !hasExactUniqueEntries(Object.keys(closeout), PRODUCT_GATE_CLOSEOUT_FIELDS)
+  )
+    errors.push(`${gate.id} cleanup closeout has an invalid field set.`);
+  const authorizationPath = priorGate.authorization;
+  const authorizationText =
+    typeof authorizationPath === "string"
+      ? readAtProtectedMain(authorizationPath)
+      : null;
+  const currentAuthorizationText =
+    typeof authorizationPath === "string" ? readText(authorizationPath) : null;
+  if (
+    closeout.schemaVersion !== 1 ||
+    closeout.gate !== gate.id ||
+    closeout.status !== "Closed" ||
+    closeout.approver !== "Beowxlf" ||
+    closeout.authorizationRecord !== authorizationPath ||
+    typeof authorizationText !== "string" ||
+    typeof currentAuthorizationText !== "string" ||
+    normalizeText(currentAuthorizationText) !==
+      normalizeText(authorizationText) ||
+    protectedMainPathVersionCount(authorizationPath) !== 1 ||
+    sha256(authorizationText) !== closeout.authorizationDigest
+  )
+    errors.push(
+      `${gate.id} cleanup closeout does not bind its active authorization.`,
+    );
+
+  const cleanupPath = closeout.cleanupEvidenceRecord;
+  const cleanupText =
+    typeof cleanupPath === "string" ? readText(cleanupPath) : null;
+  const cleanup =
+    typeof cleanupText === "string" ? parseCanonicalJson(cleanupText) : null;
+  if (
+    typeof cleanupPath !== "string" ||
+    !cleanupPathPattern.test(cleanupPath) ||
+    !isRegularFile(cleanupPath) ||
+    !cleanup ||
+    sha256(cleanupText) !== closeout.cleanupEvidenceDigest
+  ) {
+    errors.push(`${gate.id} cleanup closeout lacks exact cleanup evidence.`);
+    return errors;
+  }
+  if (!hasExactUniqueEntries(Object.keys(cleanup), PRODUCT_GATE_CLEANUP_FIELDS))
+    errors.push(`${gate.id} cleanup evidence has an invalid field set.`);
+  if (
+    cleanup.schemaVersion !== 1 ||
+    cleanup.gate !== gate.id ||
+    cleanup.status !== "Verified" ||
+    cleanup.approver !== "Beowxlf" ||
+    cleanup.authorizationDigest !== closeout.authorizationDigest ||
+    cleanup.targetsRevoked !== true ||
+    cleanup.identitiesRevoked !== true ||
+    cleanup.networkAccessRemoved !== true ||
+    cleanup.artifactsWithdrawn !== true ||
+    cleanup.rollbackVerified !== true
+  )
+    errors.push(`${gate.id} cleanup evidence leaves active capability behind.`);
+  const verifiedAt = validDate(cleanup.verifiedAt);
+  const closedAt = validDate(closeout.closedAt);
+  const openedAt = Date.parse(pathIntroductionTime(authorizationPath) ?? "");
+  const cleanupIntroducedAt = Date.parse(
+    pathIntroductionTime(cleanupPath) ?? "",
+  );
+  const closeoutIntroducedAt = Date.parse(
+    pathIntroductionTime(closeoutPath) ?? "",
+  );
+  if (
+    verifiedAt === null ||
+    closedAt === null ||
+    !Number.isFinite(openedAt) ||
+    !Number.isFinite(cleanupIntroducedAt) ||
+    !Number.isFinite(closeoutIntroducedAt) ||
+    verifiedAt <= openedAt ||
+    closedAt < verifiedAt ||
+    closedAt > now.getTime() ||
+    verifiedAt > cleanupIntroducedAt ||
+    closedAt > closeoutIntroducedAt
+  )
+    errors.push(`${gate.id} cleanup closeout has an invalid event sequence.`);
   return errors;
 }
 
@@ -2106,13 +2445,25 @@ export function validateV1dAuthority(
   }
 
   const priorAuthority = protectedMainAuthority(readAtProtectedMain);
+  errors.push(
+    ...validateV1dCloseoutHistory(authority, priorAuthority, {
+      isRegularFile,
+      readText,
+      readAtProtectedMain,
+      protectedMainPathVersionCount,
+    }),
+  );
+  const currentCloseoutHistory = Array.isArray(authority.closeouts)
+    ? authority.closeouts
+    : [];
+  const priorCloseoutHistory = Array.isArray(priorAuthority?.closeouts)
+    ? priorAuthority.closeouts
+    : [];
   const laterGateOpen = REQUIRED_CLOSED_GATES.some(
     (gateId) =>
       gates.gates?.find((item) => item.id === gateId)?.status === "open",
   );
   if (authority.status === "open") {
-    if (Object.hasOwn(authority, "closeout"))
-      errors.push("Open V1D-SV authority must not carry a prior closeout.");
     const authorization = authority.authorization;
     const validPath =
       typeof authorization === "string" &&
@@ -2177,6 +2528,20 @@ export function validateV1dAuthority(
       laterGateOpen);
   if (
     authority.status === "closed" &&
+    priorAuthority?.status === "open" &&
+    (currentCloseoutHistory.length !== priorCloseoutHistory.length + 1 ||
+      authority.closeout !== currentCloseoutHistory.at(-1))
+  )
+    errors.push("V1D-SV closeout must append exactly one lifecycle tombstone.");
+  if (
+    !(authority.status === "closed" && priorAuthority?.status === "open") &&
+    currentCloseoutHistory.length !== priorCloseoutHistory.length
+  )
+    errors.push(
+      "V1D-SV lifecycle history may change only during verified closeout.",
+    );
+  if (
+    authority.status === "closed" &&
     priorAuthority?.status === "closed" &&
     priorAuthority.closeout &&
     authority.closeout !== priorAuthority.closeout
@@ -2198,6 +2563,18 @@ export function validateV1dAuthority(
     );
   for (const gateId of REQUIRED_CLOSED_GATES) {
     const gate = gates.gates?.find((item) => item.id === gateId);
+    const priorGate = protectedMainGate(readAtProtectedMain, gateId);
+    if (gate)
+      errors.push(
+        ...validateProductGateLifecycle(gate, priorGate, {
+          isRegularFile,
+          readText,
+          readAtProtectedMain,
+          pathIntroductionTime,
+          protectedMainPathVersionCount,
+          now,
+        }),
+      );
     if (authority.status === "open" && gate?.status !== "closed")
       errors.push(`V1D-SV and ${gateId} cannot be open at the same time.`);
     if (gate?.status === "open")

@@ -19,6 +19,10 @@ const cleanupEvidencePath =
   "docs/governance/authorizations/closeouts/evidence/V1D-SV-PLAN-CLEANUP.json";
 const g2AuthorizationPath =
   "docs/governance/authorizations/G2-LINUX-CANARY-EXACT.md";
+const g2CloseoutPath =
+  "docs/governance/authorizations/product-gates/closeouts/G2-LINUX-CANARY-CLOSEOUT.json";
+const g2CleanupPath =
+  "docs/governance/authorizations/product-gates/closeouts/evidence/G2-LINUX-CANARY-CLEANUP.json";
 const fixedNow = new Date("2026-09-04T14:00:00Z");
 const digest = `sha256:${"a".repeat(64)}`;
 const v1cPath = "docs/governance/authorizations/prerequisites/V1C-PASS.json";
@@ -275,6 +279,36 @@ function buildProductGateFixture({ omitEvidenceId = null } = {}) {
   };
 }
 
+function withG2Closeout(productGateFixture) {
+  const fixture = structuredClone(productGateFixture);
+  const authorizationDigest = hash(fixture.authorizationText);
+  fixture.records[g2CleanupPath] = canonical({
+    schemaVersion: 1,
+    gate: "G2",
+    status: "Verified",
+    approver: "Beowxlf",
+    authorizationDigest,
+    targetsRevoked: true,
+    identitiesRevoked: true,
+    networkAccessRemoved: true,
+    artifactsWithdrawn: true,
+    rollbackVerified: true,
+    verifiedAt: "2026-09-04T13:50:00Z",
+  });
+  fixture.records[g2CloseoutPath] = canonical({
+    schemaVersion: 1,
+    gate: "G2",
+    status: "Closed",
+    approver: "Beowxlf",
+    authorizationRecord: g2AuthorizationPath,
+    authorizationDigest,
+    cleanupEvidenceRecord: g2CleanupPath,
+    cleanupEvidenceDigest: hash(fixture.records[g2CleanupPath]),
+    closedAt: "2026-09-04T13:51:00Z",
+  });
+  return fixture;
+}
+
 function closeoutOptions(
   protectedMainGates,
   {
@@ -284,17 +318,20 @@ function closeoutOptions(
     productGateFixture = null,
     productAuthorizationOnProtectedMain = true,
     authorizationInWorktree = true,
+    missingPaths = [],
   } = {},
 ) {
   const productRecords = productGateFixture?.records ?? {};
   return {
     isRegularFile: (path) =>
-      (authorizationInWorktree && path === exactPath) ||
-      path === closeoutPath ||
-      path === cleanupEvidencePath ||
-      (productGateFixture !== null && path === g2AuthorizationPath) ||
-      Object.hasOwn(productRecords, path),
+      !missingPaths.includes(path) &&
+      ((authorizationInWorktree && path === exactPath) ||
+        path === closeoutPath ||
+        path === cleanupEvidencePath ||
+        (productGateFixture !== null && path === g2AuthorizationPath) ||
+        Object.hasOwn(productRecords, path)),
     readText: (path) => {
+      if (missingPaths.includes(path)) return null;
       if (path === exactPath)
         return authorizationInWorktree ? renderRecord() : null;
       if (path === closeoutPath) return closeoutText;
@@ -323,6 +360,7 @@ function closeoutOptions(
       return null;
     },
     protectedMainPathVersionCount: (path) => {
+      if (path === exactPath) return 1;
       if (
         path === g2AuthorizationPath &&
         productGateFixture &&
@@ -343,6 +381,8 @@ function closeoutOptions(
         productAuthorizationOnProtectedMain
       )
         return "2026-09-04T13:45:00Z";
+      if (Object.hasOwn(productRecords, path))
+        if (path.includes("/closeouts/")) return "2026-09-04T13:55:00Z";
       if (Object.hasOwn(productRecords, path))
         return path.includes("/evidence/")
           ? "2026-09-04T13:05:00Z"
@@ -1450,6 +1490,7 @@ const priorOpen = clone();
 open(priorOpen);
 const closedWithCloseout = clone();
 authority(closedWithCloseout).closeout = closeoutPath;
+authority(closedWithCloseout).closeouts = [closeoutPath];
 assert.deepEqual(
   validateV1dAuthority(closedWithCloseout, closeoutOptions(priorOpen)),
   [],
@@ -1515,6 +1556,38 @@ expectFailure(
   },
 );
 
+const reopenedWithHistory = clone();
+open(reopenedWithHistory);
+authority(reopenedWithHistory).closeout = closeoutPath;
+authority(reopenedWithHistory).closeouts = [closeoutPath];
+assert(
+  validateV1dAuthority(
+    reopenedWithHistory,
+    closeoutOptions(reopenedWithHistory, {
+      artifactsOnProtectedMain: true,
+      missingPaths: [closeoutPath],
+    }),
+  ).some((item) =>
+    item.includes("preserve every immutable prior lifecycle closeout"),
+  ),
+  "an open-to-open change deleted an older V1D lifecycle closeout",
+);
+passed += 1;
+
+assert(
+  validateV1dAuthority(
+    reopenedWithHistory,
+    closeoutOptions(reopenedWithHistory, {
+      artifactsOnProtectedMain: true,
+      missingPaths: [cleanupEvidencePath],
+    }),
+  ).some((item) =>
+    item.includes("preserve every prior lifecycle cleanup evidence"),
+  ),
+  "an open-to-open change deleted older V1D cleanup evidence",
+);
+passed += 1;
+
 assert(
   validateV1dAuthority(
     closedWithCloseout,
@@ -1569,6 +1642,56 @@ assert.deepEqual(
     }),
   ),
   [],
+);
+passed += 1;
+
+const g2ClosedWithCleanup = structuredClone(g2AfterCloseout);
+const closedG2 = g2ClosedWithCleanup.gates.find((gate) => gate.id === "G2");
+closedG2.status = "closed";
+closedG2.closeout = g2CloseoutPath;
+closedG2.closeouts = [g2CloseoutPath];
+delete closedG2.authorization;
+const g2CloseoutFixture = withG2Closeout(g2Fixture);
+assert.deepEqual(
+  validateV1dAuthority(
+    g2ClosedWithCleanup,
+    closeoutOptions(g2AfterCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2CloseoutFixture,
+    }),
+  ),
+  [],
+);
+passed += 1;
+
+const g2ClosedWithoutCleanup = structuredClone(g2AfterCloseout);
+const closingG2 = g2ClosedWithoutCleanup.gates.find((gate) => gate.id === "G2");
+closingG2.status = "closed";
+delete closingG2.authorization;
+assert(
+  validateV1dAuthority(
+    g2ClosedWithoutCleanup,
+    closeoutOptions(g2AfterCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2Fixture,
+    }),
+  ).some((item) => item.includes("cannot close or replace scope")),
+  "an open G2 gate closed without a cleanup closeout",
+);
+passed += 1;
+
+const g2RescopedWithoutCleanup = structuredClone(g2AfterCloseout);
+g2RescopedWithoutCleanup.gates.find((gate) => gate.id === "G2").authorization =
+  "docs/governance/authorizations/G2-SECOND-CANARY.md";
+assert(
+  validateV1dAuthority(
+    g2RescopedWithoutCleanup,
+    closeoutOptions(g2AfterCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2Fixture,
+    }),
+  ).some((item) => item.includes("cannot close or replace scope")),
+  "an open G2 gate replaced scope without a cleanup closeout",
 );
 passed += 1;
 

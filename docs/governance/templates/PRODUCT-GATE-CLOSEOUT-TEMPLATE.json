@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "gate": "GN",
+  "status": "Closed",
+  "approver": "Beowxlf",
+  "authorizationRecord": "docs/governance/authorizations/GN-PLACEHOLDER.md",
+  "authorizationDigest": "sha256:PLACEHOLDER",
+  "cleanupEvidenceRecord": "docs/governance/authorizations/product-gates/closeouts/evidence/GN-PLACEHOLDER.json",
+  "cleanupEvidenceDigest": "sha256:PLACEHOLDER",
+  "closedAt": "YYYY-MM-DDTHH:MM:SSZ"
+}

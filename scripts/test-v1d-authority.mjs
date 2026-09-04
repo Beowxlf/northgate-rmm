@@ -710,6 +710,7 @@ validFields["Factory plan receipt signature digest"] = hash(
 );
 
 function open(config) {
+  config.currentPhase = 2;
   authority(config).status = "open";
   authority(config).authorization = exactPath;
 }
@@ -903,6 +904,14 @@ expectFailure(
     authority(config).phase = 3;
   },
   "within Phase 2",
+);
+expectFailure(
+  "wrong active project phase",
+  (config) => {
+    open(config);
+    config.currentPhase = 1;
+  },
+  "requires project Phase 2",
 );
 expectFailure(
   "gate opening",

@@ -2802,6 +2802,11 @@ export function validateV1dAuthority(
   }
 
   if (authority.phase !== 2) errors.push("V1D-SV must remain within Phase 2.");
+  if (
+    ["open", "closing"].includes(authority.status) &&
+    gates.currentPhase !== 2
+  )
+    errors.push("Active or closing V1D-SV requires project Phase 2.");
   if (authority.opensGate !== false)
     errors.push("V1D-SV must not open a product gate.");
   if (

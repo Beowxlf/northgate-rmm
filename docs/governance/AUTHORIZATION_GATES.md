@@ -111,7 +111,8 @@ pre-code audit. Evidence record:
 authority IDs fail governance validation. Its closed-gate requirements,
 prerequisites, and prohibitions must be exact unique arrays; alternate types,
 duplicates, omissions, and additions fail closed. Every endpoint-capable gate
-from G2 through G8 must remain closed while V1D-SV is open.
+from G2 through G8 must remain closed while V1D-SV is open. Its `open` and
+`closing` states are valid only while the project `currentPhase` is exactly 2.
 
 This is an exact, bounded change authorization, not an opened product gate. It
 may be issued only after V1C passes and the required external V1D dependencies

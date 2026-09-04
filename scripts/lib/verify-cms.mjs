@@ -62,6 +62,7 @@ export function verifyCmsDetached(
   content,
   signature,
   expectedCertificateSha256,
+  trustedReceiptIntroductionTime,
 ) {
   if (
     typeof content !== "string" ||
@@ -124,16 +125,19 @@ export function verifyCmsDetached(
     const receipt = JSON.parse(content);
     const issuedAt = Date.parse(receipt.issuedAt ?? "");
     const approvedAt = Date.parse(receipt.approvedAt ?? "");
+    const introducedAt = Date.parse(trustedReceiptIntroductionTime ?? "");
     const validFrom = Date.parse(signer.validFrom);
     const validTo = Date.parse(signer.validTo);
     return (
       Number.isFinite(issuedAt) &&
       Number.isFinite(approvedAt) &&
+      Number.isFinite(introducedAt) &&
       Number.isFinite(validFrom) &&
       Number.isFinite(validTo) &&
       validFrom <= issuedAt &&
       issuedAt <= approvedAt &&
-      approvedAt <= validTo
+      approvedAt <= introducedAt &&
+      introducedAt <= validTo
     );
   } catch {
     return false;

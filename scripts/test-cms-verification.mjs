@@ -20,6 +20,9 @@ try {
   const approvedAt = new Date(Date.now() + 2000)
     .toISOString()
     .replace(".000Z", "Z");
+  const introducedAt = new Date(Date.now() + 3000)
+    .toISOString()
+    .replace(".000Z", "Z");
   const content = `${JSON.stringify({ planId: "ngp-test", issuedAt, approvedAt })}\n`;
   fs.writeFileSync(contentPath, content, "utf8");
   assert.equal(
@@ -68,13 +71,26 @@ try {
     .replaceAll(":", "")
     .toLowerCase()}`;
   const signature = fs.readFileSync(signaturePath, "utf8");
-  assert.equal(verifyCmsDetached(content, signature, fingerprint), true);
   assert.equal(
-    verifyCmsDetached(`${content}tampered`, signature, fingerprint),
+    verifyCmsDetached(content, signature, fingerprint, introducedAt),
+    true,
+  );
+  assert.equal(
+    verifyCmsDetached(
+      `${content}tampered`,
+      signature,
+      fingerprint,
+      introducedAt,
+    ),
     false,
   );
   assert.equal(
-    verifyCmsDetached(content, signature, `sha256:${"0".repeat(64)}`),
+    verifyCmsDetached(
+      content,
+      signature,
+      `sha256:${"0".repeat(64)}`,
+      introducedAt,
+    ),
     false,
   );
 
@@ -133,6 +149,7 @@ try {
       content,
       fs.readFileSync(weakSignaturePath, "utf8"),
       weakFingerprint,
+      introducedAt,
     ),
     false,
   );
@@ -175,10 +192,15 @@ try {
       outsideContent,
       fs.readFileSync(outsideSignaturePath, "utf8"),
       fingerprint,
+      "2100-01-01T00:02:00Z",
     ),
     false,
   );
-  console.log("Factory CMS verification tests: 5 passed.");
+  assert.equal(
+    verifyCmsDetached(content, signature, fingerprint, "2100-01-01T00:00:00Z"),
+    false,
+  );
+  console.log("Factory CMS verification tests: 6 passed.");
 } finally {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
 }

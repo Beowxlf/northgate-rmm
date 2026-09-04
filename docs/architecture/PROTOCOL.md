@@ -23,6 +23,13 @@ an exact retry returns the same accepted acknowledgement without applying the
 message again. Reuse of the ID with different authenticated identity or payload
 fails permanently and is audited.
 
+The V1B source implements this contract as an in-process application boundary.
+It accepts only identity facts extracted from an already verified client
+certificate, binds both the endpoint URI and public-key fingerprint to an active
+database identity, and retains an encoded-message digest for exact retry. It does
+not open a socket or claim TLS termination; those remain responsibilities of the
+separately qualified listener adapter.
+
 ## Envelope
 
 Every post-enrollment message includes:

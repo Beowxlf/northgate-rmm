@@ -26,6 +26,7 @@ The first executable lesson is
 
 - [Project charter](PROJECT_CHARTER.md)
 - [Version 1.0 release criteria](docs/governance/V1_RELEASE_CRITERIA.md)
+- [V1A and V1B exit audit](docs/audits/V1A_V1B_EXIT_AUDIT_2026-09-04.md)
 - [Development phases](docs/governance/PHASES.md)
 - [Authorization gates](docs/governance/AUTHORIZATION_GATES.md)
 - [Licensing policy](docs/governance/LICENSING.md)
@@ -98,10 +99,12 @@ lifecycle contract, executable entrypoint, installable package, and hardened,
 resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
 Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
 test-only signature verification have also passed. Evidence-complete G2A and
-G2B qualification records retain every required digest. The repository still
-includes a source-built, disabled Debian 12 server-package definition and
-networkless qualification, but no operational issuer/IdP integration, approved
-deployment configuration, command runner, or privileged helper.
+G2B qualification records retain every required digest. The integrated V1A
+contract and V1B control-plane source qualification are complete, including a
+source-built, disabled Debian 12 server package and two-way co-installation
+lifecycle proof in a networkless sandbox. This is not an operational
+deployment: no issuer/IdP integration, approved deployment configuration,
+command runner, or privileged helper is present.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.

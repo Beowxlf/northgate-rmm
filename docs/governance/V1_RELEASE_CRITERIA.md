@@ -41,6 +41,18 @@ product requirements without claiming either unqualified platform as supported.
 
 ## Qualification ladder
 
+Current qualification status is recorded in the
+[V1A and V1B exit audit](../audits/V1A_V1B_EXIT_AUDIT_2026-09-04.md).
+
+| Stage | Current state                                          |
+| ----- | ------------------------------------------------------ |
+| V1A   | Pass on protected main                                 |
+| V1B   | Source qualification pass; no deployment               |
+| V1C   | Open; G6 closed                                        |
+| V1D   | Open; operational dependencies not yet exact or proven |
+| V1E   | Closed; separate G2 authorization required             |
+| V1F   | Open; canary and release acceptance not performed      |
+
 ### V1A — Release contract and source authority
 
 - this release contract is merged through protected `main`;

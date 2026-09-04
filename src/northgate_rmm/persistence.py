@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import secrets
 from dataclasses import replace
@@ -52,6 +53,7 @@ MIGRATION_LOCK_ID = 7_104_771_001
 GRANT_NAMESPACE = "ngr1_"
 ENROLLMENT_TOKEN_PATTERN = re.compile(r"ngr1_[A-Za-z0-9_-]{43}\Z")
 ENROLLMENT_REJECTION = "enrollment grant is invalid or unavailable"
+DEFAULT_DATABASE_OPERATION_TIMEOUT_SECONDS = 8.0
 
 
 def _default_migration_directory() -> Path:
@@ -126,13 +128,32 @@ def apply_migrations(dsn: str, directory: Path | None = None) -> tuple[str, ...]
 class PostgresControlPlane:
     """Transactional, restart-safe Phase 1 control-plane boundary."""
 
-    def __init__(self, dsn: str) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        *,
+        operation_timeout_seconds: float = DEFAULT_DATABASE_OPERATION_TIMEOUT_SECONDS,
+    ) -> None:
         if not dsn:
             raise ValidationError("PostgreSQL DSN is required")
+        if not 1.0 <= operation_timeout_seconds <= 30.0:
+            raise ValidationError(
+                "database operation timeout is outside the supported range"
+            )
         self._dsn = dsn
+        self._operation_timeout_seconds = operation_timeout_seconds
 
     def _connect(self) -> Connection[Row]:
-        return connect(self._dsn, row_factory=dict_row)
+        timeout_milliseconds = math.ceil(self._operation_timeout_seconds * 1_000)
+        return connect(
+            self._dsn,
+            row_factory=dict_row,
+            connect_timeout=math.ceil(self._operation_timeout_seconds),
+            options=(
+                f"-c statement_timeout={timeout_milliseconds} "
+                f"-c lock_timeout={timeout_milliseconds}"
+            ),
+        )
 
     @property
     def observations(self) -> tuple[Observation, ...]:

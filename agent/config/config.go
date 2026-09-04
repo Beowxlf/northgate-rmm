@@ -133,7 +133,7 @@ func (cfg Config) Validate() error {
 	}
 	hostname := parsed.Hostname()
 	if hostname == "" || !utf8.ValidString(hostname) || containsControl(hostname) ||
-		!validControlPlaneHostname(hostname) {
+		hostname != strings.ToLower(hostname) || !validControlPlaneHostname(hostname) {
 		return errors.New("control_plane_url contains an invalid hostname")
 	}
 	if strings.HasSuffix(parsed.Host, ":") {

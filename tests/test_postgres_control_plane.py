@@ -78,6 +78,22 @@ def enrolled_plane(postgres_dsn: str) -> tuple[PostgresControlPlane, SyntheticAg
     return plane, agent
 
 
+def test_runtime_connections_enforce_database_deadlines(postgres_dsn: str) -> None:
+    plane = PostgresControlPlane(postgres_dsn, operation_timeout_seconds=1.25)
+    with plane._connect() as connection, connection.cursor() as cursor:
+        cursor.execute("SHOW statement_timeout")
+        statement_timeout = cursor.fetchone()
+        assert statement_timeout is not None
+        assert statement_timeout["statement_timeout"] == "1250ms"
+        cursor.execute("SHOW lock_timeout")
+        lock_timeout = cursor.fetchone()
+        assert lock_timeout is not None
+        assert lock_timeout["lock_timeout"] == "1250ms"
+
+    with pytest.raises(ValidationError, match="operation timeout"):
+        PostgresControlPlane(postgres_dsn, operation_timeout_seconds=0.5)
+
+
 def test_restart_preserves_endpoint_observation_and_audit(postgres_dsn: str) -> None:
     plane, agent = enrolled_plane(postgres_dsn)
     message = agent.heartbeat(now=NOW)

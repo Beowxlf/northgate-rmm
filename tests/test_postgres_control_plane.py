@@ -397,7 +397,7 @@ def test_pending_enrollment_requires_issuance_and_first_heartbeat_activation(
         authenticated_at=NOW + timedelta(seconds=4),
         correlation_id=uuid4(),
     )
-    assert authenticated == identity
+    assert authenticated == issued
     with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
         cursor.execute(
             "SELECT identity_status, activated_at FROM endpoint_identities "

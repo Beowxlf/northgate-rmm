@@ -285,6 +285,8 @@ def test_operator_models_reject_invalid_sessions_and_policy() -> None:
         replace(principal(), expires_at=principal().authenticated_at)
     with pytest.raises(ValidationError, match="maximum session age"):
         replace(policy(), maximum_session_age=timedelta(days=2))
+    with pytest.raises(ValidationError, match="required_role"):
+        replace(policy(), required_role="r" * 65)
     with pytest.raises(ValidationError, match="subject"):
         replace(principal(), subject="operator\n001")
     with pytest.raises(ValidationError, match="subject"):

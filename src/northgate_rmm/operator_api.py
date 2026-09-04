@@ -23,6 +23,7 @@ from northgate_rmm.views import (
 MAX_AUTHORIZATION_HEADER_BYTES = 4_096
 MAX_OPERATOR_VALUE_LENGTH = 512
 MAX_OPERATOR_AUDIT_IDENTIFIER_LENGTH = 256
+MAX_OPERATOR_ROLE_LENGTH = 64
 MAX_OPERATOR_PATH_LENGTH = 256
 MAX_OPERATOR_SESSION_AGE = timedelta(hours=12)
 
@@ -60,7 +61,7 @@ class OperatorPrincipal:
             raise ValidationError("operator mfa is invalid")
         if not self.roles or len(self.roles) > 8:
             raise ValidationError("operator roles are invalid")
-        if any(not role or len(role) > 64 for role in self.roles):
+        if any(not role or len(role) > MAX_OPERATOR_ROLE_LENGTH for role in self.roles):
             raise ValidationError("operator role is invalid")
         if len(set(self.roles)) != len(self.roles):
             raise ValidationError("operator roles contain a duplicate")
@@ -92,7 +93,11 @@ class OperatorAuthorizationPolicy:
             maximum_length = (
                 MAX_OPERATOR_AUDIT_IDENTIFIER_LENGTH
                 if name == "subject"
-                else MAX_OPERATOR_VALUE_LENGTH
+                else (
+                    MAX_OPERATOR_ROLE_LENGTH
+                    if name == "required_role"
+                    else MAX_OPERATOR_VALUE_LENGTH
+                )
             )
             if not value or len(value) > maximum_length or not value.isprintable():
                 raise ValidationError(f"operator policy {name} is invalid")

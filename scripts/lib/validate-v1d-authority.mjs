@@ -31,6 +31,10 @@ const REQUIRED_RECORD_FIELDS = [
   "Signed release digest",
   "Factory plan receipt",
   "Factory plan receipt digest",
+  "Factory plan receipt signature",
+  "Factory plan receipt signature digest",
+  "Factory approval trust record",
+  "Factory approval trust record digest",
   "Factory plan ID",
   "Authenticated state hash",
   "Factory plan issued at",
@@ -52,6 +56,8 @@ const DIGEST_FIELDS = [
   "Server binding",
   "Signed release digest",
   "Factory plan receipt digest",
+  "Factory plan receipt signature digest",
+  "Factory approval trust record digest",
   "Authenticated state hash",
   "External dependency set binding",
   "Service identity binding",
@@ -70,6 +76,10 @@ const APPROVED_BINDING_FIELDS = [
   "Signed release digest",
   "Factory plan receipt",
   "Factory plan receipt digest",
+  "Factory plan receipt signature",
+  "Factory plan receipt signature digest",
+  "Factory approval trust record",
+  "Factory approval trust record digest",
   "Factory plan ID",
   "Authenticated state hash",
   "Factory plan issued at",
@@ -117,6 +127,14 @@ const FACTORY_PLAN_RECEIPT_FIELDS = [
   "expiresAt",
   "approver",
   "targetBinding",
+];
+const FACTORY_APPROVAL_TRUST_FIELDS = [
+  "schemaVersion",
+  "trustPurpose",
+  "status",
+  "approver",
+  "approvedAt",
+  "certificateSha256",
 ];
 const NETWORK_DEPENDENCY_ID = "V1D-DEP-NETWORK-SEGMENTATION";
 const EXPECTED_DEPENDENCY_IDS = [
@@ -638,6 +656,8 @@ function validateApprovedBindings(
     readAtCommit,
     readAtProtectedMain,
     isPathImmutableOnProtectedMain,
+    isPathIntroducedBefore,
+    verifyFactoryReceiptSignature,
     now,
   },
 ) {
@@ -730,6 +750,8 @@ function validateApprovedBindings(
       readAtCommit,
       readAtProtectedMain,
       isPathImmutableOnProtectedMain,
+      isPathIntroducedBefore,
+      verifyFactoryReceiptSignature,
     }),
   );
   errors.push(
@@ -764,6 +786,8 @@ function validateFactoryPlanReceipt(fields, auditedCommit, options) {
     readAtCommit,
     readAtProtectedMain,
     isPathImmutableOnProtectedMain,
+    isPathIntroducedBefore,
+    verifyFactoryReceiptSignature,
   } = options;
   const receiptPath = fields.get("Factory plan receipt") ?? "";
   if (
@@ -793,6 +817,126 @@ function validateFactoryPlanReceipt(fields, auditedCommit, options) {
   );
   if (sha256(approvedText) !== fields.get("Factory plan receipt digest"))
     errors.push("V1D-SV Factory plan receipt digest mismatches.");
+
+  const signaturePath = fields.get("Factory plan receipt signature") ?? "";
+  const trustPath = fields.get("Factory approval trust record") ?? "";
+  if (
+    !/^docs\/governance\/authorizations\/factory-receipts\/[A-Za-z0-9][A-Za-z0-9._-]*\.cms\.pem$/.test(
+      signaturePath,
+    ) ||
+    !isRegularFile(signaturePath)
+  )
+    errors.push("V1D-SV lacks its Factory receipt CMS signature.");
+  if (
+    !/^docs\/governance\/trust\/vm-factory\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+      trustPath,
+    ) ||
+    !isRegularFile(trustPath)
+  )
+    errors.push("V1D-SV lacks its pinned Factory approval trust record.");
+  if (
+    isRegularFile(receiptPath) &&
+    isRegularFile(trustPath) &&
+    !isPathIntroducedBefore(trustPath, receiptPath)
+  )
+    errors.push(
+      "V1D-SV Factory approval trust must be pinned in an earlier protected-main change.",
+    );
+
+  const signatureText = isRegularFile(signaturePath)
+    ? readAtCommit(auditedCommit, signaturePath)
+    : null;
+  const trustText = isRegularFile(trustPath)
+    ? readAtCommit(auditedCommit, trustPath)
+    : null;
+  if (typeof signatureText !== "string")
+    errors.push(
+      "V1D-SV Factory receipt signature is absent from the audited commit.",
+    );
+  if (typeof trustText !== "string")
+    errors.push(
+      "V1D-SV Factory approval trust record is absent from the audited commit.",
+    );
+  for (const [label, path, approvedArtifact] of [
+    ["V1D-SV Factory receipt signature", signaturePath, signatureText],
+    ["V1D-SV Factory approval trust record", trustPath, trustText],
+  ]) {
+    if (typeof approvedArtifact !== "string" || !isRegularFile(path)) continue;
+    const currentArtifact = readText(path);
+    if (
+      typeof currentArtifact !== "string" ||
+      normalizeText(currentArtifact) !== normalizeText(approvedArtifact)
+    )
+      errors.push(`${label} changed after approval.`);
+    errors.push(
+      ...validateProtectedMainContinuity(
+        label,
+        path,
+        approvedArtifact,
+        readAtProtectedMain,
+        isPathImmutableOnProtectedMain,
+        auditedCommit,
+      ),
+    );
+  }
+  if (
+    typeof signatureText === "string" &&
+    sha256(signatureText) !==
+      fields.get("Factory plan receipt signature digest")
+  )
+    errors.push("V1D-SV Factory receipt signature digest mismatches.");
+  if (
+    typeof trustText === "string" &&
+    sha256(trustText) !== fields.get("Factory approval trust record digest")
+  )
+    errors.push("V1D-SV Factory approval trust record digest mismatches.");
+
+  const trust =
+    typeof trustText === "string" ? parseCanonicalJson(trustText) : null;
+  if (!trust) {
+    errors.push(
+      "V1D-SV Factory approval trust record is not canonical duplicate-free JSON.",
+    );
+  } else {
+    if (
+      !hasExactUniqueEntries(Object.keys(trust), FACTORY_APPROVAL_TRUST_FIELDS)
+    )
+      errors.push(
+        "V1D-SV Factory approval trust record has an invalid field set.",
+      );
+    if (
+      trust.schemaVersion !== 1 ||
+      trust.trustPurpose !== "NorthGate VM Factory plan approval signer" ||
+      trust.status !== "Pinned" ||
+      trust.approver !== "Beowxlf"
+    )
+      errors.push(
+        "V1D-SV Factory approval signer is not independently pinned.",
+      );
+    const trustApprovedAt = validDate(trust.approvedAt);
+    const planIssuedAt = validDate(fields.get("Factory plan issued at"));
+    if (
+      trustApprovedAt === null ||
+      planIssuedAt === null ||
+      trustApprovedAt >= planIssuedAt
+    )
+      errors.push("V1D-SV Factory approval trust must predate plan issuance.");
+    if (!/^sha256:[a-f0-9]{64}$/.test(trust.certificateSha256 ?? ""))
+      errors.push(
+        "V1D-SV Factory approval trust has an invalid certificate digest.",
+      );
+    if (
+      typeof signatureText === "string" &&
+      !verifyFactoryReceiptSignature(
+        approvedText,
+        signatureText,
+        trust.certificateSha256,
+      )
+    )
+      errors.push(
+        "V1D-SV Factory plan receipt signature is invalid for the pinned signer.",
+      );
+  }
 
   const receipt = parseCanonicalJson(approvedText);
   if (!receipt) {
@@ -863,11 +1007,7 @@ function validateRecord(text, options) {
     errors.push(
       "V1D-SV authorization record audited commit is not on protected main.",
     );
-  if (
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(
-      fields.get("Factory plan ID") ?? "",
-    )
-  )
+  if (!/^ngp-[a-f0-9]{64}$/.test(fields.get("Factory plan ID") ?? ""))
     errors.push("V1D-SV authorization record has an invalid Factory plan ID.");
   for (const field of DIGEST_FIELDS) {
     if (!/^sha256:[a-f0-9]{64}$/.test(fields.get(field) ?? ""))
@@ -974,6 +1114,8 @@ export function validateV1dAuthority(
     readAtCommit = () => null,
     readAtProtectedMain = () => null,
     isPathImmutableOnProtectedMain = () => false,
+    isPathIntroducedBefore = () => false,
+    verifyFactoryReceiptSignature = () => false,
     isCommit = () => false,
     isProtectedMainCommit = () => false,
     now = new Date(),
@@ -1049,6 +1191,8 @@ export function validateV1dAuthority(
             readAtCommit,
             readAtProtectedMain,
             isPathImmutableOnProtectedMain,
+            isPathIntroducedBefore,
+            verifyFactoryReceiptSignature,
             isCommit,
             isProtectedMainCommit,
             now,

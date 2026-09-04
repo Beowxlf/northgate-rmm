@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { validateV1dAuthority } from "./lib/validate-v1d-authority.mjs";
+import { verifyCmsDetached } from "./lib/verify-cms.mjs";
 
 const root = process.cwd();
 const errors = [];
@@ -71,6 +72,35 @@ function isPathImmutableOnProtectedMain(commit, relativePath) {
   if (commits.length !== 1) return false;
   return (
     spawnSync("git", ["merge-base", "--is-ancestor", commits[0], commit], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
+}
+
+function isPathIntroducedBefore(earlierPath, laterPath) {
+  const historyFor = (relativePath) => {
+    const history = spawnSync(
+      "git",
+      [
+        "log",
+        "--format=%H",
+        "--full-history",
+        "origin/main",
+        "--",
+        relativePath,
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    if (history.status !== 0) return [];
+    return history.stdout.trim().split(/\r?\n/).filter(Boolean);
+  };
+  const earlier = historyFor(earlierPath);
+  const later = historyFor(laterPath);
+  if (earlier.length !== 1 || later.length !== 1 || earlier[0] === later[0])
+    return false;
+  return (
+    spawnSync("git", ["merge-base", "--is-ancestor", earlier[0], later[0]], {
       cwd: root,
       stdio: "ignore",
     }).status === 0
@@ -170,6 +200,8 @@ for (const authorityError of validateV1dAuthority(gates, {
   readAtCommit,
   readAtProtectedMain,
   isPathImmutableOnProtectedMain,
+  isPathIntroducedBefore,
+  verifyFactoryReceiptSignature: verifyCmsDetached,
   isCommit,
   isProtectedMainCommit,
 }))

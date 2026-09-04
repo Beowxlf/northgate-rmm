@@ -9,6 +9,10 @@ const exactPath = "docs/governance/authorizations/V1D-SV-EXACT.md";
 const bindingPath = "docs/governance/authorizations/bindings/V1D-SV-EXACT.json";
 const factoryReceiptPath =
   "docs/governance/authorizations/factory-receipts/V1D-SV-PLAN.json";
+const factorySignaturePath =
+  "docs/governance/authorizations/factory-receipts/V1D-SV-PLAN.cms.pem";
+const factoryTrustPath =
+  "docs/governance/trust/vm-factory/plan-approval-signer.json";
 const fixedNow = new Date("2026-09-04T14:00:00Z");
 const digest = `sha256:${"a".repeat(64)}`;
 const v1cPath = "docs/governance/authorizations/prerequisites/V1C-PASS.json";
@@ -46,7 +50,11 @@ const validFields = {
   "Signed release digest": digest,
   "Factory plan receipt": factoryReceiptPath,
   "Factory plan receipt digest": digest,
-  "Factory plan ID": "plan-v1d-0001",
+  "Factory plan receipt signature": factorySignaturePath,
+  "Factory plan receipt signature digest": digest,
+  "Factory approval trust record": factoryTrustPath,
+  "Factory approval trust record digest": digest,
+  "Factory plan ID": `ngp-${"1".repeat(64)}`,
   "Authenticated state hash": digest,
   "Factory plan issued at": "2026-09-04T13:00:00Z",
   "Factory plan approved at": "2026-09-04T13:01:00Z",
@@ -94,6 +102,22 @@ function renderFactoryPlanReceipt(fields = validFields, overrides = {}) {
     targetBinding: fields["Server binding"],
     ...overrides,
   });
+}
+
+function renderFactoryApprovalTrust(overrides = {}) {
+  return canonical({
+    schemaVersion: 1,
+    trustPurpose: "NorthGate VM Factory plan approval signer",
+    status: "Pinned",
+    approver: "Beowxlf",
+    approvedAt: "2026-09-04T12:54:00Z",
+    certificateSha256: `sha256:${"b".repeat(64)}`,
+    ...overrides,
+  });
+}
+
+function renderFactorySignature(content, certificateSha256) {
+  return `TEST-CMS ${hash(content)} ${certificateSha256}\n`;
 }
 
 function canonical(value) {
@@ -275,6 +299,10 @@ function renderApprovedBindings(
     "Signed release digest",
     "Factory plan receipt",
     "Factory plan receipt digest",
+    "Factory plan receipt signature",
+    "Factory plan receipt signature digest",
+    "Factory approval trust record",
+    "Factory approval trust record digest",
     "Factory plan ID",
     "Authenticated state hash",
     "Factory plan issued at",
@@ -330,6 +358,15 @@ validFields["External dependency set binding"] = hash(
   canonical(buildDependencyDescriptors(validFields, buildPrerequisites())),
 );
 validFields["Factory plan receipt digest"] = hash(renderFactoryPlanReceipt());
+validFields["Factory approval trust record digest"] = hash(
+  renderFactoryApprovalTrust(),
+);
+validFields["Factory plan receipt signature digest"] = hash(
+  renderFactorySignature(
+    renderFactoryPlanReceipt(),
+    `sha256:${"b".repeat(64)}`,
+  ),
+);
 
 function open(config) {
   authority(config).status = "open";
@@ -345,6 +382,8 @@ function expectFailure(
     mutateFields,
     mutateApproval,
     mutateFactoryReceipt,
+    mutateFactoryTrust,
+    mutateFactorySignature,
     mutatePrerequisites,
     regularFile = true,
     protectedMain = true,
@@ -352,8 +391,11 @@ function expectFailure(
     approvedText,
     currentApprovedText,
     currentFactoryReceiptText,
+    currentFactorySignatureText,
+    currentFactoryTrustText,
     protectedMainTexts = {},
     nonImmutablePaths = [],
+    trustPredatesReceipt = true,
   } = {},
 ) {
   const config = clone();
@@ -370,18 +412,33 @@ function expectFailure(
   const factoryReceipt = JSON.parse(renderFactoryPlanReceipt(fields));
   mutateFactoryReceipt?.(factoryReceipt);
   const priorFactoryReceipt = canonical(factoryReceipt);
+  const factoryTrust = JSON.parse(renderFactoryApprovalTrust());
+  mutateFactoryTrust?.(factoryTrust);
+  const priorFactoryTrust = canonical(factoryTrust);
+  let priorFactorySignature = renderFactorySignature(
+    priorFactoryReceipt,
+    factoryTrust.certificateSha256,
+  );
+  priorFactorySignature =
+    mutateFactorySignature?.(priorFactorySignature) ?? priorFactorySignature;
   const errors = validateV1dAuthority(config, {
     isRegularFile: (path) =>
       regularFile &&
       (path === exactPath ||
         path === bindingPath ||
         path === factoryReceiptPath ||
+        path === factorySignaturePath ||
+        path === factoryTrustPath ||
         path in prerequisites),
     readText: (path) => {
       if (path === exactPath) return recordText ?? renderRecord(fields);
       if (path === bindingPath) return currentApprovedText ?? priorApproval;
       if (path === factoryReceiptPath)
         return currentFactoryReceiptText ?? priorFactoryReceipt;
+      if (path === factorySignaturePath)
+        return currentFactorySignatureText ?? priorFactorySignature;
+      if (path === factoryTrustPath)
+        return currentFactoryTrustText ?? priorFactoryTrust;
       if (path in prerequisites) return prerequisites[path];
       return null;
     },
@@ -389,6 +446,8 @@ function expectFailure(
       if (commit !== validFields["Audited commit"]) return null;
       if (path === bindingPath) return priorApproval;
       if (path === factoryReceiptPath) return priorFactoryReceipt;
+      if (path === factorySignaturePath) return priorFactorySignature;
+      if (path === factoryTrustPath) return priorFactoryTrust;
       return prerequisites[path] ?? null;
     },
     readAtProtectedMain: (path) => {
@@ -396,11 +455,19 @@ function expectFailure(
         return protectedMainTexts[path];
       if (path === bindingPath) return priorApproval;
       if (path === factoryReceiptPath) return priorFactoryReceipt;
+      if (path === factorySignaturePath) return priorFactorySignature;
+      if (path === factoryTrustPath) return priorFactoryTrust;
       return prerequisites[path] ?? null;
     },
     isPathImmutableOnProtectedMain: (commit, path) =>
       commit === validFields["Audited commit"] &&
       !nonImmutablePaths.includes(path),
+    isPathIntroducedBefore: (earlierPath, laterPath) =>
+      trustPredatesReceipt &&
+      earlierPath === factoryTrustPath &&
+      laterPath === factoryReceiptPath,
+    verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
+      signature === renderFactorySignature(content, certificateSha256),
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) =>
       protectedMain && commit === validFields["Audited commit"],
@@ -609,6 +676,35 @@ expectFailure(
   {
     mutateFactoryReceipt: (receipt) => (receipt.issuer = "self-reported"),
   },
+);
+expectFailure(
+  "forged Factory receipt signature",
+  open,
+  "signature is invalid for the pinned signer",
+  { mutateFactorySignature: () => "forged-signature\n" },
+);
+expectFailure(
+  "unpinned Factory approval signer",
+  open,
+  "not independently pinned",
+  {
+    mutateFactoryTrust: (trust) => (trust.status = "Proposed"),
+  },
+);
+expectFailure(
+  "Factory trust approved at plan issuance",
+  open,
+  "trust must predate plan issuance",
+  {
+    mutateFactoryTrust: (trust) =>
+      (trust.approvedAt = validFields["Factory plan issued at"]),
+  },
+);
+expectFailure(
+  "Factory trust introduced with receipt",
+  open,
+  "pinned in an earlier protected-main change",
+  { trustPredatesReceipt: false },
 );
 expectFailure(
   "Factory receipt changed after approval",
@@ -1008,31 +1104,48 @@ const exactApproval = renderApprovedBindings(
   exactPrerequisites,
 );
 const exactFactoryReceipt = renderFactoryPlanReceipt();
+const exactFactoryTrust = renderFactoryApprovalTrust();
+const exactFactorySignature = renderFactorySignature(
+  exactFactoryReceipt,
+  `sha256:${"b".repeat(64)}`,
+);
 assert.deepEqual(
   validateV1dAuthority(exactOpen, {
     isRegularFile: (path) =>
       path === exactPath ||
       path === bindingPath ||
       path === factoryReceiptPath ||
+      path === factorySignaturePath ||
+      path === factoryTrustPath ||
       path in exactPrerequisites,
     readText: (path) => {
       if (path === exactPath) return renderRecord();
       if (path === bindingPath) return exactApproval;
       if (path === factoryReceiptPath) return exactFactoryReceipt;
+      if (path === factorySignaturePath) return exactFactorySignature;
+      if (path === factoryTrustPath) return exactFactoryTrust;
       return exactPrerequisites[path] ?? null;
     },
     readAtCommit: (_commit, path) => {
       if (path === bindingPath) return exactApproval;
       if (path === factoryReceiptPath) return exactFactoryReceipt;
+      if (path === factorySignaturePath) return exactFactorySignature;
+      if (path === factoryTrustPath) return exactFactoryTrust;
       return exactPrerequisites[path] ?? null;
     },
     readAtProtectedMain: (path) => {
       if (path === bindingPath) return exactApproval;
       if (path === factoryReceiptPath) return exactFactoryReceipt;
+      if (path === factorySignaturePath) return exactFactorySignature;
+      if (path === factoryTrustPath) return exactFactoryTrust;
       return exactPrerequisites[path] ?? null;
     },
     isPathImmutableOnProtectedMain: (commit) =>
       commit === validFields["Audited commit"],
+    isPathIntroducedBefore: (earlierPath, laterPath) =>
+      earlierPath === factoryTrustPath && laterPath === factoryReceiptPath,
+    verifyFactoryReceiptSignature: (content, signature, certificateSha256) =>
+      signature === renderFactorySignature(content, certificateSha256),
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
     now: fixedNow,

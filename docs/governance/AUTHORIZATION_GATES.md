@@ -51,7 +51,11 @@ authority can open, its record must use the parsed, fail-closed field contract i
 the [V1D-SV authorization template](templates/V1D-SV-AUTHORIZATION-TEMPLATE.md).
 The audited commit must contain the canonical Factory-exported plan approval
 receipt. Its digest and plan, state, time, approver, and target fields must match
-the authorization, and its protected-main path is immutable and single use.
+the authorization, and its detached CMS signature must verify against a
+separately owner-pinned Factory approval certificate. The trust record must
+be introduced in an earlier protected-main change and predate plan issuance.
+The trust record, receipt, and signature each use an immutable, single-use
+protected-main path.
 Its sanitized approved-bindings manifest must already exist at the audited
 commit; changing it in the authority-opening change or substituting any bound
 value fails validation.

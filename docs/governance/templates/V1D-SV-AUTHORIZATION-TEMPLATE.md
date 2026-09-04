@@ -25,6 +25,10 @@ Server binding: sha256:PLACEHOLDER
 Signed release digest: sha256:PLACEHOLDER  
 Factory plan receipt: docs/governance/authorizations/factory-receipts/PLACEHOLDER.json  
 Factory plan receipt digest: sha256:PLACEHOLDER  
+Factory plan receipt signature: docs/governance/authorizations/factory-receipts/PLACEHOLDER.cms.pem  
+Factory plan receipt signature digest: sha256:PLACEHOLDER  
+Factory approval trust record: docs/governance/trust/vm-factory/PLACEHOLDER.json  
+Factory approval trust record digest: sha256:PLACEHOLDER  
 Factory plan ID: PLACEHOLDER  
 Authenticated state hash: sha256:PLACEHOLDER  
 Factory plan issued at: PLACEHOLDER  
@@ -55,7 +59,14 @@ approval receipt built from
 [`V1D-FACTORY-PLAN-RECEIPT-TEMPLATE.json`](V1D-FACTORY-PLAN-RECEIPT-TEMPLATE.json).
 Its protected-main path is single use, its exact bytes must remain unchanged,
 and its SHA-256 digest and every plan, state, time, approver, and target field
-must match this authorization. Self-declared plan metadata is insufficient.
+must match this authorization. Its detached CMS signature must verify against
+the certificate digest in the independently owner-pinned trust record built
+from
+[`V1D-FACTORY-APPROVAL-TRUST-TEMPLATE.json`](V1D-FACTORY-APPROVAL-TRUST-TEMPLATE.json).
+The trust record must be introduced by an earlier protected-main change and
+must predate plan issuance. Like the receipt and signature, it has immutable
+single-use protected-main history. Self-declared plan metadata or an
+attacker-selected signer is insufficient.
 Use
 [`V1D-SV-APPROVED-BINDINGS-TEMPLATE.json`](V1D-SV-APPROVED-BINDINGS-TEMPLATE.json)
 for its schema. The manifest and every prerequisite record must be canonical

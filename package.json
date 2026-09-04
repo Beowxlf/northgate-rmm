@@ -9,7 +9,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "audit:governance": "node scripts/audit-governance.mjs && node scripts/test-v1d-authority.mjs",
+    "audit:governance": "node scripts/audit-governance.mjs && node scripts/test-v1d-authority.mjs && node scripts/test-cms-verification.mjs",
     "audit:workflows": "node scripts/audit-workflows.mjs",
     "audit:secrets-lite": "node scripts/audit-secrets-lite.mjs",
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.tools\" \"#.venv\" \"#.pytest_cache\" \"#.mypy_cache\" \"#.ruff_cache\"",

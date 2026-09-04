@@ -44,7 +44,10 @@ approval must follow plan issuance, and the V1D-SV record must be issued after
 that approval. The same audited commit must contain an immutable, single-use,
 canonical Factory-exported approval receipt whose exact digest, plan ID,
 authenticated state hash, timestamps, owner approval, and target binding match
-the authorization; copied self-declared plan metadata is rejected. Strict UTC
+the authorization. Its detached CMS signature must verify against an
+independently owner-pinned Factory approval certificate established before plan
+issuance and introduced in an earlier protected-main change; copied
+self-declared plan metadata or an attacker-selected signer is rejected. Strict UTC
 calendar validation rejects normalized impossible
 dates and future-effective records; the authority is limited to 24 hours and
 its prior approved-bindings manifest to seven days. The manifest uses canonical

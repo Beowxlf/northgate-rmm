@@ -1,6 +1,6 @@
 # G2B Release-Candidate Trust Qualification
 
-Status: Implemented; exact CI evidence pending  
+Status: Pending evidence-complete requalification; [prior partial evidence](../qualification-evidence/G2B-2026-09-03.md)  
 Parent gate: G2 remains closed  
 Scope: Non-published Debian release candidate with test-only signing
 
@@ -74,9 +74,12 @@ G2B is complete only when the exact reviewed pull-request head passes:
 3. `Free-software security checks`; and
 4. `Pre-code governance audit`.
 
-The final evidence record must name the exact head, workflow run and job IDs,
-artifact and evidence hashes, negative-test results, review disposition, and
-merge commit.
+The final evidence record must name the exact qualification-source head,
+workflow run and job IDs, package, release-manifest, signature-bundle, SBOM,
+provenance, and public-key hashes, negative-test results, review disposition,
+and qualification-source merge commit. Because that merge commit exists only
+after qualification, the final record may be added by a subsequent evidence-only
+pull request through protected `main`.
 
 ## Explicit exclusions
 

@@ -27,8 +27,11 @@ chance that credentials or collected endpoint data enter logs. This does not
 redact data elsewhere or complete runtime observability until the logger is wired
 into an executable agent.
 
-The lifecycle and unit can be reviewed and mutation-tested without touching a
-host, but they do not prove Debian packaging or `systemd` compatibility. There is
-no executable package, installer, activation path, or operational revocation yet.
-Those require isolated package tests and a separate G2 authorization before the
-first disposable canary installation.
+The lifecycle and unit could initially be reviewed and mutation-tested without
+touching a host, but that did not prove Debian packaging or `systemd`
+compatibility. This decision introduced no executable package, installer,
+activation path, or operational revocation. The executable Debian package and
+service later passed isolated lifecycle tests; evidence-complete G2A/G2B
+requalification remains pending, and publication and live installation still
+require G6 and a separate G2 authorization before the first disposable canary
+installation.

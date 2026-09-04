@@ -12,3 +12,8 @@ Phase 1 simulation and development scope named in that record.
 source and hermetic packaging-test work only. It does not open G2, authorize
 installation on any endpoint or VM, or approve any VM Factory or infrastructure
 decision.
+
+`P2-CONTROL-PLANE-SOURCE-DEVELOPMENT.md` authorizes the isolated, synthetic
+version 1.0 service, enrollment, persistence, and operator-view source work. It
+does not authorize a live listener, identity, database, deployment, release, or
+Factory action.

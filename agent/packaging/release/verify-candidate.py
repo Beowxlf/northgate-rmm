@@ -330,6 +330,8 @@ def verify(
         "version": expected_version,
         "package_sha256": digest(package),
         "package_bytes": package.stat().st_size,
+        "release_manifest_sha256": digest(manifest_path),
+        "signature_bundle_sha256": digest(signature_bundle),
         "sbom_sha256": digest(sbom_path),
         "sbom_packages": len(packages),
         "provenance_sha256": digest(provenance_path),

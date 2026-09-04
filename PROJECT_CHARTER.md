@@ -64,6 +64,7 @@ enforce gates, but it may not approve its own exceptions.
 
 ## References
 
+- [Version 1.0 release criteria](docs/governance/V1_RELEASE_CRITERIA.md)
 - [Development phases](docs/governance/PHASES.md)
 - [Authorization gates](docs/governance/AUTHORIZATION_GATES.md)
 - [Architecture overview](docs/architecture/OVERVIEW.md)

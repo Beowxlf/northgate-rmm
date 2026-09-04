@@ -45,9 +45,9 @@ SBOM from the exact built service artifact before V1C acceptance.
   intentionally tests a small internal protocol integration seam;
 - parser limits disable request decompression and bound header count, header
   bytes, body bytes, and backlog;
-- header and whole-request deadlines, pre-body admission control, per-identity
-  and global rate ceilings, and PostgreSQL connection/statement/lock timeouts
-  bound authenticated endpoint resource consumption;
+- TLS-handshake, header, and whole-request deadlines; global and per-identity
+  pre-body admission control and rate ceilings; and PostgreSQL
+  connection/statement/lock timeouts bound peer resource consumption;
 - timed-out synchronous store work keeps its admission slot until the worker
   exits, preventing timeout-based concurrency bypass;
 - `cryptography` parses the TLS-verified leaf, exact URI SAN, certificate purpose,

@@ -15,6 +15,7 @@ from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Protocol, cast
 from urllib.parse import urlsplit
@@ -42,6 +43,7 @@ ENDPOINT_URI_PREFIX = "urn:northgate-rmm:endpoint:"
 MAX_HEADER_COUNT = 32
 MAX_HEADER_BYTES = 2_048
 MAX_CONCURRENT_REQUESTS = 16
+MAX_CONCURRENT_REQUESTS_PER_IDENTITY = 4
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
 RATE_LIMIT_WINDOW_SECONDS = 10.0
 MAX_REQUESTS_PER_IDENTITY_WINDOW = 32
@@ -145,6 +147,56 @@ def create_agent_web_application(
     return application
 
 
+class _BoundedTLSSite(web.TCPSite):
+    """Create TLS sockets with an explicit pre-HTTP handshake deadline."""
+
+    __slots__ = ("_handshake_timeout_seconds",)
+
+    def __init__(
+        self,
+        runner: web.BaseRunner,
+        *,
+        host: str,
+        port: int,
+        ssl_context: ssl.SSLContext,
+        backlog: int,
+        reuse_address: bool,
+        reuse_port: bool,
+        handshake_timeout_seconds: float,
+    ) -> None:
+        super().__init__(
+            runner,
+            host=host,
+            port=port,
+            ssl_context=ssl_context,
+            backlog=backlog,
+            reuse_address=reuse_address,
+            reuse_port=reuse_port,
+        )
+        self._handshake_timeout_seconds = handshake_timeout_seconds
+
+    async def start(self) -> None:
+        await web.BaseSite.start(self)
+        loop = asyncio.get_running_loop()
+        server = self._runner.server
+        if server is None:
+            raise RuntimeError("listener runner has no server")
+        self._server = await loop.create_server(
+            server,
+            self._host,
+            self._port,
+            ssl=self._ssl_context,
+            ssl_handshake_timeout=self._handshake_timeout_seconds,
+            backlog=self._backlog,
+            reuse_address=self._reuse_address,
+            reuse_port=self._reuse_port,
+        )
+        if self._server.sockets:
+            self._bound_port = self._server.sockets[0].getsockname()[1]
+        else:
+            self._bound_port = self._port
+
+
 class AgentTLSListener:
     """Lifecycle wrapper used by a service entry point and loopback tests."""
 
@@ -179,7 +231,7 @@ class AgentTLSListener:
         )
         await runner.setup()
         try:
-            site = web.TCPSite(
+            site = _BoundedTLSSite(
                 runner,
                 host=self._configuration.bind_address,
                 port=self._configuration.port,
@@ -187,6 +239,7 @@ class AgentTLSListener:
                 backlog=32,
                 reuse_address=False,
                 reuse_port=False,
+                handshake_timeout_seconds=(self._configuration.request_timeout_seconds),
             )
             await site.start()
         except BaseException:
@@ -212,6 +265,7 @@ class _AgentTLSAdapter:
         self._authority = authority
         self._request_timeout_seconds = request_timeout_seconds
         self._request_slots = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        self._active_identity_requests: dict[UUID, int] = {}
         self._rate_limiter = _AgentRateLimiter()
 
     async def handle(self, request: web.Request) -> web.Response:
@@ -221,7 +275,7 @@ class _AgentTLSAdapter:
         if _single_header(request, "Host") != self._authority:
             return _response(421, b'{"error":"misdirected_request"}')
         operation_task: asyncio.Task[AgentMessageResponse] | None = None
-        slot_acquired = False
+        admitted_endpoint_id: UUID | None = None
         try:
             async with asyncio.timeout(self._request_timeout_seconds):
                 ssl_object = (
@@ -241,10 +295,19 @@ class _AgentTLSAdapter:
                 content_encoding = _single_optional_header(request, "Content-Encoding")
                 if content_type is None or content_encoding is _DUPLICATE_HEADER:
                     return _response(400, b'{"error":"invalid_headers"}')
-                if self._request_slots.locked():
+                active_for_identity = self._active_identity_requests.get(
+                    peer.endpoint_id, 0
+                )
+                if (
+                    self._request_slots.locked()
+                    or active_for_identity >= MAX_CONCURRENT_REQUESTS_PER_IDENTITY
+                ):
                     return _response(503, b'{"error":"listener_busy"}')
                 await self._request_slots.acquire()
-                slot_acquired = True
+                self._active_identity_requests[peer.endpoint_id] = (
+                    active_for_identity + 1
+                )
+                admitted_endpoint_id = peer.endpoint_id
                 body = await request.read()
                 operation_task = asyncio.create_task(
                     asyncio.to_thread(
@@ -268,24 +331,56 @@ class _AgentTLSAdapter:
         except web.HTTPRequestEntityTooLarge:
             return _response(413, b'{"error":"request_too_large"}')
         except TimeoutError:
-            if operation_task is not None and not operation_task.done():
+            if (
+                operation_task is not None
+                and not operation_task.done()
+                and admitted_endpoint_id is not None
+            ):
                 operation_task.add_done_callback(
-                    lambda _task: self._request_slots.release()
+                    partial(
+                        self._release_request_slot_after_task,
+                        endpoint_id=admitted_endpoint_id,
+                    )
                 )
-                slot_acquired = False
+                admitted_endpoint_id = None
             return _response(408, b'{"error":"request_timeout"}')
         except (ConnectionError, asyncio.CancelledError):
-            if operation_task is not None and not operation_task.done():
+            if (
+                operation_task is not None
+                and not operation_task.done()
+                and admitted_endpoint_id is not None
+            ):
                 operation_task.add_done_callback(
-                    lambda _task: self._request_slots.release()
+                    partial(
+                        self._release_request_slot_after_task,
+                        endpoint_id=admitted_endpoint_id,
+                    )
                 )
-                slot_acquired = False
+                admitted_endpoint_id = None
             raise
         finally:
-            if slot_acquired:
-                self._request_slots.release()
+            if admitted_endpoint_id is not None:
+                self._release_request_slot(admitted_endpoint_id)
 
         return _application_response(result)
+
+    def _release_request_slot(self, endpoint_id: UUID) -> None:
+        active = self._active_identity_requests.get(endpoint_id)
+        if active is None or active < 1:
+            raise AssertionError("request admission accounting is inconsistent")
+        if active == 1:
+            del self._active_identity_requests[endpoint_id]
+        else:
+            self._active_identity_requests[endpoint_id] = active - 1
+        self._request_slots.release()
+
+    def _release_request_slot_after_task(
+        self,
+        _task: asyncio.Task[AgentMessageResponse],
+        *,
+        endpoint_id: UUID,
+    ) -> None:
+        self._release_request_slot(endpoint_id)
 
 
 class _AgentRateLimiter:

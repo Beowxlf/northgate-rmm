@@ -512,6 +512,11 @@ async def run_listener_deadline_scenario(tmp_path: Path) -> None:
         host, port = listener.addresses[0]
         client_context = client_ssl_context(paths)
 
+        handshake_reader, handshake_writer = await asyncio.open_connection(host, port)
+        assert await asyncio.wait_for(handshake_reader.read(), timeout=2) == b""
+        handshake_writer.close()
+        await handshake_writer.wait_closed()
+
         header_reader, header_writer = await open_https_connection(
             host, port, client_context
         )
@@ -521,7 +526,7 @@ async def run_listener_deadline_scenario(tmp_path: Path) -> None:
         header_writer.close()
         await header_writer.wait_closed()
 
-        for _ in range(16):
+        for _ in range(4):
             reader, writer = await open_https_connection(host, port, client_context)
             writer.write(
                 b"POST /v1/agent/messages HTTP/1.1\r\n"

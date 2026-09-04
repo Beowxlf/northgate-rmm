@@ -269,7 +269,6 @@ class _AgentTLSAdapter:
         self._rate_limiter = _AgentRateLimiter()
 
     async def handle(self, request: web.Request) -> web.Response:
-        received_at = datetime.now(UTC)
         if request.version != HttpVersion11:
             return _response(505, b'{"error":"http_version_not_supported"}')
         if _single_header(request, "Host") != self._authority:
@@ -309,6 +308,7 @@ class _AgentTLSAdapter:
                 )
                 admitted_endpoint_id = peer.endpoint_id
                 body = await request.read()
+                received_at = datetime.now(UTC)
                 operation_task = asyncio.create_task(
                     asyncio.to_thread(
                         self._application.handle,
@@ -551,6 +551,8 @@ def _validate_authority(authority: str) -> None:
         return
     except ValueError:
         pass
+    if _looks_like_legacy_ipv4(hostname):
+        raise ValidationError("listener authority is invalid")
     if len(hostname) > 253 or hostname.endswith("."):
         raise ValidationError("listener authority is invalid")
     for label in hostname.split("."):
@@ -565,6 +567,23 @@ def _validate_authority(authority: str) -> None:
             )
         ):
             raise ValidationError("listener authority is invalid")
+
+
+def _looks_like_legacy_ipv4(hostname: str) -> bool:
+    for component in hostname.split("."):
+        if not component:
+            return False
+        candidate = component
+        base = 10
+        if len(candidate) > 2 and candidate[:2].lower() == "0x":
+            candidate = candidate[2:]
+            base = 16
+        if not candidate:
+            return False
+        allowed = "0123456789abcdef" if base == 16 else "0123456789"
+        if any(character.lower() not in allowed for character in candidate):
+            return False
+    return True
 
 
 class _DuplicateHeader:

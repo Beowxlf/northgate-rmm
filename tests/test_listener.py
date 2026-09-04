@@ -52,6 +52,7 @@ class RecordingStore:
     identity_id: UUID = field(default_factory=uuid4)
     authentications: list[tuple[UUID, str]] = field(default_factory=list)
     inventories: list[InventoryMessage] = field(default_factory=list)
+    receipt_times: list[datetime] = field(default_factory=list)
 
     def authenticate_endpoint_certificate(
         self,
@@ -98,6 +99,7 @@ class RecordingStore:
         assert authenticated_identity_id == self.identity_id
         assert received_at.tzinfo is not None
         assert encoded_message_digest is not None
+        self.receipt_times.append(received_at)
         self.inventories.append(message)
         return object()
 
@@ -286,6 +288,9 @@ def test_extract_verified_client_certificate_rejects_profile_variants() -> None:
         ("authority", "rmm.test:", "authority"),
         ("authority", "[::1]:", "authority"),
         ("authority", "rmm.test:99999", "authority"),
+        ("authority", "0177.0.0.1", "authority"),
+        ("authority", "2130706433", "authority"),
+        ("authority", "0x7f.0.0.1", "authority"),
         ("authority", "-rmm.test", "authority"),
         ("authority", ":443", "authority"),
         ("authority", "rmm.test:0", "authority"),
@@ -428,6 +433,25 @@ async def run_listener_scenario(tmp_path: Path) -> None:
         assert json.loads(response.split(b"\r\n\r\n", 1)[1])["accepted"] is True
         assert store.authentications == [(material.endpoint_id, fingerprint)]
         assert len(store.inventories) == 1
+
+        slow_request = request_bytes(
+            inventory_body(material.endpoint_id, datetime.now(UTC))
+        )
+        headers, slow_body = slow_request.split(b"\r\n\r\n", 1)
+        reader, writer = await open_https_connection(host, port, client_context)
+        try:
+            writer.write(headers + b"\r\n\r\n")
+            await writer.drain()
+            await asyncio.sleep(0.05)
+            body_sent_at = datetime.now(UTC)
+            writer.write(slow_body)
+            await writer.drain()
+            slow_response = await asyncio.wait_for(reader.read(), timeout=5)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+        assert slow_response.startswith(b"HTTP/1.1 200 OK\r\n")
+        assert store.receipt_times[-1] >= body_sent_at
 
         wrong_host = await raw_https_request(
             host,

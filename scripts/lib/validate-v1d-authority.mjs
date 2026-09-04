@@ -546,6 +546,22 @@ function validatePrerequisite(
         errors.push(`V1D-SV V1C pass record lacks control: ${control}.`);
     }
   }
+  if (expectedId === NETWORK_DEPENDENCY_ID) {
+    if (
+      descriptor?.evidenceScope?.targetBinding !==
+      options.authorizedServerBinding
+    )
+      errors.push(
+        "V1D-SV network target scope mismatches the authorized server binding.",
+      );
+    if (
+      descriptor?.evidenceScope?.flowBinding !==
+      options.authorizedNetworkPolicyBinding
+    )
+      errors.push(
+        "V1D-SV network flow scope mismatches the authorized private network policy.",
+      );
+  }
   return errors;
 }
 
@@ -688,6 +704,10 @@ function validateApprovedBindings(
       planIssuedAt: validDate(fields.get("Factory plan issued at")),
       bindingsApprovedAt: approvedAt,
       authorizedReleaseDigest: fields.get("Signed release digest"),
+      authorizedServerBinding: fields.get("Server binding"),
+      authorizedNetworkPolicyBinding: fields.get(
+        "Private network policy binding",
+      ),
     }),
   );
   return errors;

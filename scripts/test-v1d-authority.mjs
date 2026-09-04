@@ -754,6 +754,20 @@ expectFailure(
   },
 );
 expectFailure(
+  "network segmentation scope substituted for another server and policy",
+  open,
+  "network target scope mismatches the authorized server binding",
+  {
+    mutateApproval: (approval) => {
+      const network = approval.prerequisites.dependencies.find(
+        ({ id }) => id === "V1D-DEP-NETWORK-SEGMENTATION",
+      );
+      network.evidenceScope.targetBinding = `sha256:${"c".repeat(64)}`;
+      network.evidenceScope.flowBinding = `sha256:${"d".repeat(64)}`;
+    },
+  },
+);
+expectFailure(
   "network segmentation tests precede apply",
   open,
   "AllowPathVerified record is out of sequence",

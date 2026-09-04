@@ -66,7 +66,9 @@ negative-path test in addition to the common evidence fields. Each referenced
 network artifact must use
 [`V1D-NETWORK-CHANGE-ARTIFACT-TEMPLATE.json`](V1D-NETWORK-CHANGE-ARTIFACT-TEMPLATE.json),
 remain byte-identical to the audited protected-main version, match the approved
-target and flow, and prove approval-before-apply-before-test ordering.
+target and flow, and prove approval-before-apply-before-test ordering. The
+network evidence target must equal `Server binding`, and its flow must equal
+`Private network policy binding`.
 Each prerequisite must reference immutable scoped provision/verification and
 rollback receipts built from
 [`V1D-PREREQUISITE-EVIDENCE-TEMPLATE.json`](V1D-PREREQUISITE-EVIDENCE-TEMPLATE.json)

@@ -70,6 +70,9 @@ Those receipt scopes must match the independently owner-approved per-prerequisit
 scope values in the immutable approved-bindings manifest; recomputing inner
 receipt and prerequisite digests cannot substitute evidence from another
 environment.
+The network prerequisite's target and flow scopes must also equal the
+authorization's exact server and private-network-policy bindings; a
+manifest-local alternate network scope is rejected.
 Every approved binding, prerequisite, evidence receipt, rollback receipt, and
 network-change artifact must also remain byte-identical at the current
 protected-main tip. Removing or replacing one revokes it; restoring an older

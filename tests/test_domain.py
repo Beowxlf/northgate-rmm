@@ -1,11 +1,13 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from northgate_rmm.domain import (
     Endpoint,
     EndpointIdentity,
+    EnrollmentGrant,
     FreshnessPolicy,
     HeartbeatPayload,
     InventoryPayload,
@@ -117,6 +119,56 @@ def test_endpoint_and_identity_validate_bounded_fields() -> None:
             identity_id=identity_id,
             enrolled_at=NOW,
         )
+
+
+def test_enrollment_grant_enforces_v1_scope_lifetime_and_consumption() -> None:
+    grant_id = uuid4()
+    identity_id = uuid4()
+
+    def grant(**changes: object) -> EnrollmentGrant:
+        values = {
+            "grant_id": grant_id,
+            "token_sha256": "a" * 64,
+            "display_name": "debian-canary-01",
+            "platform": Platform.LINUX,
+            "architecture": "amd64",
+            "created_at": NOW,
+            "expires_at": NOW + timedelta(minutes=15),
+            "created_by": "release-operator",
+        }
+        values.update(changes)
+        return EnrollmentGrant(**values)  # type: ignore[arg-type]
+
+    assert grant().consumed_at is None
+    consumed = grant(
+        consumed_at=NOW + timedelta(minutes=1),
+        consumed_identity_id=identity_id,
+    )
+    assert consumed.consumed_identity_id == identity_id
+    with pytest.raises(ValidationError, match="token_sha256"):
+        grant(token_sha256="not-a-digest")  # noqa: S106 -- non-secret invalid input
+    with pytest.raises(ValidationError, match="Linux"):
+        grant(platform=Platform.WINDOWS)
+    with pytest.raises(ValidationError, match="amd64"):
+        grant(architecture="arm64")
+    with pytest.raises(ValidationError, match="lifetime"):
+        grant(expires_at=NOW + timedelta(minutes=16))
+    with pytest.raises(ValidationError, match="incomplete"):
+        grant(consumed_at=NOW + timedelta(minutes=1))
+    with pytest.raises(ValidationError, match="consumption time"):
+        grant(consumed_at=NOW + timedelta(minutes=15), consumed_identity_id=identity_id)
+
+    fall_back = datetime(
+        2026,
+        11,
+        1,
+        1,
+        55,
+        tzinfo=ZoneInfo("America/New_York"),
+        fold=0,
+    )
+    with pytest.raises(ValidationError, match="lifetime"):
+        grant(created_at=fall_back, expires_at=fall_back + timedelta(minutes=15))
 
 
 def test_payloads_enforce_bounds_and_stable_digests() -> None:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import re
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import psycopg
 import pytest
@@ -51,7 +54,7 @@ def clean_database(postgres_dsn: str) -> None:
     with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
         cursor.execute(
             """
-            TRUNCATE audit_events, observations, message_sequences,
+            TRUNCATE audit_events, observations, message_sequences, enrollment_grants,
                      endpoint_identities, endpoints
             RESTART IDENTITY CASCADE
             """
@@ -122,19 +125,16 @@ def test_migrations_are_idempotent_and_checksum_protected(
     tmp_path: Path,
 ) -> None:
     assert apply_migrations(postgres_dsn) == ()
-    source = (
-        Path(__file__).parents[1]
-        / "src"
-        / "northgate_rmm"
-        / "migrations"
-        / "0001_phase1.sql"
+    migration_source = (
+        Path(__file__).parents[1] / "src" / "northgate_rmm" / "migrations"
     )
     changed_directory = tmp_path / "migrations"
     changed_directory.mkdir()
-    (changed_directory / source.name).write_text(
-        source.read_text(encoding="utf-8") + "\n-- changed after application\n",
-        encoding="utf-8",
-    )
+    for source in migration_source.glob("[0-9][0-9][0-9][0-9]_*.sql"):
+        contents = source.read_text(encoding="utf-8")
+        if source.name == "0001_phase1.sql":
+            contents += "\n-- changed after application\n"
+        (changed_directory / source.name).write_text(contents, encoding="utf-8")
     with pytest.raises(ValidationError, match="checksum changed"):
         apply_migrations(postgres_dsn, changed_directory)
 
@@ -152,17 +152,16 @@ def test_migrations_reject_late_files_before_applied_head(
     postgres_dsn: str,
     tmp_path: Path,
 ) -> None:
-    source = (
-        Path(__file__).parents[1]
-        / "src"
-        / "northgate_rmm"
-        / "migrations"
-        / "0001_phase1.sql"
+    migration_source = (
+        Path(__file__).parents[1] / "src" / "northgate_rmm" / "migrations"
     )
     migration_directory = tmp_path / "out-of-order-migrations"
     migration_directory.mkdir()
-    source_text = source.read_text(encoding="utf-8")
-    (migration_directory / source.name).write_text(source_text, encoding="utf-8")
+    for source in migration_source.glob("[0-9][0-9][0-9][0-9]_*.sql"):
+        (migration_directory / source.name).write_text(
+            source.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
     late_name = "9002_late.sql"
     head_name = "9003_applied_head.sql"
     late_script = "SELECT 1;\n"
@@ -235,6 +234,245 @@ def test_message_authorization_and_time_failures_are_audited(
             received_at=NOW,
         )
     assert [event.decision for event in plane.audit_events].count("rejected") == 4
+
+
+def test_enrollment_grant_secret_is_one_time_and_digest_only(
+    postgres_dsn: str,
+) -> None:
+    plane = PostgresControlPlane(postgres_dsn)
+    grant, token = plane.create_enrollment_grant(
+        display_name="debian-canary-01",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+        actor_id="release-operator",
+    )
+
+    assert re.fullmatch(r"ngr1_[A-Za-z0-9_-]{43}", token)
+    assert grant.token_sha256 == hashlib.sha256(token.encode("ascii")).hexdigest()
+    assert plane.get_enrollment_grant(grant.grant_id) == grant
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT row_to_json(g)::text
+            FROM enrollment_grants AS g
+            WHERE grant_id = %s
+            """,
+            (grant.grant_id,),
+        )
+        stored = cursor.fetchone()
+    assert stored is not None
+    assert token not in stored[0]
+    audit_json = json.dumps(
+        [
+            {
+                "reason": event.reason,
+                "metadata": dict(event.metadata),
+            }
+            for event in plane.audit_events
+        ]
+    )
+    assert token not in audit_json
+    assert grant.token_sha256 not in audit_json
+
+    endpoint, identity = plane.consume_enrollment_grant(
+        token=token,
+        public_key_fingerprint="sha256:" + "b" * 64,
+        now=NOW + timedelta(seconds=1),
+    )
+    consumed = plane.get_enrollment_grant(grant.grant_id)
+    assert endpoint.display_name == "debian-canary-01"
+    assert endpoint.platform is Platform.LINUX
+    assert endpoint.architecture == "amd64"
+    assert consumed.consumed_at == NOW + timedelta(seconds=1)
+    assert consumed.consumed_identity_id == identity.identity_id
+    correlated = [
+        event
+        for event in plane.audit_events
+        if event.action in {"enrollment_grant.consume", "endpoint.enroll"}
+    ]
+    assert [event.decision for event in correlated] == ["accepted", "accepted"]
+    assert len({event.correlation_id for event in correlated}) == 1
+
+
+def test_enrollment_grant_expiry_uses_absolute_utc_time(postgres_dsn: str) -> None:
+    plane = PostgresControlPlane(postgres_dsn)
+    fall_back = datetime(
+        2026,
+        11,
+        1,
+        1,
+        55,
+        tzinfo=ZoneInfo("America/New_York"),
+        fold=0,
+    )
+
+    grant, _token = plane.create_enrollment_grant(
+        display_name="dst-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=fall_back,
+        actor_id="release-operator",
+    )
+
+    assert grant.created_at.tzinfo is UTC
+    assert grant.expires_at - grant.created_at == timedelta(minutes=15)
+    assert plane.get_enrollment_grant(grant.grant_id) == grant
+
+
+def test_enrollment_grant_rejections_are_generic_and_audited(
+    postgres_dsn: str,
+) -> None:
+    plane = PostgresControlPlane(postgres_dsn)
+    expired, expired_token = plane.create_enrollment_grant(
+        display_name="expired-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+        actor_id="release-operator",
+        ttl=timedelta(seconds=1),
+    )
+    used, used_token = plane.create_enrollment_grant(
+        display_name="used-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+        actor_id="release-operator",
+    )
+    invalid_key, invalid_key_token = plane.create_enrollment_grant(
+        display_name="invalid-key-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+        actor_id="release-operator",
+    )
+    future, future_token = plane.create_enrollment_grant(
+        display_name="future-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW + timedelta(minutes=1),
+        actor_id="release-operator",
+    )
+    plane.consume_enrollment_grant(
+        token=used_token,
+        public_key_fingerprint="sha256:" + "c" * 64,
+        now=NOW + timedelta(seconds=1),
+    )
+
+    attempts = (
+        (expired_token, "sha256:" + "d" * 64),
+        (used_token, "sha256:" + "d" * 64),
+        ("ngr1_" + "x" * 43, "sha256:" + "d" * 64),
+        ("malformed", "sha256:" + "d" * 64),
+        (invalid_key_token, "malformed-fingerprint"),
+        (future_token, "sha256:" + "d" * 64),
+    )
+    for token, fingerprint in attempts:
+        with pytest.raises(
+            AuthorizationError,
+            match="enrollment grant is invalid or unavailable",
+        ):
+            plane.consume_enrollment_grant(
+                token=token,
+                public_key_fingerprint=fingerprint,
+                now=NOW + timedelta(seconds=2),
+            )
+
+    assert plane.get_enrollment_grant(expired.grant_id).consumed_at is None
+    assert plane.get_enrollment_grant(used.grant_id).consumed_at is not None
+    assert plane.get_enrollment_grant(invalid_key.grant_id).consumed_at is None
+    assert plane.get_enrollment_grant(future.grant_id).consumed_at is None
+    rejected = [
+        event
+        for event in plane.audit_events
+        if event.action == "enrollment_grant.consume" and event.decision == "rejected"
+    ]
+    assert {event.reason for event in rejected} == {
+        "grant is expired",
+        "grant is already consumed",
+        "token digest is unknown",
+        "token format is invalid",
+        "public key fingerprint format is invalid",
+        "server time predates grant creation",
+    }
+    invalid_key_event = next(
+        event
+        for event in rejected
+        if event.reason == "public key fingerprint format is invalid"
+    )
+    assert invalid_key_event.subject == f"enrollment_grant:{invalid_key.grant_id}"
+
+    with pytest.raises(AuthorizationError, match="invalid or unavailable"):
+        plane.consume_enrollment_grant(
+            token=used_token,
+            public_key_fingerprint="sha256:" + "d" * 64,
+            now=NOW + timedelta(minutes=20),
+        )
+    assert plane.audit_events[-1].reason == "grant is already consumed"
+
+
+def test_concurrent_enrollment_grant_consumption_has_one_winner(
+    postgres_dsn: str,
+) -> None:
+    plane = PostgresControlPlane(postgres_dsn)
+    grant, token = plane.create_enrollment_grant(
+        display_name="concurrent-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+        actor_id="release-operator",
+    )
+
+    def consume(_index: int) -> bool:
+        worker = PostgresControlPlane(postgres_dsn)
+        try:
+            worker.consume_enrollment_grant(
+                token=token,
+                public_key_fingerprint="sha256:" + "e" * 64,
+                now=NOW + timedelta(seconds=1),
+            )
+        except AuthorizationError:
+            return False
+        return True
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(consume, range(2)))
+
+    assert sorted(results) == [False, True]
+    assert len(plane.list_endpoints()) == 1
+    assert plane.get_enrollment_grant(grant.grant_id).consumed_at is not None
+    outcomes = [
+        event.decision
+        for event in plane.audit_events
+        if event.action == "enrollment_grant.consume"
+    ]
+    assert outcomes.count("accepted") == 1
+    assert outcomes.count("rejected") == 1
+
+
+def test_fingerprint_collision_does_not_consume_enrollment_grant(
+    postgres_dsn: str,
+) -> None:
+    plane, agent = enrolled_plane(postgres_dsn)
+    grant, token = plane.create_enrollment_grant(
+        display_name="duplicate-key-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=NOW,
+        actor_id="release-operator",
+    )
+    fingerprint = plane.get_identity(agent.identity_id).public_key_fingerprint
+
+    with pytest.raises(AuthorizationError, match="invalid or unavailable"):
+        plane.consume_enrollment_grant(
+            token=token,
+            public_key_fingerprint=fingerprint,
+            now=NOW + timedelta(seconds=1),
+        )
+
+    assert plane.get_enrollment_grant(grant.grant_id).consumed_at is None
+    assert len(plane.list_endpoints()) == 1
+    assert plane.audit_events[-1].reason == "public key fingerprint is already enrolled"
 
 
 def test_inventory_binding_and_both_replay_classes_fail_closed(

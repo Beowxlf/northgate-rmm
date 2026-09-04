@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import secrets
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -21,11 +23,13 @@ from psycopg.rows import dict_row
 
 from northgate_rmm.domain import (
     MAX_CLOCK_SKEW,
+    MAX_ENROLLMENT_GRANT_TTL,
     AuditEvent,
     Endpoint,
     EndpointHealth,
     EndpointIdentity,
     EndpointStatus,
+    EnrollmentGrant,
     FreshnessPolicy,
     HeartbeatMessage,
     InventoryMessage,
@@ -45,6 +49,9 @@ from northgate_rmm.errors import (
 Row = dict[str, Any]
 Failure = tuple[type[NorthGateRmmError], str]
 MIGRATION_LOCK_ID = 7_104_771_001
+GRANT_NAMESPACE = "ngr1_"
+ENROLLMENT_TOKEN_PATTERN = re.compile(r"ngr1_[A-Za-z0-9_-]{43}\Z")
+ENROLLMENT_REJECTION = "enrollment grant is invalid or unavailable"
 
 
 def _default_migration_directory() -> Path:
@@ -195,6 +202,274 @@ class PostgresControlPlane:
         if row is None:
             raise NotFoundError("identity does not exist")
         return self._identity_from_row(row)
+
+    def create_enrollment_grant(
+        self,
+        *,
+        display_name: str,
+        platform: Platform,
+        architecture: str,
+        now: datetime,
+        actor_id: str,
+        ttl: timedelta = MAX_ENROLLMENT_GRANT_TTL,
+    ) -> tuple[EnrollmentGrant, str]:
+        """Create one short-lived grant and return its secret exactly once."""
+
+        require_aware(now, "now")
+        server_time = now.astimezone(UTC)
+        raw_token = GRANT_NAMESPACE + secrets.token_urlsafe(32)
+        token_sha256 = hashlib.sha256(raw_token.encode("ascii")).hexdigest()
+        grant = EnrollmentGrant(
+            grant_id=uuid4(),
+            token_sha256=token_sha256,
+            display_name=display_name,
+            platform=platform,
+            architecture=architecture,
+            created_at=server_time,
+            expires_at=server_time + ttl,
+            created_by=actor_id,
+        )
+        correlation_id = uuid4()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO enrollment_grants (
+                    grant_id, token_sha256, display_name, platform, architecture,
+                    created_at, expires_at, created_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    grant.grant_id,
+                    grant.token_sha256,
+                    grant.display_name,
+                    grant.platform.value,
+                    grant.architecture,
+                    grant.created_at,
+                    grant.expires_at,
+                    grant.created_by,
+                ),
+            )
+            self._insert_audit(
+                cursor,
+                server_time=server_time,
+                actor_type="operator",
+                actor_id=actor_id,
+                subject=f"enrollment_grant:{grant.grant_id}",
+                action="enrollment_grant.create",
+                decision="accepted",
+                reason="short-lived single-use grant created",
+                correlation_id=correlation_id,
+                metadata=(
+                    ("architecture", grant.architecture),
+                    ("display_name", grant.display_name),
+                    ("expires_at", grant.expires_at.isoformat()),
+                    ("platform", grant.platform.value),
+                ),
+            )
+        return grant, raw_token
+
+    def get_enrollment_grant(self, grant_id: UUID) -> EnrollmentGrant:
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT grant_id, token_sha256, display_name, platform, architecture,
+                       created_at, expires_at, created_by, consumed_at,
+                       consumed_identity_id
+                FROM enrollment_grants
+                WHERE grant_id = %s
+                """,
+                (grant_id,),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            raise NotFoundError("enrollment grant does not exist")
+        return self._enrollment_grant_from_row(row)
+
+    def consume_enrollment_grant(
+        self,
+        *,
+        token: str,
+        public_key_fingerprint: str,
+        now: datetime,
+        actor_id: str = "enrollment-service",
+    ) -> tuple[Endpoint, EndpointIdentity]:
+        """Atomically exchange one valid grant for one endpoint identity."""
+
+        require_aware(now, "now")
+        server_time = now.astimezone(UTC)
+        if not actor_id or len(actor_id) > 256:
+            raise ValidationError("actor_id is empty or too long")
+        correlation_id = uuid4()
+        failure_reason: str | None = None
+        grant: EnrollmentGrant | None = None
+        endpoint: Endpoint | None = None
+        identity: EndpointIdentity | None = None
+        token_sha256 = (
+            hashlib.sha256(token.encode("ascii")).hexdigest()
+            if ENROLLMENT_TOKEN_PATTERN.fullmatch(token) is not None
+            else None
+        )
+
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                if token_sha256 is None:
+                    failure_reason = "token format is invalid"
+                else:
+                    cursor.execute(
+                        """
+                        SELECT grant_id, token_sha256, display_name, platform,
+                               architecture, created_at, expires_at, created_by,
+                               consumed_at, consumed_identity_id
+                        FROM enrollment_grants
+                        WHERE token_sha256 = %s
+                        FOR UPDATE
+                        """,
+                        (token_sha256,),
+                    )
+                    row = cursor.fetchone()
+                    if row is None:
+                        failure_reason = "token digest is unknown"
+                    else:
+                        grant = self._enrollment_grant_from_row(row)
+                        if grant.consumed_at is not None:
+                            failure_reason = "grant is already consumed"
+                        elif server_time < grant.created_at:
+                            failure_reason = "server time predates grant creation"
+                        elif server_time >= grant.expires_at:
+                            failure_reason = "grant is expired"
+                        elif (
+                            re.fullmatch(r"sha256:[0-9a-f]{64}", public_key_fingerprint)
+                            is None
+                        ):
+                            failure_reason = "public key fingerprint format is invalid"
+
+                subject = (
+                    f"enrollment_grant:{grant.grant_id}"
+                    if grant is not None
+                    else "enrollment_grant:unknown"
+                )
+                if failure_reason is not None:
+                    self._insert_audit(
+                        cursor,
+                        server_time=server_time,
+                        actor_type="service",
+                        actor_id=actor_id,
+                        subject=subject,
+                        action="enrollment_grant.consume",
+                        decision="rejected",
+                        reason=failure_reason,
+                        correlation_id=correlation_id,
+                    )
+                elif grant is not None:
+                    endpoint_id = uuid4()
+                    identity_id = uuid4()
+                    identity = EndpointIdentity(
+                        identity_id=identity_id,
+                        endpoint_id=endpoint_id,
+                        public_key_fingerprint=public_key_fingerprint,
+                        created_at=server_time,
+                    )
+                    endpoint = Endpoint(
+                        endpoint_id=endpoint_id,
+                        display_name=grant.display_name,
+                        platform=grant.platform,
+                        architecture=grant.architecture,
+                        identity_id=identity_id,
+                        enrolled_at=server_time,
+                    )
+                    cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+                    cursor.execute(
+                        """
+                        INSERT INTO endpoints (
+                            endpoint_id, display_name, platform, architecture,
+                            identity_id, enrolled_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            endpoint.endpoint_id,
+                            endpoint.display_name,
+                            endpoint.platform.value,
+                            endpoint.architecture,
+                            endpoint.identity_id,
+                            endpoint.enrolled_at,
+                        ),
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO endpoint_identities (
+                            identity_id, endpoint_id, public_key_fingerprint, created_at
+                        ) VALUES (%s, %s, %s, %s)
+                        """,
+                        (
+                            identity.identity_id,
+                            identity.endpoint_id,
+                            identity.public_key_fingerprint,
+                            identity.created_at,
+                        ),
+                    )
+                    cursor.execute(
+                        """
+                        UPDATE enrollment_grants
+                        SET consumed_at = %s, consumed_identity_id = %s
+                        WHERE grant_id = %s AND consumed_at IS NULL
+                        """,
+                        (server_time, identity.identity_id, grant.grant_id),
+                    )
+                    if cursor.rowcount != 1:
+                        raise AssertionError("locked grant must be consumable once")
+                    self._insert_audit(
+                        cursor,
+                        server_time=server_time,
+                        actor_type="service",
+                        actor_id=actor_id,
+                        subject=subject,
+                        action="enrollment_grant.consume",
+                        decision="accepted",
+                        reason="grant exchanged for one endpoint identity",
+                        correlation_id=correlation_id,
+                        metadata=(
+                            ("endpoint_id", str(endpoint.endpoint_id)),
+                            ("identity_id", str(identity.identity_id)),
+                        ),
+                    )
+                    self._insert_audit(
+                        cursor,
+                        server_time=server_time,
+                        actor_type="service",
+                        actor_id=actor_id,
+                        subject=f"endpoint:{endpoint.endpoint_id}",
+                        action="endpoint.enroll",
+                        decision="accepted",
+                        reason="single-use enrollment grant consumed",
+                        correlation_id=correlation_id,
+                        metadata=(
+                            ("grant_id", str(grant.grant_id)),
+                            ("identity_id", str(identity.identity_id)),
+                        ),
+                    )
+        except UniqueViolation as exc:
+            subject = (
+                f"enrollment_grant:{grant.grant_id}"
+                if grant is not None
+                else "enrollment_grant:unknown"
+            )
+            self._record_audit(
+                server_time=server_time,
+                actor_type="service",
+                actor_id=actor_id,
+                subject=subject,
+                action="enrollment_grant.consume",
+                decision="rejected",
+                reason="public key fingerprint is already enrolled",
+                correlation_id=correlation_id,
+            )
+            raise AuthorizationError(ENROLLMENT_REJECTION) from exc
+
+        if failure_reason is not None:
+            raise AuthorizationError(ENROLLMENT_REJECTION)
+        if endpoint is None or identity is None:
+            raise AssertionError("accepted grant consumption must create an identity")
+        return endpoint, identity
 
     def enroll_synthetic_endpoint(
         self,
@@ -759,6 +1034,21 @@ class PostgresControlPlane:
             created_at=cast(datetime, row["created_at"]),
             revoked_at=cast(datetime | None, row["revoked_at"]),
             revocation_reason=cast(str | None, row["revocation_reason"]),
+        )
+
+    @staticmethod
+    def _enrollment_grant_from_row(row: Row) -> EnrollmentGrant:
+        return EnrollmentGrant(
+            grant_id=cast(UUID, row["grant_id"]),
+            token_sha256=cast(str, row["token_sha256"]),
+            display_name=cast(str, row["display_name"]),
+            platform=Platform(cast(str, row["platform"])),
+            architecture=cast(str, row["architecture"]),
+            created_at=cast(datetime, row["created_at"]),
+            expires_at=cast(datetime, row["expires_at"]),
+            created_by=cast(str, row["created_by"]),
+            consumed_at=cast(datetime | None, row["consumed_at"]),
+            consumed_identity_id=cast(UUID | None, row["consumed_identity_id"]),
         )
 
     @staticmethod

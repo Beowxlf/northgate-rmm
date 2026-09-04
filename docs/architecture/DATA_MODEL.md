@@ -25,9 +25,10 @@ chain, revocation reason/time, and endpoint binding. Private keys are never stor
 
 ### Enrollment grant
 
-Hashed secret reference, intended scope, creator, creation/expiry, maximum uses,
-use count, and invalidation reason. Plaintext exists only at creation and on the
-enrolling endpoint.
+The executable V1B subset stores a hashed secret reference, intended Linux/amd64
+target facts, creator, creation/expiry, and the single consumed identity/time.
+Plaintext is returned only at creation and is never persisted or audited. Future
+phases may add richer scope and explicit invalidation state.
 
 ### Observation
 
@@ -76,7 +77,8 @@ sanitized metadata.
   atomically under a database constraint;
 - observations and audit events are append-oriented; the Phase 1 application API
   exposes no update, delete, or truncate operation for either record type;
-- enrollment use increments atomically and cannot exceed the maximum;
+- an enrollment grant is short-lived, stores only a token digest, and is consumed
+  atomically at most once with endpoint and identity creation;
 - revoked identities cannot authenticate or receive work;
 - job transitions satisfy the defined state graph;
 - a result target must belong to the job and authenticated endpoint;
@@ -86,10 +88,10 @@ sanitized metadata.
 - audit event IDs and correlation IDs are indexed;
 - destructive cascades do not delete audit, approval, or revocation evidence.
 
-The executable Phase 1 schema is migration
-`src/northgate_rmm/migrations/0001_phase1.sql`. Entities for enrollment grants,
-jobs, leases, results, and approvals remain future schema and are not executable
-capabilities in Phase 1.
+The executable schema is migrations
+`src/northgate_rmm/migrations/0001_phase1.sql` and
+`src/northgate_rmm/migrations/0002_enrollment_grants.sql`. Jobs, leases, results,
+and approvals remain future schema and are not executable capabilities.
 
 ## Retention
 

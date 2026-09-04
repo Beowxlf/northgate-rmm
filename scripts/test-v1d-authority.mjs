@@ -657,6 +657,15 @@ expectFailure(
 expectFailure("future bindings approval", open, "approval time is invalid", {
   mutateApproval: (approval) => (approval.approvedAt = "2026-09-04T15:02:00Z"),
 });
+expectFailure(
+  "authorization issued at bindings approval time",
+  open,
+  "authorization predates its approved bindings",
+  {
+    mutateApproval: (approval) =>
+      (approval.approvedAt = validFields["Issued at"]),
+  },
+);
 expectFailure("excessive bindings lifetime", open, "seven-day lifetime", {
   mutateApproval: (approval) => (approval.expiresAt = "2026-09-12T13:02:01Z"),
 });

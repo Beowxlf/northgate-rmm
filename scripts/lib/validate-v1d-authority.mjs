@@ -685,7 +685,7 @@ function validateApprovedBindings(
     errors.push(
       "V1D-SV approved bindings exceed the seven-day lifetime limit.",
     );
-  if (approvedAt !== null && issuedAt !== null && approvedAt > issuedAt)
+  if (approvedAt !== null && issuedAt !== null && approvedAt >= issuedAt)
     errors.push("V1D-SV authorization predates its approved bindings.");
   const planApprovedAt = validDate(fields.get("Factory plan approved at"));
   if (

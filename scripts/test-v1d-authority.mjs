@@ -13,6 +13,10 @@ const factorySignaturePath =
   "docs/governance/authorizations/factory-receipts/V1D-SV-PLAN.cms.pem";
 const factoryTrustPath =
   "docs/governance/trust/vm-factory/plan-approval-signer.json";
+const closeoutPath =
+  "docs/governance/authorizations/closeouts/V1D-SV-PLAN-CLOSEOUT.json";
+const cleanupEvidencePath =
+  "docs/governance/authorizations/closeouts/evidence/V1D-SV-PLAN-CLEANUP.json";
 const fixedNow = new Date("2026-09-04T14:00:00Z");
 const digest = `sha256:${"a".repeat(64)}`;
 const v1cPath = "docs/governance/authorizations/prerequisites/V1C-PASS.json";
@@ -118,6 +122,99 @@ function renderFactoryApprovalTrust(overrides = {}) {
 
 function renderFactorySignature(content, certificateSha256) {
   return `TEST-CMS ${hash(content)} ${certificateSha256}\n`;
+}
+
+function renderCleanupEvidence(overrides = {}) {
+  return canonical({
+    schemaVersion: 1,
+    event: "V1D-SV-CleanupVerified",
+    status: "Verified",
+    approver: "Beowxlf",
+    factoryPlanId: validFields["Factory plan ID"],
+    serverBinding: validFields["Server binding"],
+    serviceIdentityBinding: validFields["Service identity binding"],
+    databaseIdentityBinding: validFields["Database identity binding"],
+    syntheticIdentityProfileBinding:
+      validFields["Synthetic identity profile binding"],
+    privateNetworkPolicyBinding: validFields["Private network policy binding"],
+    serviceStopped: true,
+    syntheticIdentitiesRevoked: true,
+    endpointRoutesBlocked: true,
+    temporaryNetworkAccessRemoved: true,
+    temporarySecretsDestroyed: true,
+    rollbackVerified: true,
+    verifiedAt: "2026-09-04T13:20:00Z",
+    ...overrides,
+  });
+}
+
+function renderCloseout(
+  authorizationText = renderRecord(),
+  evidenceText = renderCleanupEvidence(),
+  overrides = {},
+) {
+  return canonical({
+    schemaVersion: 1,
+    receiptType: "V1D-SV-Closeout",
+    authority: "V1D-SV",
+    status: "ClosedAndClean",
+    approver: "Beowxlf",
+    authorizationRecord: exactPath,
+    authorizationRecordDigest: hash(authorizationText),
+    factoryPlanId: validFields["Factory plan ID"],
+    serverBinding: validFields["Server binding"],
+    signedReleaseDigest: validFields["Signed release digest"],
+    cleanupEvidenceRecord: cleanupEvidencePath,
+    cleanupEvidenceDigest: hash(evidenceText),
+    serviceStopped: true,
+    syntheticIdentitiesRevoked: true,
+    endpointRoutesBlocked: true,
+    temporaryNetworkAccessRemoved: true,
+    temporarySecretsDestroyed: true,
+    rollbackVerified: true,
+    closedAt: "2026-09-04T13:30:00Z",
+    ...overrides,
+  });
+}
+
+function closeoutOptions(
+  protectedMainGates,
+  {
+    closeoutText = renderCloseout(),
+    evidenceText = renderCleanupEvidence(),
+    artifactsOnProtectedMain = false,
+  } = {},
+) {
+  return {
+    isRegularFile: (path) =>
+      path === closeoutPath || path === cleanupEvidencePath,
+    readText: (path) => {
+      if (path === closeoutPath) return closeoutText;
+      if (path === cleanupEvidencePath) return evidenceText;
+      return null;
+    },
+    readAtProtectedMain: (path) => {
+      if (path === "governance/gates.json")
+        return canonical(protectedMainGates);
+      if (path === exactPath) return renderRecord();
+      if (artifactsOnProtectedMain && path === closeoutPath)
+        return closeoutText;
+      if (artifactsOnProtectedMain && path === cleanupEvidencePath)
+        return evidenceText;
+      return null;
+    },
+    protectedMainPathVersionCount: (path) =>
+      artifactsOnProtectedMain &&
+      (path === closeoutPath || path === cleanupEvidencePath)
+        ? 1
+        : 0,
+    pathIntroductionTime: (path) =>
+      artifactsOnProtectedMain &&
+      (path === closeoutPath || path === cleanupEvidencePath)
+        ? "2026-09-04T13:35:00Z"
+        : null,
+    now: fixedNow,
+  };
 }
 
 function canonical(value) {
@@ -604,6 +701,15 @@ expectFailure(
     config.gates.find((gate) => gate.id === "G3").status = "open";
   },
   "V1D-SV and G3 cannot be open at the same time",
+);
+expectFailure(
+  "closed V1D-SV cannot bypass cleanup before G2",
+  (config) => {
+    config.gates.find((gate) => gate.id === "G2").status = "open";
+    config.gates.find((gate) => gate.id === "G2").authorization =
+      "docs/governance/authorizations/G1-PRODUCT-CODING.md";
+  },
+  "requires an immutable cleanup closeout receipt",
 );
 expectFailure(
   "prerequisite stripped",
@@ -1142,6 +1248,58 @@ expectFailure(
     mutateApproval: (approval) => approval.prerequisites.dependencies.reverse(),
   },
 );
+
+const priorOpen = clone();
+open(priorOpen);
+const closedWithCloseout = clone();
+authority(closedWithCloseout).closeout = closeoutPath;
+assert.deepEqual(
+  validateV1dAuthority(closedWithCloseout, closeoutOptions(priorOpen)),
+  [],
+);
+passed += 1;
+
+const sameChangeG2 = structuredClone(closedWithCloseout);
+sameChangeG2.gates.find((gate) => gate.id === "G2").status = "open";
+assert(
+  validateV1dAuthority(sameChangeG2, closeoutOptions(priorOpen)).some((item) =>
+    item.includes("must be accepted once on protected main"),
+  ),
+  "same-change G2 opening did not require a prior protected-main closeout",
+);
+passed += 1;
+
+const g2AfterCloseout = structuredClone(closedWithCloseout);
+g2AfterCloseout.gates.find((gate) => gate.id === "G2").status = "open";
+assert.deepEqual(
+  validateV1dAuthority(
+    g2AfterCloseout,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+    }),
+  ),
+  [],
+);
+passed += 1;
+
+const incompleteCleanupEvidence = renderCleanupEvidence({
+  syntheticIdentitiesRevoked: false,
+});
+const incompleteCleanupCloseout = renderCloseout(
+  renderRecord(),
+  incompleteCleanupEvidence,
+);
+assert(
+  validateV1dAuthority(
+    closedWithCloseout,
+    closeoutOptions(priorOpen, {
+      closeoutText: incompleteCleanupCloseout,
+      evidenceText: incompleteCleanupEvidence,
+    }),
+  ).some((item) => item.includes("syntheticIdentitiesRevoked")),
+  "incomplete identity cleanup evidence was accepted",
+);
+passed += 1;
 
 const exactOpen = clone();
 open(exactOpen);

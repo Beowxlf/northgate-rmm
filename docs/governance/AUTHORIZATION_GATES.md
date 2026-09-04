@@ -112,6 +112,20 @@ plans fail closed and require a fresh host state validation and plan.
 The V1D-SV authorization itself must expire no later than two hours after plan
 issuance, preventing later execution after the freshness window has elapsed.
 
+Closing `V1D-SV` after it has opened requires a canonical owner-approved
+closeout receipt and separate canonical cleanup-evidence record. Both records
+must bind the exact protected-main authorization, Factory plan, server, signed
+release, identities, and network policy. They must prove that the validation
+service stopped, synthetic identities were revoked, endpoint routes stayed
+blocked, temporary network access and secrets were removed, and rollback was
+verified within the authorization and Factory-plan windows. The closeout change
+must keep G2 through G8 closed. A later product gate may open only in a separate
+change after both closeout artifacts have been accepted exactly once on
+protected `main`; changed, deleted, recreated, future-dated, or same-change
+closeout evidence fails closed. Use the
+[cleanup-evidence template](templates/V1D-SV-CLEANUP-EVIDENCE-TEMPLATE.json)
+and [closeout template](templates/V1D-SV-CLOSEOUT-TEMPLATE.json).
+
 The authorization permits installation and operation of the named private
 control-plane server only to complete V1D backup/restore, telemetry-outage,
 capacity, certificate-revocation, containment, and rollback proofs. It cannot

@@ -7,6 +7,7 @@ const REQUIRED_REQUIREMENTS = [
   "fresh host-issued Factory plan and post-issuance owner approval",
   "synthetic-only identities and blocked endpoint routes",
   "expiry, rollback, recovery, and evidence boundaries",
+  "immutable verified cleanup closeout before later gates",
 ];
 
 const REQUIRED_PROHIBITIONS = [
@@ -136,6 +137,46 @@ const FACTORY_APPROVAL_TRUST_FIELDS = [
   "approvedAt",
   "certificateSha256",
 ];
+const CLOSEOUT_RECEIPT_FIELDS = [
+  "schemaVersion",
+  "receiptType",
+  "authority",
+  "status",
+  "approver",
+  "authorizationRecord",
+  "authorizationRecordDigest",
+  "factoryPlanId",
+  "serverBinding",
+  "signedReleaseDigest",
+  "cleanupEvidenceRecord",
+  "cleanupEvidenceDigest",
+  "serviceStopped",
+  "syntheticIdentitiesRevoked",
+  "endpointRoutesBlocked",
+  "temporaryNetworkAccessRemoved",
+  "temporarySecretsDestroyed",
+  "rollbackVerified",
+  "closedAt",
+];
+const CLEANUP_EVIDENCE_FIELDS = [
+  "schemaVersion",
+  "event",
+  "status",
+  "approver",
+  "factoryPlanId",
+  "serverBinding",
+  "serviceIdentityBinding",
+  "databaseIdentityBinding",
+  "syntheticIdentityProfileBinding",
+  "privateNetworkPolicyBinding",
+  "serviceStopped",
+  "syntheticIdentitiesRevoked",
+  "endpointRoutesBlocked",
+  "temporaryNetworkAccessRemoved",
+  "temporarySecretsDestroyed",
+  "rollbackVerified",
+  "verifiedAt",
+];
 const NETWORK_DEPENDENCY_ID = "V1D-DEP-NETWORK-SEGMENTATION";
 const EXPECTED_DEPENDENCY_IDS = [
   "V1D-DEP-DNS-TIME",
@@ -195,6 +236,232 @@ function sha256(text) {
 
 function canonicalJsonDigest(value) {
   return sha256(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function protectedMainAuthority(readAtProtectedMain) {
+  const text = readAtProtectedMain("governance/gates.json");
+  if (typeof text !== "string") return null;
+  try {
+    const config = JSON.parse(text);
+    return (
+      config.boundedOperationalAuthorizations?.find(
+        (item) => item.id === "V1D-SV",
+      ) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+function validateCloseout(
+  authority,
+  priorAuthority,
+  laterGateOpen,
+  {
+    isRegularFile,
+    readText,
+    readAtProtectedMain,
+    protectedMainPathVersionCount,
+    pathIntroductionTime,
+    now,
+  },
+) {
+  const errors = [];
+  const closeoutPath = authority.closeout;
+  if (
+    typeof closeoutPath !== "string" ||
+    !/^docs\/governance\/authorizations\/closeouts\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+      closeoutPath,
+    ) ||
+    !isRegularFile(closeoutPath)
+  ) {
+    return ["Closed V1D-SV requires an immutable cleanup closeout receipt."];
+  }
+
+  if (
+    priorAuthority?.status !== "open" &&
+    priorAuthority?.closeout !== closeoutPath
+  )
+    errors.push(
+      "V1D-SV closeout lacks a preceding open protected-main lifecycle.",
+    );
+
+  const closeoutText = readText(closeoutPath);
+  const closeout =
+    typeof closeoutText === "string" ? parseCanonicalJson(closeoutText) : null;
+  if (!closeout) {
+    errors.push(
+      "V1D-SV cleanup closeout receipt is not canonical duplicate-free JSON.",
+    );
+    return errors;
+  }
+  if (!hasExactUniqueEntries(Object.keys(closeout), CLOSEOUT_RECEIPT_FIELDS))
+    errors.push("V1D-SV cleanup closeout receipt has an invalid field set.");
+  if (
+    closeout.schemaVersion !== 1 ||
+    closeout.receiptType !== "V1D-SV-Closeout" ||
+    closeout.authority !== "V1D-SV" ||
+    closeout.status !== "ClosedAndClean"
+  )
+    errors.push(
+      "V1D-SV cleanup closeout receipt has invalid identity or status.",
+    );
+  if (closeout.approver !== "Beowxlf")
+    errors.push("V1D-SV cleanup closeout receipt lacks owner approval.");
+
+  const cleanupFlags = [
+    "serviceStopped",
+    "syntheticIdentitiesRevoked",
+    "endpointRoutesBlocked",
+    "temporaryNetworkAccessRemoved",
+    "temporarySecretsDestroyed",
+    "rollbackVerified",
+  ];
+  for (const field of cleanupFlags) {
+    if (closeout[field] !== true)
+      errors.push(`V1D-SV cleanup closeout does not prove ${field}.`);
+  }
+
+  const authorizationPath = closeout.authorizationRecord;
+  const authorizationText =
+    typeof authorizationPath === "string"
+      ? readAtProtectedMain(authorizationPath)
+      : null;
+  if (
+    !/^docs\/governance\/authorizations\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(
+      authorizationPath ?? "",
+    ) ||
+    typeof authorizationText !== "string"
+  ) {
+    errors.push(
+      "V1D-SV cleanup closeout lacks its protected-main authorization record.",
+    );
+    return errors;
+  }
+  if (sha256(authorizationText) !== closeout.authorizationRecordDigest)
+    errors.push("V1D-SV cleanup closeout authorization digest mismatches.");
+  if (
+    priorAuthority?.status === "open" &&
+    priorAuthority.authorization !== authorizationPath
+  )
+    errors.push(
+      "V1D-SV cleanup closeout does not bind the preceding open authorization.",
+    );
+
+  const { fields: authorizationFields, duplicates } =
+    parseRecord(authorizationText);
+  if (duplicates.size > 0)
+    errors.push("V1D-SV cleanup closeout authorization is ambiguous.");
+  const authorizationBindings = [
+    ["factoryPlanId", "Factory plan ID"],
+    ["serverBinding", "Server binding"],
+    ["signedReleaseDigest", "Signed release digest"],
+  ];
+  for (const [closeoutField, authorizationField] of authorizationBindings) {
+    if (closeout[closeoutField] !== authorizationFields.get(authorizationField))
+      errors.push(
+        `V1D-SV cleanup closeout ${closeoutField} mismatches its authorization.`,
+      );
+  }
+
+  const evidencePath = closeout.cleanupEvidenceRecord;
+  if (
+    typeof evidencePath !== "string" ||
+    !/^docs\/governance\/authorizations\/closeouts\/evidence\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+      evidencePath,
+    ) ||
+    !isRegularFile(evidencePath)
+  ) {
+    errors.push("V1D-SV cleanup closeout lacks immutable cleanup evidence.");
+    return errors;
+  }
+  const evidenceText = readText(evidencePath);
+  const evidence =
+    typeof evidenceText === "string" ? parseCanonicalJson(evidenceText) : null;
+  if (!evidence) {
+    errors.push(
+      "V1D-SV cleanup evidence is not canonical duplicate-free JSON.",
+    );
+    return errors;
+  }
+  if (!hasExactUniqueEntries(Object.keys(evidence), CLEANUP_EVIDENCE_FIELDS))
+    errors.push("V1D-SV cleanup evidence has an invalid field set.");
+  if (sha256(evidenceText) !== closeout.cleanupEvidenceDigest)
+    errors.push("V1D-SV cleanup evidence digest mismatches.");
+  if (
+    evidence.schemaVersion !== 1 ||
+    evidence.event !== "V1D-SV-CleanupVerified" ||
+    evidence.status !== "Verified" ||
+    evidence.approver !== "Beowxlf"
+  )
+    errors.push("V1D-SV cleanup evidence has invalid identity or status.");
+  for (const field of cleanupFlags) {
+    if (evidence[field] !== true || evidence[field] !== closeout[field])
+      errors.push(`V1D-SV cleanup evidence does not prove ${field}.`);
+  }
+  const evidenceBindings = [
+    ["factoryPlanId", "Factory plan ID"],
+    ["serverBinding", "Server binding"],
+    ["serviceIdentityBinding", "Service identity binding"],
+    ["databaseIdentityBinding", "Database identity binding"],
+    ["syntheticIdentityProfileBinding", "Synthetic identity profile binding"],
+    ["privateNetworkPolicyBinding", "Private network policy binding"],
+  ];
+  for (const [evidenceField, authorizationField] of evidenceBindings) {
+    if (evidence[evidenceField] !== authorizationFields.get(authorizationField))
+      errors.push(
+        `V1D-SV cleanup evidence ${evidenceField} mismatches its authorization.`,
+      );
+  }
+
+  const issuedAt = validDate(authorizationFields.get("Issued at"));
+  const expiresAt = validDate(authorizationFields.get("Expires at"));
+  const planExpiresAt = validDate(
+    authorizationFields.get("Factory plan expires at"),
+  );
+  const verifiedAt = validDate(evidence.verifiedAt);
+  const closedAt = validDate(closeout.closedAt);
+  if (
+    issuedAt === null ||
+    expiresAt === null ||
+    planExpiresAt === null ||
+    verifiedAt === null ||
+    closedAt === null ||
+    verifiedAt < issuedAt ||
+    closedAt < verifiedAt ||
+    closedAt > expiresAt ||
+    closedAt > planExpiresAt ||
+    closedAt > now.getTime()
+  )
+    errors.push(
+      "V1D-SV cleanup closeout has an invalid evidence time sequence.",
+    );
+
+  if (laterGateOpen) {
+    for (const [label, recordPath, currentText, claimedAt] of [
+      ["closeout receipt", closeoutPath, closeoutText, closedAt],
+      ["cleanup evidence", evidencePath, evidenceText, verifiedAt],
+    ]) {
+      const protectedText = readAtProtectedMain(recordPath);
+      const introducedAt = Date.parse(pathIntroductionTime(recordPath) ?? "");
+      if (
+        typeof protectedText !== "string" ||
+        normalizeText(protectedText) !== normalizeText(currentText) ||
+        protectedMainPathVersionCount(recordPath) !== 1 ||
+        !Number.isFinite(introducedAt) ||
+        claimedAt === null ||
+        claimedAt > introducedAt
+      )
+        errors.push(
+          `V1D-SV ${label} must be accepted once on protected main after its claimed event and before opening a later gate.`,
+        );
+    }
+    if (priorAuthority?.closeout !== closeoutPath)
+      errors.push(
+        "Later gates require the protected-main V1D-SV closeout reference.",
+      );
+  }
+  return errors;
 }
 
 function validateProtectedMainContinuity(
@@ -1238,6 +1505,7 @@ export function validateV1dAuthority(
     verifyFactoryReceiptSignature = () => false,
     isCommit = () => false,
     isProtectedMainCommit = () => false,
+    protectedMainPathVersionCount = () => null,
     now = new Date(),
   } = {},
 ) {
@@ -1287,6 +1555,8 @@ export function validateV1dAuthority(
   }
 
   if (authority.status === "open") {
+    if (Object.hasOwn(authority, "closeout"))
+      errors.push("Open V1D-SV authority must not carry a prior closeout.");
     const authorization = authority.authorization;
     const validPath =
       typeof authorization === "string" &&
@@ -1321,6 +1591,25 @@ export function validateV1dAuthority(
         );
     }
   }
+  const priorAuthority = protectedMainAuthority(readAtProtectedMain);
+  const laterGateOpen = REQUIRED_CLOSED_GATES.some(
+    (gateId) =>
+      gates.gates?.find((item) => item.id === gateId)?.status === "open",
+  );
+  const requiresCloseout =
+    authority.status === "closed" &&
+    (priorAuthority?.status === "open" || laterGateOpen);
+  if (authority.status === "closed" && (requiresCloseout || authority.closeout))
+    errors.push(
+      ...validateCloseout(authority, priorAuthority, laterGateOpen, {
+        isRegularFile,
+        readText,
+        readAtProtectedMain,
+        protectedMainPathVersionCount,
+        pathIntroductionTime,
+        now,
+      }),
+    );
   for (const gateId of REQUIRED_CLOSED_GATES) {
     const gate = gates.gates?.find((item) => item.id === gateId);
     if (authority.status === "open" && gate?.status !== "closed")

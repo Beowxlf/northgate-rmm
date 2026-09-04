@@ -85,7 +85,11 @@ Pre-G2 V1D validation boundary:
 - canary and endpoint routes remain blocked, and no endpoint-usable grant,
   identity, package, or traffic is permitted; and
 - the negative tests, rollback, and recovery evidence in ADR 0011 and the
-  security test plan must pass before the server evidence can satisfy V1D.
+  security test plan must pass before the server evidence can satisfy V1D; and
+- `V1D-SV` must close in a separate protected-main change with immutable
+  cleanup evidence proving service stop, identity revocation, route blocking,
+  temporary-access removal, secret destruction, and rollback before G2 or any
+  later product gate may open.
 
 Exit evidence:
 

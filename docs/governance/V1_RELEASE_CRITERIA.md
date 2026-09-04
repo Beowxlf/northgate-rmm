@@ -103,7 +103,10 @@ operational facts and dependencies are recorded in the
   named owners and runbooks; and
 - any pre-G2 control-plane deployment uses the exact bounded V1D
   server-validation authority, synthetic validation identities, and blocked
-  endpoint routes defined in the authorization and server lifecycle contracts.
+  endpoint routes defined in the authorization and server lifecycle contracts;
+  and
+- the validation authority closes with immutable cleanup evidence in a
+  protected-main change that precedes any G2 opening.
 
 ### V1E — G2 canary
 

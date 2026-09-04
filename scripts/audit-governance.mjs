@@ -127,6 +127,16 @@ function pathIntroductionTime(relativePath) {
   return timestamp.status === 0 ? timestamp.stdout.trim() : null;
 }
 
+function protectedMainPathVersionCount(relativePath) {
+  const history = spawnSync(
+    "git",
+    ["log", "--format=%H", "--full-history", "origin/main", "--", relativePath],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (history.status !== 0) return null;
+  return history.stdout.trim().split(/\r?\n/).filter(Boolean).length;
+}
+
 function walk(directory) {
   if (!exists(directory)) return [];
   return fs
@@ -225,6 +235,7 @@ for (const authorityError of validateV1dAuthority(gates, {
   verifyFactoryReceiptSignature: verifyCmsDetached,
   isCommit,
   isProtectedMainCommit,
+  protectedMainPathVersionCount,
 }))
   error(authorityError);
 

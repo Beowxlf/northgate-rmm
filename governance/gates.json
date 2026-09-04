@@ -24,7 +24,8 @@
         "exact named private control-plane server and signed release",
         "fresh host-issued Factory plan and post-issuance owner approval",
         "synthetic-only identities and blocked endpoint routes",
-        "expiry, rollback, recovery, and evidence boundaries"
+        "expiry, rollback, recovery, and evidence boundaries",
+        "immutable verified cleanup closeout before later gates"
       ],
       "prohibitions": [
         "endpoint package installation",

@@ -273,6 +273,13 @@ expectFailure(
   "require G2 to remain closed",
 );
 expectFailure(
+  "closed-gate constraint is not an array",
+  (config) => {
+    authority(config).requiresClosedGates = "G2";
+  },
+  "require G2 to remain closed",
+);
+expectFailure(
   "invalid status",
   (config) => {
     authority(config).status = "active";
@@ -327,11 +334,25 @@ expectFailure(
   "lacks required prerequisite",
 );
 expectFailure(
+  "prerequisites are not an array",
+  (config) => {
+    authority(config).requirements = authority(config).requirements.join("; ");
+  },
+  "invalid prerequisite set",
+);
+expectFailure(
   "prohibition stripped",
   (config) => {
     authority(config).prohibitions.pop();
   },
   "lacks required prohibition",
+);
+expectFailure(
+  "prohibitions are not an array",
+  (config) => {
+    authority(config).prohibitions = authority(config).prohibitions.join("; ");
+  },
+  "invalid prohibition set",
 );
 
 for (const field of Object.keys(validFields)) {

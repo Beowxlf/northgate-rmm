@@ -113,6 +113,15 @@ const REQUIRED_V1C_CONTROLS = [
   "independent verification",
 ];
 
+function hasExactUniqueEntries(value, expected) {
+  return (
+    Array.isArray(value) &&
+    value.length === expected.length &&
+    new Set(value).size === expected.length &&
+    expected.every((item) => value.includes(item))
+  );
+}
+
 function validDate(value) {
   if (!ISO_TIMESTAMP.test(value ?? "")) return null;
   const timestamp = Date.parse(value);
@@ -519,17 +528,27 @@ export function validateV1dAuthority(
   if (authority.phase !== 2) errors.push("V1D-SV must remain within Phase 2.");
   if (authority.opensGate !== false)
     errors.push("V1D-SV must not open a product gate.");
-  if (!authority.requiresClosedGates?.includes("G2"))
+  if (!hasExactUniqueEntries(authority.requiresClosedGates, ["G2"]))
     errors.push("V1D-SV must require G2 to remain closed.");
   if (!["open", "closed"].includes(authority.status))
     errors.push("Invalid status for V1D-SV.");
 
+  if (!hasExactUniqueEntries(authority.requirements, REQUIRED_REQUIREMENTS))
+    errors.push("V1D-SV has an invalid prerequisite set.");
   for (const requirement of REQUIRED_REQUIREMENTS) {
-    if (!authority.requirements?.includes(requirement))
+    if (
+      !Array.isArray(authority.requirements) ||
+      !authority.requirements.includes(requirement)
+    )
       errors.push(`V1D-SV lacks required prerequisite: ${requirement}.`);
   }
+  if (!hasExactUniqueEntries(authority.prohibitions, REQUIRED_PROHIBITIONS))
+    errors.push("V1D-SV has an invalid prohibition set.");
   for (const prohibition of REQUIRED_PROHIBITIONS) {
-    if (!authority.prohibitions?.includes(prohibition))
+    if (
+      !Array.isArray(authority.prohibitions) ||
+      !authority.prohibitions.includes(prohibition)
+    )
       errors.push(`V1D-SV lacks required prohibition: ${prohibition}.`);
   }
 

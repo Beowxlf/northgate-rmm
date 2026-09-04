@@ -45,9 +45,11 @@ that approval. Strict UTC calendar validation rejects normalized impossible
 dates and future-effective records; the authority is limited to 24 hours and
 its prior approved-bindings manifest to seven days. The manifest uses canonical
 duplicate-free JSON and hashes an immutable V1C pass record plus separate
-records for DNS/time, server PKI, the synthetic issuer and status path, operator
-verification, telemetry/audit, backup/recovery, and external encryption-key
-custody. Each prerequisite record must be present and unchanged at the audited
+records for DNS/time, server PKI, network segmentation, the synthetic issuer
+and status path, operator verification, telemetry/audit, backup/recovery, and
+external encryption-key custody. Network evidence additionally binds its
+separate change approval, apply receipt, and positive and negative path tests.
+Each prerequisite record must be present and unchanged at the audited
 protected-main commit, owner-approved, unexpired, and bound to evidence and
 rollback. Manifest approval must follow plan approval.
 

@@ -76,6 +76,26 @@
         }
       },
       {
+        "id": "V1D-DEP-NETWORK-SEGMENTATION",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-NETWORK-SEGMENTATION.json",
+        "digest": "sha256:PLACEHOLDER",
+        "evidenceScope": {
+          "targetBinding": "sha256:PLACEHOLDER",
+          "identityBinding": "sha256:PLACEHOLDER",
+          "flowBinding": "sha256:PLACEHOLDER",
+          "provisionReceiptDigest": "sha256:PLACEHOLDER",
+          "verificationReceiptDigest": "sha256:PLACEHOLDER",
+          "changeApprovalBinding": "sha256:PLACEHOLDER",
+          "applyReceiptDigest": "sha256:PLACEHOLDER",
+          "allowTestReceiptDigest": "sha256:PLACEHOLDER",
+          "denyTestReceiptDigest": "sha256:PLACEHOLDER"
+        },
+        "rollbackScope": {
+          "procedureBinding": "sha256:PLACEHOLDER",
+          "recoveryEvidenceBinding": "sha256:PLACEHOLDER"
+        }
+      },
+      {
         "id": "V1D-DEP-SYNTHETIC-ISSUER-STATUS",
         "record": "docs/governance/authorizations/prerequisites/V1D-DEP-SYNTHETIC-ISSUER-STATUS.json",
         "digest": "sha256:PLACEHOLDER",

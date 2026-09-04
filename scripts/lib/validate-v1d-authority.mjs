@@ -98,9 +98,11 @@ const MAX_AUTHORITY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const MAX_BINDINGS_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_PLAN_AGE_MS = 2 * 60 * 60 * 1000;
 const MAX_PLAN_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const NETWORK_DEPENDENCY_ID = "V1D-DEP-NETWORK-SEGMENTATION";
 const EXPECTED_DEPENDENCY_IDS = [
   "V1D-DEP-DNS-TIME",
   "V1D-DEP-SERVER-PKI",
+  "V1D-DEP-NETWORK-SEGMENTATION",
   "V1D-DEP-SYNTHETIC-ISSUER-STATUS",
   "V1D-DEP-OPERATOR-VERIFIER",
   "V1D-DEP-TELEMETRY-AUDIT",
@@ -151,6 +153,93 @@ function parseCanonicalJson(text) {
 
 function sha256(text) {
   return `sha256:${createHash("sha256").update(normalizeText(text)).digest("hex")}`;
+}
+
+const NETWORK_EVIDENCE_ARTIFACTS = [
+  ["changeApprovalRecord", "changeApprovalBinding", "ChangeApproved"],
+  ["applyReceiptRecord", "applyReceiptDigest", "ChangeApplied"],
+  ["allowTestRecord", "allowTestReceiptDigest", "AllowPathVerified"],
+  ["denyTestRecord", "denyTestReceiptDigest", "DenyPathVerified"],
+];
+
+function validateNetworkEvidenceArtifacts(
+  receipt,
+  auditedCommit,
+  evidenceVerifiedAt,
+  options,
+) {
+  const errors = [];
+  const { isRegularFile, readText, readAtCommit, now } = options;
+  const recordedAtByEvent = new Map();
+  for (const [pathField, digestField, event] of NETWORK_EVIDENCE_ARTIFACTS) {
+    const recordPath = receipt[pathField] ?? "";
+    if (
+      !/^docs\/governance\/authorizations\/prerequisites\/network\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+        recordPath,
+      ) ||
+      !isRegularFile(recordPath)
+    ) {
+      errors.push(`V1D-SV network evidence lacks immutable ${event} record.`);
+      continue;
+    }
+    const currentText = readText(recordPath);
+    const approvedText = readAtCommit(auditedCommit, recordPath);
+    if (typeof currentText !== "string" || typeof approvedText !== "string") {
+      errors.push(
+        `V1D-SV network ${event} record is absent from the audited commit.`,
+      );
+      continue;
+    }
+    if (normalizeText(currentText) !== normalizeText(approvedText))
+      errors.push(`V1D-SV network ${event} record changed after approval.`);
+    if (sha256(approvedText) !== receipt[digestField])
+      errors.push(`V1D-SV network ${event} record digest mismatches.`);
+
+    const artifact = parseCanonicalJson(approvedText);
+    if (!artifact) {
+      errors.push(
+        `V1D-SV network ${event} record is not canonical duplicate-free JSON.`,
+      );
+      continue;
+    }
+    if (
+      artifact.schemaVersion !== 1 ||
+      artifact.prerequisiteId !== NETWORK_DEPENDENCY_ID ||
+      artifact.event !== event ||
+      artifact.status !== "Verified"
+    )
+      errors.push(
+        `V1D-SV network ${event} record has invalid scope or status.`,
+      );
+    if (artifact.approver !== "Beowxlf")
+      errors.push(`V1D-SV network ${event} record lacks owner approval.`);
+    if (
+      artifact.targetBinding !== receipt.targetBinding ||
+      artifact.flowBinding !== receipt.flowBinding
+    )
+      errors.push(`V1D-SV network ${event} record has mismatched bindings.`);
+    const recordedAt = validDate(artifact.recordedAt);
+    if (
+      recordedAt === null ||
+      recordedAt > now.getTime() ||
+      (evidenceVerifiedAt !== null && recordedAt >= evidenceVerifiedAt)
+    )
+      errors.push(`V1D-SV network ${event} record time is invalid.`);
+    else recordedAtByEvent.set(event, recordedAt);
+  }
+  const approvedAt = recordedAtByEvent.get("ChangeApproved");
+  const appliedAt = recordedAtByEvent.get("ChangeApplied");
+  for (const event of ["AllowPathVerified", "DenyPathVerified"]) {
+    const testedAt = recordedAtByEvent.get(event);
+    if (
+      approvedAt !== undefined &&
+      appliedAt !== undefined &&
+      testedAt !== undefined &&
+      !(approvedAt < appliedAt && appliedAt < testedAt)
+    )
+      errors.push(`V1D-SV network ${event} record is out of sequence.`);
+  }
+  return errors;
 }
 
 function validatePrerequisiteEvidence(
@@ -232,6 +321,14 @@ function validatePrerequisiteEvidence(
         "flowBinding",
         "provisionReceiptDigest",
         "verificationReceiptDigest",
+        ...(expectedId === NETWORK_DEPENDENCY_ID
+          ? [
+              "changeApprovalBinding",
+              "applyReceiptDigest",
+              "allowTestReceiptDigest",
+              "denyTestReceiptDigest",
+            ]
+          : []),
       ]
     : ["procedureBinding", "recoveryEvidenceBinding"];
   const approvedScope = isEvidence
@@ -247,6 +344,15 @@ function validatePrerequisiteEvidence(
         `V1D-SV ${expectedId} prerequisite ${label} ${field} mismatches its approved scope.`,
       );
   }
+  if (isEvidence && expectedId === NETWORK_DEPENDENCY_ID)
+    errors.push(
+      ...validateNetworkEvidenceArtifacts(
+        receipt,
+        auditedCommit,
+        verifiedAt,
+        options,
+      ),
+    );
   return errors;
 }
 

@@ -54,7 +54,8 @@ value fails validation.
 The manifest must also bind the exact authorization issuance and expiry; the
 authority window cannot be extended by editing the later authorization record.
 That manifest must hash and reference a protected-main V1C pass record and the
-seven separate external-dependency approval records. Each prerequisite record
+eight separate external-dependency approval records, including the separately
+approved and tested network-segmentation change. Each prerequisite record
 must be owner-approved, unexpired, evidence- and rollback-bound, unchanged from
 the audited commit, valid for its exact required identity and status, and valid
 through the authorization expiry. Every prerequisite approval must precede

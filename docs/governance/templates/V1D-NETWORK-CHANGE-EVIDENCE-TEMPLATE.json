@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "prerequisiteId": "V1D-DEP-NETWORK-SEGMENTATION",
+  "status": "ProvisionedAndVerified",
+  "approver": "Beowxlf",
+  "verifiedAt": "PLACEHOLDER",
+  "targetBinding": "sha256:PLACEHOLDER",
+  "identityBinding": "sha256:PLACEHOLDER",
+  "flowBinding": "sha256:PLACEHOLDER",
+  "provisionReceiptDigest": "sha256:PLACEHOLDER",
+  "verificationReceiptDigest": "sha256:PLACEHOLDER",
+  "changeApprovalRecord": "docs/governance/authorizations/prerequisites/network/PLACEHOLDER.json",
+  "changeApprovalBinding": "sha256:PLACEHOLDER",
+  "applyReceiptRecord": "docs/governance/authorizations/prerequisites/network/PLACEHOLDER.json",
+  "applyReceiptDigest": "sha256:PLACEHOLDER",
+  "allowTestRecord": "docs/governance/authorizations/prerequisites/network/PLACEHOLDER.json",
+  "allowTestReceiptDigest": "sha256:PLACEHOLDER",
+  "denyTestRecord": "docs/governance/authorizations/prerequisites/network/PLACEHOLDER.json",
+  "denyTestReceiptDigest": "sha256:PLACEHOLDER"
+}

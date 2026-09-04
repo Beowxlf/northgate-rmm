@@ -13,6 +13,7 @@ const v1cPath = "docs/governance/authorizations/prerequisites/V1C-PASS.json";
 const dependencyRecords = [
   ["V1D-DEP-DNS-TIME", "V1D-DEP-DNS-TIME.json"],
   ["V1D-DEP-SERVER-PKI", "V1D-DEP-SERVER-PKI.json"],
+  ["V1D-DEP-NETWORK-SEGMENTATION", "V1D-DEP-NETWORK-SEGMENTATION.json"],
   ["V1D-DEP-SYNTHETIC-ISSUER-STATUS", "V1D-DEP-SYNTHETIC-ISSUER-STATUS.json"],
   ["V1D-DEP-OPERATOR-VERIFIER", "V1D-DEP-OPERATOR-VERIFIER.json"],
   ["V1D-DEP-TELEMETRY-AUDIT", "V1D-DEP-TELEMETRY-AUDIT.json"],
@@ -90,7 +91,30 @@ function rollbackPath(id) {
   return `docs/governance/authorizations/prerequisites/rollback/${id}.json`;
 }
 
-function renderEvidence(id) {
+function networkArtifactPath(name) {
+  return `docs/governance/authorizations/prerequisites/network/${name}.json`;
+}
+
+function renderNetworkArtifact(event, recordedAt) {
+  return canonical({
+    schemaVersion: 1,
+    prerequisiteId: "V1D-DEP-NETWORK-SEGMENTATION",
+    event,
+    status: "Verified",
+    approver: "Beowxlf",
+    recordedAt,
+    targetBinding: digest,
+    flowBinding: digest,
+  });
+}
+
+function renderEvidence(id, records) {
+  const networkArtifacts = {
+    changeApprovalRecord: networkArtifactPath("change-approval"),
+    applyReceiptRecord: networkArtifactPath("apply-receipt"),
+    allowTestRecord: networkArtifactPath("allow-test"),
+    denyTestRecord: networkArtifactPath("deny-test"),
+  };
   return canonical({
     schemaVersion: 1,
     prerequisiteId: id,
@@ -102,6 +126,21 @@ function renderEvidence(id) {
     flowBinding: digest,
     provisionReceiptDigest: digest,
     verificationReceiptDigest: digest,
+    ...(id === "V1D-DEP-NETWORK-SEGMENTATION"
+      ? {
+          ...networkArtifacts,
+          changeApprovalBinding: hash(
+            records[networkArtifacts.changeApprovalRecord],
+          ),
+          applyReceiptDigest: hash(
+            records[networkArtifacts.applyReceiptRecord],
+          ),
+          allowTestReceiptDigest: hash(
+            records[networkArtifacts.allowTestRecord],
+          ),
+          denyTestReceiptDigest: hash(records[networkArtifacts.denyTestRecord]),
+        }
+      : {}),
   });
 }
 
@@ -135,9 +174,25 @@ function renderPrerequisite(id, status, records, extra = {}) {
 
 function buildPrerequisites() {
   const records = {};
+  records[networkArtifactPath("change-approval")] = renderNetworkArtifact(
+    "ChangeApproved",
+    "2026-09-04T12:40:00Z",
+  );
+  records[networkArtifactPath("apply-receipt")] = renderNetworkArtifact(
+    "ChangeApplied",
+    "2026-09-04T12:42:00Z",
+  );
+  records[networkArtifactPath("allow-test")] = renderNetworkArtifact(
+    "AllowPathVerified",
+    "2026-09-04T12:45:00Z",
+  );
+  records[networkArtifactPath("deny-test")] = renderNetworkArtifact(
+    "DenyPathVerified",
+    "2026-09-04T12:46:00Z",
+  );
   const ids = ["V1C", ...dependencyRecords.map(([id]) => id)];
   for (const id of ids) {
-    records[evidencePath(id)] = renderEvidence(id);
+    records[evidencePath(id)] = renderEvidence(id, records);
     records[rollbackPath(id)] = renderRollbackEvidence(id);
   }
   records[v1cPath] = renderPrerequisite("V1C", "Passed", records, {
@@ -187,6 +242,22 @@ function renderApprovedBindings(
       flowBinding: fields["Private network policy binding"],
       provisionReceiptDigest: digest,
       verificationReceiptDigest: digest,
+      ...(id === "V1D-DEP-NETWORK-SEGMENTATION"
+        ? {
+            changeApprovalBinding: hash(
+              prerequisiteRecords[networkArtifactPath("change-approval")],
+            ),
+            applyReceiptDigest: hash(
+              prerequisiteRecords[networkArtifactPath("apply-receipt")],
+            ),
+            allowTestReceiptDigest: hash(
+              prerequisiteRecords[networkArtifactPath("allow-test")],
+            ),
+            denyTestReceiptDigest: hash(
+              prerequisiteRecords[networkArtifactPath("deny-test")],
+            ),
+          }
+        : {}),
     },
     rollbackScope: {
       procedureBinding: fields["Rollback binding"],
@@ -614,6 +685,50 @@ expectFailure(
 expectFailure("dependency approval missing", open, "prerequisite record", {
   mutatePrerequisites: (records) => delete records[dependencyRecords[0][1]],
 });
+expectFailure(
+  "network segmentation evidence omits negative-path test",
+  open,
+  "lacks scoped denyTestReceiptDigest",
+  {
+    mutatePrerequisites: (records) => {
+      const id = "V1D-DEP-NETWORK-SEGMENTATION";
+      const prerequisitePath = dependencyRecords.find(
+        ([dependencyId]) => dependencyId === id,
+      )[1];
+      const receiptPath = evidencePath(id);
+      const receipt = JSON.parse(records[receiptPath]);
+      delete receipt.denyTestReceiptDigest;
+      records[receiptPath] = canonical(receipt);
+      const prerequisite = JSON.parse(records[prerequisitePath]);
+      prerequisite.evidenceBinding = hash(records[receiptPath]);
+      records[prerequisitePath] = canonical(prerequisite);
+    },
+  },
+);
+expectFailure(
+  "network segmentation tests precede apply",
+  open,
+  "AllowPathVerified record is out of sequence",
+  {
+    mutatePrerequisites: (records) => {
+      const id = "V1D-DEP-NETWORK-SEGMENTATION";
+      const prerequisitePath = dependencyRecords.find(
+        ([dependencyId]) => dependencyId === id,
+      )[1];
+      const applyPath = networkArtifactPath("apply-receipt");
+      const applyRecord = JSON.parse(records[applyPath]);
+      applyRecord.recordedAt = "2026-09-04T12:47:00Z";
+      records[applyPath] = canonical(applyRecord);
+      const receiptPath = evidencePath(id);
+      const receipt = JSON.parse(records[receiptPath]);
+      receipt.applyReceiptDigest = hash(records[applyPath]);
+      records[receiptPath] = canonical(receipt);
+      const prerequisite = JSON.parse(records[prerequisitePath]);
+      prerequisite.evidenceBinding = hash(records[receiptPath]);
+      records[prerequisitePath] = canonical(prerequisite);
+    },
+  },
+);
 expectFailure(
   "dependency approval has only arbitrary evidence hashes",
   open,

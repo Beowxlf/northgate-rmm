@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "prerequisiteId": "V1D-DEP-NETWORK-SEGMENTATION",
+  "event": "PLACEHOLDER",
+  "status": "Verified",
+  "approver": "Beowxlf",
+  "recordedAt": "PLACEHOLDER",
+  "targetBinding": "sha256:PLACEHOLDER",
+  "flowBinding": "sha256:PLACEHOLDER"
+}

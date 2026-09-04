@@ -53,12 +53,20 @@ Use
 for its schema. The manifest and every prerequisite record must be canonical
 two-space-indented JSON with one trailing newline; noncanonical or duplicate-key
 JSON is rejected. The manifest must hash and reference the protected-main
-[`V1C-PASS-TEMPLATE.json`](V1C-PASS-TEMPLATE.json) record and all seven separate
+[`V1C-PASS-TEMPLATE.json`](V1C-PASS-TEMPLATE.json) record and all eight separate
 external-dependency records built from
 [`V1D-DEPENDENCY-APPROVAL-TEMPLATE.json`](V1D-DEPENDENCY-APPROVAL-TEMPLATE.json).
 The V1C pass record's `releaseDigest` must be the exact `Signed release digest`
 authorized here, preventing trust evidence for one release from qualifying a
 different release.
+The network-segmentation prerequisite must use
+[`V1D-NETWORK-CHANGE-EVIDENCE-TEMPLATE.json`](V1D-NETWORK-CHANGE-EVIDENCE-TEMPLATE.json)
+to bind its separate change approval, apply receipt, positive-path test, and
+negative-path test in addition to the common evidence fields. Each referenced
+network artifact must use
+[`V1D-NETWORK-CHANGE-ARTIFACT-TEMPLATE.json`](V1D-NETWORK-CHANGE-ARTIFACT-TEMPLATE.json),
+remain byte-identical to the audited protected-main version, match the approved
+target and flow, and prove approval-before-apply-before-test ordering.
 Each prerequisite must reference immutable scoped provision/verification and
 rollback receipts built from
 [`V1D-PREREQUISITE-EVIDENCE-TEMPLATE.json`](V1D-PREREQUISITE-EVIDENCE-TEMPLATE.json)

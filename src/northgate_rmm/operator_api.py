@@ -55,7 +55,12 @@ class OperatorPrincipal:
                 if name == "subject"
                 else MAX_OPERATOR_VALUE_LENGTH
             )
-            if not value or len(value) > maximum_length or not value.isprintable():
+            if (
+                type(value) is not str
+                or not value
+                or len(value) > maximum_length
+                or not value.isprintable()
+            ):
                 raise ValidationError(f"operator {name} is invalid")
         if type(self.mfa) is not bool:
             raise ValidationError("operator mfa is invalid")
@@ -68,7 +73,12 @@ class OperatorPrincipal:
             raise ValidationError("operator role is invalid")
         if len(set(self.roles)) != len(self.roles):
             raise ValidationError("operator roles contain a duplicate")
-        if self.authenticated_at.tzinfo is None or self.expires_at.tzinfo is None:
+        if (
+            type(self.authenticated_at) is not datetime
+            or type(self.expires_at) is not datetime
+            or self.authenticated_at.tzinfo is None
+            or self.expires_at.tzinfo is None
+        ):
             raise ValidationError("operator session times must be timezone-aware")
         if self.expires_at <= self.authenticated_at:
             raise ValidationError("operator session lifetime is invalid")
@@ -102,9 +112,16 @@ class OperatorAuthorizationPolicy:
                     else MAX_OPERATOR_VALUE_LENGTH
                 )
             )
-            if not value or len(value) > maximum_length or not value.isprintable():
+            if (
+                type(value) is not str
+                or not value
+                or len(value) > maximum_length
+                or not value.isprintable()
+            ):
                 raise ValidationError(f"operator policy {name} is invalid")
-        if not timedelta(minutes=5) <= self.maximum_session_age <= timedelta(hours=24):
+        if type(self.maximum_session_age) is not timedelta or not (
+            timedelta(minutes=5) <= self.maximum_session_age <= timedelta(hours=24)
+        ):
             raise ValidationError("operator maximum session age is invalid")
 
 

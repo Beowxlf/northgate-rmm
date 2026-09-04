@@ -299,3 +299,11 @@ def test_operator_models_reject_invalid_sessions_and_policy() -> None:
         replace(policy(), subject="x" * 257)
     with pytest.raises(ValidationError, match="mfa"):
         replace(principal(), mfa=cast(bool, "false"))
+    with pytest.raises(ValidationError, match="issuer"):
+        replace(principal(), issuer=cast(str, 1))
+    with pytest.raises(ValidationError, match="session times"):
+        replace(principal(), authenticated_at=cast(datetime, "not-a-time"))
+    with pytest.raises(ValidationError, match="issuer"):
+        replace(policy(), issuer=cast(str, ["not", "a", "string"]))
+    with pytest.raises(ValidationError, match="maximum session age"):
+        replace(policy(), maximum_session_age=cast(timedelta, "not-a-duration"))

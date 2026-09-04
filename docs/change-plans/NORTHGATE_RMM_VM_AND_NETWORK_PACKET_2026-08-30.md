@@ -307,9 +307,12 @@ G2 remains closed until evidence identifies and validates:
 
 The V1B source now includes real private agent, enrollment, and operator
 listeners plus an executable Debian agent. They remain disabled qualification
-artifacts, not a deployment. Creating a connected server or installing an
-endpoint agent before the remaining V1D controls pass would not satisfy the
-approved version 1.0 contract.
+artifacts, not a deployment. After V1C passes, the exact bounded V1D
+server-validation authority may create and connect only the named private
+control-plane server with synthetic validation identities and every endpoint
+route blocked, solely to complete the remaining V1D proofs. Any other connected
+server deployment, or installing an endpoint agent before V1D passes and G2 is
+separately authorized, would not satisfy the approved version 1.0 contract.
 
 ## Rollback and containment
 

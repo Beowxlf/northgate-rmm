@@ -9,7 +9,11 @@ from uuid import UUID
 import pytest
 
 from northgate_rmm.enrollment import EndpointIssuanceRequest
-from northgate_rmm.errors import AuthorizationError, ValidationError
+from northgate_rmm.errors import (
+    AuthorizationError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from northgate_rmm.issuer_client import (
     IssuerClientConfiguration,
     MTLSIssuerClient,
@@ -189,6 +193,35 @@ def test_issuer_client_maps_workload_rejection_generically(
     )
 
     with pytest.raises(AuthorizationError, match="workload identity"):
+        client.issue_endpoint_certificate(request, now=NOW)
+
+
+def test_issuer_client_maps_service_failure_generically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import northgate_rmm.issuer_client as issuer_module
+
+    class FailedConnection:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def request(self, *_args: object, **_kwargs: object) -> None:
+            raise OSError("private network detail")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(issuer_module, "_build_client_context", lambda _value: object())
+    monkeypatch.setattr(issuer_module, "_PinnedHTTPSConnection", FailedConnection)
+    client = MTLSIssuerClient(configuration(tmp_path))
+    request = EndpointIssuanceRequest(
+        identity_id=UUID("11111111-1111-4111-8111-111111111111"),
+        endpoint_id=UUID("22222222-2222-4222-8222-222222222222"),
+        public_key_fingerprint="sha256:" + "a" * 64,
+        csr_der=b"csr",
+    )
+
+    with pytest.raises(ServiceUnavailableError, match="request failed"):
         client.issue_endpoint_certificate(request, now=NOW)
 
 

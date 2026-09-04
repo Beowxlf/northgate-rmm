@@ -24,7 +24,11 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
 
 from northgate_rmm.domain import Endpoint, EndpointIdentity, require_aware
-from northgate_rmm.errors import AuthorizationError, ValidationError
+from northgate_rmm.errors import (
+    AuthorizationError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from northgate_rmm.listener import validate_endpoint_certificate
 
 MAX_CSR_BYTES = 8_192
@@ -151,6 +155,8 @@ class EnrollmentApplication:
             )
         except AuthorizationError:
             return _http_error(403, "enrollment_unavailable")
+        except ServiceUnavailableError:
+            return _http_error(503, "enrollment_unavailable")
         except ValidationError:
             return _http_error(400, "invalid_enrollment")
         return _http_json(

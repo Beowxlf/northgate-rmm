@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 northgate-rmm-agent-service = "northgate_rmm.agent_service:main"
+northgate-rmm-enrollment-service = "northgate_rmm.enrollment_service:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

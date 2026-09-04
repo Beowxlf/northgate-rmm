@@ -13,6 +13,10 @@ class AuthorizationError(NorthGateRmmError):
     """The authenticated synthetic identity cannot perform the operation."""
 
 
+class ServiceUnavailableError(NorthGateRmmError):
+    """A required private service was unavailable or rejected the request."""
+
+
 class ReplayError(NorthGateRmmError):
     """A message ID or boot-sequence value was already accepted."""
 

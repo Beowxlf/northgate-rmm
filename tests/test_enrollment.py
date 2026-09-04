@@ -22,7 +22,11 @@ from northgate_rmm.enrollment import (
     EnrollmentService,
     IssuedEndpointCredential,
 )
-from northgate_rmm.errors import AuthorizationError, ValidationError
+from northgate_rmm.errors import (
+    AuthorizationError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from northgate_rmm.listener import validate_endpoint_certificate
 
 NOW = datetime(2026, 9, 3, 20, 0, tzinfo=UTC)
@@ -375,6 +379,11 @@ def test_enrollment_application_rejects_bad_http_and_json_contracts(
         (
             AuthorizationError("internal authorization detail"),
             403,
+            "enrollment_unavailable",
+        ),
+        (
+            ServiceUnavailableError("internal service detail"),
+            503,
             "enrollment_unavailable",
         ),
         (ValidationError("internal validation detail"), 400, "invalid_enrollment"),

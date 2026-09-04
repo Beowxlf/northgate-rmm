@@ -45,6 +45,7 @@ const validFields = {
   "Authenticated state hash": digest,
   "Factory plan issued at": "2026-09-04T13:00:00Z",
   "Factory plan approved at": "2026-09-04T13:01:00Z",
+  "Factory plan expires at": "2026-09-05T00:00:00Z",
   "Factory plan approver": "Beowxlf",
   "External dependency set binding": digest,
   "Service identity binding": digest,
@@ -117,6 +118,7 @@ function renderApprovedBindings(
     "Authenticated state hash",
     "Factory plan issued at",
     "Factory plan approved at",
+    "Factory plan expires at",
     "Factory plan approver",
     "External dependency set binding",
     "Service identity binding",
@@ -396,6 +398,19 @@ expectFailure("future plan approval", open, "approval time is in the future", {
   mutateFields: (fields) =>
     (fields["Factory plan approved at"] = "2026-09-04T15:01:00Z"),
 });
+expectFailure("expired Factory plan", open, "Factory plan is expired", {
+  mutateFields: (fields) =>
+    (fields["Factory plan expires at"] = "2026-09-04T13:59:59Z"),
+});
+expectFailure(
+  "authority outlives Factory plan",
+  open,
+  "outlives its Factory plan",
+  {
+    mutateFields: (fields) =>
+      (fields["Factory plan expires at"] = "2026-09-04T23:59:59Z"),
+  },
+);
 expectFailure("changed approved bindings", open, "changed after the audited", {
   currentApprovedText: "{}",
 });

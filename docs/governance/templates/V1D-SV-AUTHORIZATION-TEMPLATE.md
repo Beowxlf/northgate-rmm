@@ -27,6 +27,7 @@ Factory plan ID: PLACEHOLDER
 Authenticated state hash: sha256:PLACEHOLDER  
 Factory plan issued at: PLACEHOLDER  
 Factory plan approved at: PLACEHOLDER  
+Factory plan expires at: PLACEHOLDER  
 Factory plan approver: Beowxlf  
 External dependency set binding: sha256:PLACEHOLDER  
 Service identity binding: sha256:PLACEHOLDER  
@@ -57,6 +58,7 @@ external-dependency records built from
 [`V1D-DEPENDENCY-APPROVAL-TEMPLATE.json`](V1D-DEPENDENCY-APPROVAL-TEMPLATE.json).
 Binding-manifest approval must occur after Factory plan approval.
 The authorization expiry must not exceed the expiry of the binding manifest,
-the V1C pass record, or any external-dependency approval record.
+the Factory plan, the V1C pass record, or any external-dependency approval
+record.
 Every prerequisite record must be approved before Factory plan issuance and
 before binding-manifest approval.

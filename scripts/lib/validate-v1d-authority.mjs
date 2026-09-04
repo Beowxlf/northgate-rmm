@@ -31,6 +31,7 @@ const REQUIRED_RECORD_FIELDS = [
   "Authenticated state hash",
   "Factory plan issued at",
   "Factory plan approved at",
+  "Factory plan expires at",
   "Factory plan approver",
   "External dependency set binding",
   "Service identity binding",
@@ -64,6 +65,7 @@ const APPROVED_BINDING_FIELDS = [
   "Authenticated state hash",
   "Factory plan issued at",
   "Factory plan approved at",
+  "Factory plan expires at",
   "Factory plan approver",
   "External dependency set binding",
   "Service identity binding",
@@ -423,6 +425,7 @@ function validateRecord(text, options) {
   const expiresAt = validDate(fields.get("Expires at"));
   const planIssuedAt = validDate(fields.get("Factory plan issued at"));
   const planApprovedAt = validDate(fields.get("Factory plan approved at"));
+  const planExpiresAt = validDate(fields.get("Factory plan expires at"));
   if (issuedAt === null)
     errors.push("V1D-SV authorization record has an invalid issue time.");
   if (expiresAt === null)
@@ -431,6 +434,8 @@ function validateRecord(text, options) {
     errors.push("V1D-SV Factory plan has an invalid issue time.");
   if (planApprovedAt === null)
     errors.push("V1D-SV Factory plan has an invalid approval time.");
+  if (planExpiresAt === null)
+    errors.push("V1D-SV Factory plan has an invalid expiry.");
   if (issuedAt !== null && expiresAt !== null && expiresAt <= issuedAt)
     errors.push("V1D-SV authorization expiry must follow issuance.");
   if (
@@ -447,12 +452,20 @@ function validateRecord(text, options) {
     errors.push("V1D-SV Factory plan issue time is in the future.");
   if (planApprovedAt !== null && planApprovedAt > now.getTime())
     errors.push("V1D-SV Factory plan approval time is in the future.");
+  if (planExpiresAt !== null && planExpiresAt <= now.getTime())
+    errors.push("V1D-SV Factory plan is expired.");
   if (
     planIssuedAt !== null &&
     planApprovedAt !== null &&
     planApprovedAt <= planIssuedAt
   )
     errors.push("V1D-SV Factory plan approval must follow plan issuance.");
+  if (
+    planApprovedAt !== null &&
+    planExpiresAt !== null &&
+    planExpiresAt <= planApprovedAt
+  )
+    errors.push("V1D-SV Factory plan expiry must follow plan approval.");
   if (issuedAt !== null && planApprovedAt !== null && issuedAt < planApprovedAt)
     errors.push(
       "V1D-SV authorization must be issued after Factory plan approval.",
@@ -463,6 +476,8 @@ function validateRecord(text, options) {
     planApprovedAt >= expiresAt
   )
     errors.push("V1D-SV Factory plan approval must precede authority expiry.");
+  if (expiresAt !== null && planExpiresAt !== null && expiresAt > planExpiresAt)
+    errors.push("V1D-SV authorization outlives its Factory plan.");
 
   if (
     /^[a-f0-9]{40}$/.test(auditedCommit) &&

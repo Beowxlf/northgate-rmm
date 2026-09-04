@@ -12,6 +12,7 @@
     "Authenticated state hash": "sha256:PLACEHOLDER",
     "Factory plan issued at": "PLACEHOLDER",
     "Factory plan approved at": "PLACEHOLDER",
+    "Factory plan expires at": "PLACEHOLDER",
     "Factory plan approver": "Beowxlf",
     "External dependency set binding": "sha256:PLACEHOLDER",
     "Service identity binding": "sha256:PLACEHOLDER",

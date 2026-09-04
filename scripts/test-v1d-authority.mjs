@@ -1402,6 +1402,15 @@ assert.deepEqual(
 );
 passed += 1;
 
+assert(
+  validateV1dAuthority(
+    clone(),
+    closeoutOptions(closedWithCloseout, { artifactsOnProtectedMain: true }),
+  ).some((item) => item.includes("preserve its consumed-lifecycle closeout")),
+  "closed-to-closed change removed the consumed-plan tombstone",
+);
+passed += 1;
+
 expectFailure(
   "closed authorization cannot be replayed",
   open,
@@ -1448,7 +1457,7 @@ assert(
     closeoutOptions(priorOpen, {
       productGateFixture: g2Fixture,
     }),
-  ).some((item) => item.includes("must be accepted once on protected main")),
+  ).some((item) => item.includes("must remain accepted exactly once")),
   "same-change G2 opening did not require a prior protected-main closeout",
 );
 passed += 1;

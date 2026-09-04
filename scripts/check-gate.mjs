@@ -109,9 +109,51 @@ const requestedGate = process.argv[2];
 if (!requestedGate)
   throw new Error("Usage: node scripts/check-gate.mjs GATE_ID");
 
-const gates = JSON.parse(read("governance/gates.json"));
-const gate = gates.gates.find((candidate) => candidate.id === requestedGate);
 const errors = [];
+const productGateRequested = /^G[2-8]$/.test(requestedGate);
+let verifiedProtectedMain = null;
+let gatesText = read("governance/gates.json");
+if (productGateRequested) {
+  const fetch = spawnSync(
+    "git",
+    [
+      "fetch",
+      "--quiet",
+      "--no-tags",
+      "origin",
+      "refs/heads/main:refs/remotes/origin/main",
+    ],
+    { cwd: root, stdio: "ignore" },
+  );
+  if (fetch.status !== 0)
+    errors.push(
+      `${requestedGate} cannot refresh the protected-main authority state.`,
+    );
+  const head = gitOutput(["rev-parse", "HEAD"]);
+  verifiedProtectedMain = gitOutput(["rev-parse", "origin/main"]);
+  if (!head || !verifiedProtectedMain || head !== verifiedProtectedMain)
+    errors.push(
+      `${requestedGate} may be consumed only from the current protected-main commit.`,
+    );
+  const worktreeState = gitOutput([
+    "status",
+    "--porcelain",
+    "--untracked-files=normal",
+  ]);
+  if (worktreeState === null || worktreeState !== "")
+    errors.push(`${requestedGate} cannot be consumed from a dirty worktree.`);
+  const protectedGates = readAtProtectedMain("governance/gates.json");
+  if (typeof protectedGates !== "string")
+    errors.push(`${requestedGate} cannot read protected-main gate state.`);
+  else gatesText = protectedGates;
+}
+let gates = null;
+try {
+  gates = JSON.parse(gatesText);
+} catch {
+  errors.push("Gate configuration is unreadable.");
+}
+const gate = gates?.gates?.find((candidate) => candidate.id === requestedGate);
 if (!gate) errors.push(`Unknown gate: ${requestedGate}`);
 else {
   if (gate.status !== "open")
@@ -122,17 +164,12 @@ else {
     errors.push(`Missing authorization: ${gate.authorization}`);
   if (requestedGate === "G1" && !gates.productCodeAuthorized)
     errors.push("productCodeAuthorized is false.");
-  if (/^G[2-8]$/.test(requestedGate) && gate.status === "open") {
-    const head = gitOutput(["rev-parse", "HEAD"]);
-    const protectedMain = gitOutput(["rev-parse", "origin/main"]);
-    if (!head || !protectedMain || head !== protectedMain)
-      errors.push(
-        `${requestedGate} may be consumed only from the current protected-main commit.`,
-      );
+  if (productGateRequested && gate.status === "open") {
     errors.push(
       ...validateProductGateAuthorization(gate, {
         isRegularFile,
-        readText: read,
+        readText: (relativePath) =>
+          readAtCommit(verifiedProtectedMain, relativePath),
         readAtCommit,
         readAtProtectedMain,
         isPathImmutableOnProtectedMain,

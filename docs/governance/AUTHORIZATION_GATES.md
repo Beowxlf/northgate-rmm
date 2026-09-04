@@ -150,8 +150,10 @@ changed, deleted, recreated, future-dated, or same-change closeout evidence
 fails closed. Cleanup events and both artifacts must follow the protected-main
 commit that actually opened the authority; pre-staged closeout evidence is
 invalid. Once closed, that exact authorization record and Factory plan are
-consumed permanently. A later V1D-SV lifecycle requires a different
-authorization path and a fresh Factory plan issued after the prior closeout.
+consumed permanently. Every later closed state must preserve the exact
+single-use closeout reference and artifacts as a monotonic tombstone. A later
+V1D-SV lifecycle requires a different authorization path and a fresh Factory
+plan issued after the prior closeout.
 Use the
 [cleanup-evidence template](templates/V1D-SV-CLEANUP-EVIDENCE-TEMPLATE.json)
 and [closeout template](templates/V1D-SV-CLOSEOUT-TEMPLATE.json).

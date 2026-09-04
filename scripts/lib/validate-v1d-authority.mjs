@@ -590,7 +590,7 @@ function validateCloseout(
     }
   }
 
-  if (laterGateOpen) {
+  if (priorAuthority?.status === "closed" || laterGateOpen) {
     for (const [label, recordPath, currentText, claimedAt] of [
       ["closeout receipt", closeoutPath, closeoutText, closedAt],
       ["cleanup evidence", evidencePath, evidenceText, verifiedAt],
@@ -606,7 +606,7 @@ function validateCloseout(
         claimedAt > introducedAt
       )
         errors.push(
-          `V1D-SV ${label} must be accepted once on protected main after its claimed event and before opening a later gate.`,
+          `V1D-SV ${label} must remain accepted exactly once on protected main after its claimed event.`,
         );
     }
     if (priorAuthority?.closeout !== closeoutPath)
@@ -2066,7 +2066,18 @@ export function validateV1dAuthority(
   }
   const requiresCloseout =
     authority.status === "closed" &&
-    (priorAuthority?.status === "open" || laterGateOpen);
+    (priorAuthority?.status === "open" ||
+      priorAuthority?.closeout ||
+      laterGateOpen);
+  if (
+    authority.status === "closed" &&
+    priorAuthority?.status === "closed" &&
+    priorAuthority.closeout &&
+    authority.closeout !== priorAuthority.closeout
+  )
+    errors.push(
+      "Closed V1D-SV must preserve its consumed-lifecycle closeout tombstone.",
+    );
   if (authority.status === "closed" && (requiresCloseout || authority.closeout))
     errors.push(
       ...validateCloseout(authority, priorAuthority, laterGateOpen, {

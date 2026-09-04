@@ -239,6 +239,17 @@ expectFailure(
   "Duplicate bounded operational authority",
 );
 expectFailure(
+  "unknown authority",
+  (config) => {
+    config.boundedOperationalAuthorizations.push({
+      id: "V1D-UNKNOWN",
+      status: "open",
+      opensGate: true,
+    });
+  },
+  "Unknown bounded operational authority",
+);
+expectFailure(
   "wrong phase",
   (config) => {
     authority(config).phase = 3;
@@ -437,6 +448,13 @@ expectFailure("V1C control missing", open, "V1C pass record lacks control", {
   mutatePrerequisites: (records) => {
     const record = JSON.parse(records[v1cPath]);
     record.controls.pop();
+    records[v1cPath] = canonical(record);
+  },
+});
+expectFailure("V1C controls are not an array", open, "invalid control set", {
+  mutatePrerequisites: (records) => {
+    const record = JSON.parse(records[v1cPath]);
+    record.controls = v1cControls.join("; ");
     records[v1cPath] = canonical(record);
   },
 });

@@ -32,6 +32,9 @@ pre-code audit. Evidence record:
 
 ## Pre-G2 V1D control-plane validation authority
 
+`V1D-SV` is the only recognized bounded operational authority. Unknown
+authority IDs fail governance validation.
+
 This is an exact, bounded change authorization, not an opened product gate. It
 may be issued only after V1C passes and the required external V1D dependencies
 have been separately approved, provisioned, and verified. It must name the

@@ -209,8 +209,15 @@ function validatePrerequisite(
       `V1D-SV ${expectedId} prerequisite lacks its rollback binding.`,
     );
   if (expectedId === "V1C") {
+    const controls = record.controls;
+    if (
+      !Array.isArray(controls) ||
+      controls.length !== REQUIRED_V1C_CONTROLS.length ||
+      new Set(controls).size !== REQUIRED_V1C_CONTROLS.length
+    )
+      errors.push("V1D-SV V1C pass record has an invalid control set.");
     for (const control of REQUIRED_V1C_CONTROLS) {
-      if (!record.controls?.includes(control))
+      if (!Array.isArray(controls) || !controls.includes(control))
         errors.push(`V1D-SV V1C pass record lacks control: ${control}.`);
     }
   }
@@ -458,6 +465,10 @@ export function validateV1dAuthority(
   const authorityIds = authorities.map((authority) => authority.id);
   if (new Set(authorityIds).size !== authorityIds.length)
     errors.push("Duplicate bounded operational authority ID.");
+  for (const authorityId of authorityIds) {
+    if (authorityId !== "V1D-SV")
+      errors.push(`Unknown bounded operational authority ID: ${authorityId}.`);
+  }
 
   const authority = authorities.find((item) => item.id === "V1D-SV");
   if (!authority) {

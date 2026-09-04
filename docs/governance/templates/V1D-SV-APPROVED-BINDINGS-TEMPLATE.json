@@ -22,5 +22,48 @@
     "Rollback binding": "sha256:PLACEHOLDER",
     "Recovery binding": "sha256:PLACEHOLDER",
     "Evidence boundary binding": "sha256:PLACEHOLDER"
+  },
+  "prerequisites": {
+    "v1c": {
+      "record": "docs/governance/authorizations/prerequisites/V1C-PASS.json",
+      "digest": "sha256:PLACEHOLDER"
+    },
+    "dependencies": [
+      {
+        "id": "V1D-DEP-DNS-TIME",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-DNS-TIME.json",
+        "digest": "sha256:PLACEHOLDER"
+      },
+      {
+        "id": "V1D-DEP-SERVER-PKI",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-SERVER-PKI.json",
+        "digest": "sha256:PLACEHOLDER"
+      },
+      {
+        "id": "V1D-DEP-SYNTHETIC-ISSUER-STATUS",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-SYNTHETIC-ISSUER-STATUS.json",
+        "digest": "sha256:PLACEHOLDER"
+      },
+      {
+        "id": "V1D-DEP-OPERATOR-VERIFIER",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-OPERATOR-VERIFIER.json",
+        "digest": "sha256:PLACEHOLDER"
+      },
+      {
+        "id": "V1D-DEP-TELEMETRY-AUDIT",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-TELEMETRY-AUDIT.json",
+        "digest": "sha256:PLACEHOLDER"
+      },
+      {
+        "id": "V1D-DEP-BACKUP-RECOVERY",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-BACKUP-RECOVERY.json",
+        "digest": "sha256:PLACEHOLDER"
+      },
+      {
+        "id": "V1D-DEP-ENCRYPTION-KEY-CUSTODY",
+        "record": "docs/governance/authorizations/prerequisites/V1D-DEP-ENCRYPTION-KEY-CUSTODY.json",
+        "digest": "sha256:PLACEHOLDER"
+      }
+    ]
   }
 }

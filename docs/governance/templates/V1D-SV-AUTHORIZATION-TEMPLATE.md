@@ -49,4 +49,10 @@ exact historical file, requires the current content to remain identical, and
 compares every operational field in this authorization with the approved value.
 Use
 [`V1D-SV-APPROVED-BINDINGS-TEMPLATE.json`](V1D-SV-APPROVED-BINDINGS-TEMPLATE.json)
-for its schema.
+for its schema. The manifest and every prerequisite record must be canonical
+two-space-indented JSON with one trailing newline; noncanonical or duplicate-key
+JSON is rejected. The manifest must hash and reference the protected-main
+[`V1C-PASS-TEMPLATE.json`](V1C-PASS-TEMPLATE.json) record and all seven separate
+external-dependency records built from
+[`V1D-DEPENDENCY-APPROVAL-TEMPLATE.json`](V1D-DEPENDENCY-APPROVAL-TEMPLATE.json).
+Binding-manifest approval must occur after Factory plan approval.

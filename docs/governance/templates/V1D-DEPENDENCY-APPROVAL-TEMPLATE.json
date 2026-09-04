@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "PLACEHOLDER",
+  "status": "Approved",
+  "approver": "Beowxlf",
+  "approvedAt": "PLACEHOLDER",
+  "expiresAt": "PLACEHOLDER",
+  "evidenceBinding": "sha256:PLACEHOLDER",
+  "rollbackBinding": "sha256:PLACEHOLDER"
+}

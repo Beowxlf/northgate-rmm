@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 
 import { validateV1dAuthority } from "./lib/validate-v1d-authority.mjs";
@@ -8,6 +9,28 @@ const exactPath = "docs/governance/authorizations/V1D-SV-EXACT.md";
 const bindingPath = "docs/governance/authorizations/bindings/V1D-SV-EXACT.json";
 const fixedNow = new Date("2026-09-04T14:00:00Z");
 const digest = `sha256:${"a".repeat(64)}`;
+const v1cPath = "docs/governance/authorizations/prerequisites/V1C-PASS.json";
+const dependencyRecords = [
+  ["V1D-DEP-DNS-TIME", "V1D-DEP-DNS-TIME.json"],
+  ["V1D-DEP-SERVER-PKI", "V1D-DEP-SERVER-PKI.json"],
+  ["V1D-DEP-SYNTHETIC-ISSUER-STATUS", "V1D-DEP-SYNTHETIC-ISSUER-STATUS.json"],
+  ["V1D-DEP-OPERATOR-VERIFIER", "V1D-DEP-OPERATOR-VERIFIER.json"],
+  ["V1D-DEP-TELEMETRY-AUDIT", "V1D-DEP-TELEMETRY-AUDIT.json"],
+  ["V1D-DEP-BACKUP-RECOVERY", "V1D-DEP-BACKUP-RECOVERY.json"],
+  ["V1D-DEP-ENCRYPTION-KEY-CUSTODY", "V1D-DEP-ENCRYPTION-KEY-CUSTODY.json"],
+].map(([id, file]) => [
+  id,
+  `docs/governance/authorizations/prerequisites/${file}`,
+]);
+const v1cControls = [
+  "exact production artifacts",
+  "independent trust root",
+  "signing custody and recovery",
+  "protected distribution and bootstrap",
+  "signing-key loss test",
+  "signing-key compromise test",
+  "independent verification",
+];
 const validFields = {
   Authority: "V1D-SV",
   Status: "Authorized",
@@ -50,7 +73,43 @@ function renderRecord(fields = validFields) {
     .join("\n");
 }
 
-function renderApprovedBindings(fields = validFields, overrides = {}) {
+function canonical(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function hash(text) {
+  return `sha256:${createHash("sha256").update(text.replaceAll("\r\n", "\n")).digest("hex")}`;
+}
+
+function renderPrerequisite(id, status, extra = {}) {
+  return canonical({
+    schemaVersion: 1,
+    id,
+    status,
+    approver: "Beowxlf",
+    approvedAt: "2026-09-04T12:55:00Z",
+    expiresAt: "2026-09-05T00:00:00Z",
+    evidenceBinding: digest,
+    rollbackBinding: digest,
+    ...extra,
+  });
+}
+
+function buildPrerequisites() {
+  return Object.fromEntries([
+    [v1cPath, renderPrerequisite("V1C", "Passed", { controls: v1cControls })],
+    ...dependencyRecords.map(([id, path]) => [
+      path,
+      renderPrerequisite(id, "Approved"),
+    ]),
+  ]);
+}
+
+function renderApprovedBindings(
+  fields = validFields,
+  overrides = {},
+  prerequisiteRecords = buildPrerequisites(),
+) {
   const bindingFields = [
     "Server binding",
     "Signed release digest",
@@ -69,7 +128,14 @@ function renderApprovedBindings(fields = validFields, overrides = {}) {
     "Recovery binding",
     "Evidence boundary binding",
   ];
-  return JSON.stringify({
+  const descriptor = (id, record) => ({
+    id,
+    record,
+    digest: prerequisiteRecords[record]
+      ? hash(prerequisiteRecords[record])
+      : digest,
+  });
+  return canonical({
     schemaVersion: 1,
     authority: "V1D-SV",
     status: "Approved",
@@ -79,6 +145,17 @@ function renderApprovedBindings(fields = validFields, overrides = {}) {
     bindings: Object.fromEntries(
       bindingFields.map((field) => [field, fields[field]]),
     ),
+    prerequisites: {
+      v1c: {
+        record: v1cPath,
+        digest: prerequisiteRecords[v1cPath]
+          ? hash(prerequisiteRecords[v1cPath])
+          : digest,
+      },
+      dependencies: dependencyRecords.map(([id, record]) =>
+        descriptor(id, record),
+      ),
+    },
     ...overrides,
   });
 }
@@ -96,6 +173,7 @@ function expectFailure(
   {
     mutateFields,
     mutateApproval,
+    mutatePrerequisites,
     regularFile = true,
     protectedMain = true,
     recordText,
@@ -107,21 +185,28 @@ function expectFailure(
   mutateConfig(config);
   const fields = structuredClone(validFields);
   mutateFields?.(fields);
-  const approval = JSON.parse(renderApprovedBindings(fields));
+  const prerequisites = buildPrerequisites();
+  mutatePrerequisites?.(prerequisites);
+  const approval = JSON.parse(
+    renderApprovedBindings(fields, {}, prerequisites),
+  );
   mutateApproval?.(approval);
-  const priorApproval = approvedText ?? JSON.stringify(approval);
+  const priorApproval = approvedText ?? canonical(approval);
   const errors = validateV1dAuthority(config, {
     isRegularFile: (path) =>
-      regularFile && (path === exactPath || path === bindingPath),
+      regularFile &&
+      (path === exactPath || path === bindingPath || path in prerequisites),
     readText: (path) => {
       if (path === exactPath) return recordText ?? renderRecord(fields);
       if (path === bindingPath) return currentApprovedText ?? priorApproval;
+      if (path in prerequisites) return prerequisites[path];
       return null;
     },
-    readAtCommit: (commit, path) =>
-      commit === validFields["Audited commit"] && path === bindingPath
-        ? priorApproval
-        : null,
+    readAtCommit: (commit, path) => {
+      if (commit !== validFields["Audited commit"]) return null;
+      if (path === bindingPath) return priorApproval;
+      return prerequisites[path] ?? null;
+    },
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) =>
       protectedMain && commit === validFields["Audited commit"],
@@ -318,15 +403,69 @@ expectFailure("future bindings approval", open, "approval time is invalid", {
 expectFailure("excessive bindings lifetime", open, "seven-day lifetime", {
   mutateApproval: (approval) => (approval.expiresAt = "2026-09-12T13:02:01Z"),
 });
+expectFailure(
+  "bindings approved before plan",
+  open,
+  "must follow Factory plan",
+  {
+    mutateApproval: (approval) =>
+      (approval.approvedAt = "2026-09-04T12:59:00Z"),
+  },
+);
+expectFailure(
+  "duplicate approved binding key",
+  open,
+  "canonical duplicate-free JSON",
+  {
+    approvedText: renderApprovedBindings().replace(
+      '  "approver": "Beowxlf",',
+      '  "approver": "Beowxlf",\n  "approver": "Beowxlf",',
+    ),
+  },
+);
+expectFailure("missing V1C pass record", open, "lacks the V1C prerequisite", {
+  mutatePrerequisites: (records) => delete records[v1cPath],
+});
+expectFailure("V1C is not passed", open, "invalid identity or status", {
+  mutatePrerequisites: (records) => {
+    const record = JSON.parse(records[v1cPath]);
+    record.status = "Open";
+    records[v1cPath] = canonical(record);
+  },
+});
+expectFailure("V1C control missing", open, "V1C pass record lacks control", {
+  mutatePrerequisites: (records) => {
+    const record = JSON.parse(records[v1cPath]);
+    record.controls.pop();
+    records[v1cPath] = canonical(record);
+  },
+});
+expectFailure("dependency approval missing", open, "prerequisite record", {
+  mutatePrerequisites: (records) => delete records[dependencyRecords[0][1]],
+});
+expectFailure("dependency set incomplete", open, "incomplete or duplicated", {
+  mutateApproval: (approval) => approval.prerequisites.dependencies.pop(),
+});
 
 const exactOpen = clone();
 open(exactOpen);
+const exactPrerequisites = buildPrerequisites();
+const exactApproval = renderApprovedBindings(
+  validFields,
+  {},
+  exactPrerequisites,
+);
 assert.deepEqual(
   validateV1dAuthority(exactOpen, {
-    isRegularFile: (path) => path === exactPath || path === bindingPath,
-    readText: (path) =>
-      path === exactPath ? renderRecord() : renderApprovedBindings(),
-    readAtCommit: () => renderApprovedBindings(),
+    isRegularFile: (path) =>
+      path === exactPath || path === bindingPath || path in exactPrerequisites,
+    readText: (path) => {
+      if (path === exactPath) return renderRecord();
+      if (path === bindingPath) return exactApproval;
+      return exactPrerequisites[path] ?? null;
+    },
+    readAtCommit: (_commit, path) =>
+      path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
     now: fixedNow,

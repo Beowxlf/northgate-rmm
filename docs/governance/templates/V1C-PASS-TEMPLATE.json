@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "V1C",
+  "status": "Passed",
+  "approver": "Beowxlf",
+  "approvedAt": "PLACEHOLDER",
+  "expiresAt": "PLACEHOLDER",
+  "evidenceBinding": "sha256:PLACEHOLDER",
+  "rollbackBinding": "sha256:PLACEHOLDER",
+  "controls": [
+    "exact production artifacts",
+    "independent trust root",
+    "signing custody and recovery",
+    "protected distribution and bootstrap",
+    "signing-key loss test",
+    "signing-key compromise test",
+    "independent verification"
+  ]
+}

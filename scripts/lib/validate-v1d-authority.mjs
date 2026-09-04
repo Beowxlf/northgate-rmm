@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 const REQUIRED_REQUIREMENTS = [
   "V1C production release trust pass",
   "separately approved and verified external V1D dependencies",
@@ -90,6 +92,24 @@ function parseRecord(text) {
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const MAX_AUTHORITY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const MAX_BINDINGS_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const EXPECTED_DEPENDENCY_IDS = [
+  "V1D-DEP-DNS-TIME",
+  "V1D-DEP-SERVER-PKI",
+  "V1D-DEP-SYNTHETIC-ISSUER-STATUS",
+  "V1D-DEP-OPERATOR-VERIFIER",
+  "V1D-DEP-TELEMETRY-AUDIT",
+  "V1D-DEP-BACKUP-RECOVERY",
+  "V1D-DEP-ENCRYPTION-KEY-CUSTODY",
+];
+const REQUIRED_V1C_CONTROLS = [
+  "exact production artifacts",
+  "independent trust root",
+  "signing custody and recovery",
+  "protected distribution and bootstrap",
+  "signing-key loss test",
+  "signing-key compromise test",
+  "independent verification",
+];
 
 function validDate(value) {
   if (!ISO_TIMESTAMP.test(value ?? "")) return null;
@@ -97,6 +117,128 @@ function validDate(value) {
   if (!Number.isFinite(timestamp)) return null;
   const normalized = new Date(timestamp).toISOString().replace(".000Z", "Z");
   return normalized === value ? timestamp : null;
+}
+
+function normalizeText(text) {
+  return text.replaceAll("\r\n", "\n");
+}
+
+function parseCanonicalJson(text) {
+  try {
+    const value = JSON.parse(text);
+    return normalizeText(text) === `${JSON.stringify(value, null, 2)}\n`
+      ? value
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function sha256(text) {
+  return `sha256:${createHash("sha256").update(normalizeText(text)).digest("hex")}`;
+}
+
+function validatePrerequisite(
+  descriptor,
+  expectedId,
+  expectedStatus,
+  auditedCommit,
+  options,
+) {
+  const errors = [];
+  const { isRegularFile, readText, readAtCommit, now } = options;
+  const recordPath = descriptor?.record ?? "";
+  if (
+    !/^docs\/governance\/authorizations\/prerequisites\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
+      recordPath,
+    ) ||
+    !isRegularFile(recordPath)
+  )
+    return [`V1D-SV lacks the ${expectedId} prerequisite record.`];
+  if (!/^sha256:[a-f0-9]{64}$/.test(descriptor?.digest ?? ""))
+    return [`V1D-SV ${expectedId} prerequisite has an invalid digest.`];
+
+  const currentText = readText(recordPath);
+  const approvedText = readAtCommit(auditedCommit, recordPath);
+  if (typeof currentText !== "string" || typeof approvedText !== "string")
+    return [
+      `V1D-SV ${expectedId} prerequisite is absent from the audited commit.`,
+    ];
+  if (normalizeText(currentText) !== normalizeText(approvedText))
+    errors.push(`V1D-SV ${expectedId} prerequisite changed after approval.`);
+  if (sha256(approvedText) !== descriptor.digest)
+    errors.push(`V1D-SV ${expectedId} prerequisite digest mismatches.`);
+
+  const record = parseCanonicalJson(approvedText);
+  if (!record)
+    return [
+      ...errors,
+      `V1D-SV ${expectedId} prerequisite is not canonical duplicate-free JSON.`,
+    ];
+  if (
+    record.schemaVersion !== 1 ||
+    record.id !== expectedId ||
+    record.status !== expectedStatus
+  )
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite has invalid identity or status.`,
+    );
+  if (record.approver !== "Beowxlf")
+    errors.push(`V1D-SV ${expectedId} prerequisite lacks owner approval.`);
+  const approvedAt = validDate(record.approvedAt);
+  const expiresAt = validDate(record.expiresAt);
+  if (approvedAt === null || approvedAt > now.getTime())
+    errors.push(`V1D-SV ${expectedId} prerequisite approval time is invalid.`);
+  if (expiresAt === null || expiresAt <= now.getTime())
+    errors.push(`V1D-SV ${expectedId} prerequisite is invalid or expired.`);
+  if (!/^sha256:[a-f0-9]{64}$/.test(record.evidenceBinding ?? ""))
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite lacks its evidence binding.`,
+    );
+  if (!/^sha256:[a-f0-9]{64}$/.test(record.rollbackBinding ?? ""))
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite lacks its rollback binding.`,
+    );
+  if (expectedId === "V1C") {
+    for (const control of REQUIRED_V1C_CONTROLS) {
+      if (!record.controls?.includes(control))
+        errors.push(`V1D-SV V1C pass record lacks control: ${control}.`);
+    }
+  }
+  return errors;
+}
+
+function validatePrerequisites(approval, auditedCommit, options) {
+  const errors = validatePrerequisite(
+    approval.prerequisites?.v1c,
+    "V1C",
+    "Passed",
+    auditedCommit,
+    options,
+  );
+  const dependencies = approval.prerequisites?.dependencies;
+  if (!Array.isArray(dependencies))
+    return [...errors, "V1D-SV lacks separate external dependency approvals."];
+  const ids = dependencies.map((item) => item?.id);
+  if (
+    ids.length !== EXPECTED_DEPENDENCY_IDS.length ||
+    new Set(ids).size !== EXPECTED_DEPENDENCY_IDS.length
+  )
+    errors.push(
+      "V1D-SV external dependency approval set is incomplete or duplicated.",
+    );
+  for (const expectedId of EXPECTED_DEPENDENCY_IDS) {
+    errors.push(
+      ...validatePrerequisite(
+        dependencies.find((item) => item?.id === expectedId),
+        expectedId,
+        "Approved",
+        auditedCommit,
+        options,
+      ),
+    );
+  }
+  return errors;
 }
 
 function validateApprovedBindings(
@@ -124,18 +266,15 @@ function validateApprovedBindings(
   ) {
     return ["V1D-SV approved bindings are absent from the audited commit."];
   }
-  if (
-    currentText.replaceAll("\r\n", "\n") !==
-    approvedText.replaceAll("\r\n", "\n")
-  )
+  if (normalizeText(currentText) !== normalizeText(approvedText))
     errors.push("V1D-SV approved bindings changed after the audited commit.");
 
-  let approval;
-  try {
-    approval = JSON.parse(approvedText);
-  } catch {
-    return [...errors, "V1D-SV approved bindings record is not valid JSON."];
-  }
+  const approval = parseCanonicalJson(approvedText);
+  if (!approval)
+    return [
+      ...errors,
+      "V1D-SV approved bindings are not canonical duplicate-free JSON.",
+    ];
   if (approval.schemaVersion !== 1)
     errors.push("V1D-SV approved bindings have an invalid schema version.");
   if (approval.authority !== "V1D-SV" || approval.status !== "Approved")
@@ -161,6 +300,13 @@ function validateApprovedBindings(
     );
   if (approvedAt !== null && issuedAt !== null && approvedAt > issuedAt)
     errors.push("V1D-SV authorization predates its approved bindings.");
+  const planApprovedAt = validDate(fields.get("Factory plan approved at"));
+  if (
+    approvedAt !== null &&
+    planApprovedAt !== null &&
+    approvedAt <= planApprovedAt
+  )
+    errors.push("V1D-SV bindings approval must follow Factory plan approval.");
   if (
     bindingsExpireAt !== null &&
     authorizationExpiresAt !== null &&
@@ -172,6 +318,14 @@ function validateApprovedBindings(
     if (approval.bindings?.[field] !== fields.get(field))
       errors.push(`V1D-SV ${field} mismatches its approved binding.`);
   }
+  errors.push(
+    ...validatePrerequisites(approval, auditedCommit, {
+      isRegularFile,
+      readText,
+      readAtCommit,
+      now,
+    }),
+  );
   return errors;
 }
 

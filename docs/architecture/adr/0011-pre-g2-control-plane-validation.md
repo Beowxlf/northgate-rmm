@@ -43,7 +43,13 @@ dependency, identity, network, rollback, recovery, and evidence values. Plan
 approval must follow plan issuance, and the V1D-SV record must be issued after
 that approval. Strict UTC calendar validation rejects normalized impossible
 dates and future-effective records; the authority is limited to 24 hours and
-its prior approved-bindings manifest to seven days.
+its prior approved-bindings manifest to seven days. The manifest uses canonical
+duplicate-free JSON and hashes an immutable V1C pass record plus separate
+records for DNS/time, server PKI, the synthetic issuer and status path, operator
+verification, telemetry/audit, backup/recovery, and external encryption-key
+custody. Each prerequisite record must be present and unchanged at the audited
+protected-main commit, owner-approved, unexpired, and bound to evidence and
+rollback. Manifest approval must follow plan approval.
 
 V1D-SV cannot install an endpoint package, issue an endpoint-usable grant or
 identity, admit endpoint traffic, publish or update artifacts, expand the plan,

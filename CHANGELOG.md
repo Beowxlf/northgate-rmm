@@ -7,6 +7,9 @@ Changelog structure and will adopt semantic versioning before its first release.
 
 ### Added
 
+- a read-only V1D live-readiness audit binding current NorthGate capacity,
+  installed VM Factory status, OPNsense configuration hash, RMM network gaps,
+  and the ordered non-deployment closeout sequence;
 - V1A contract and V1B source-qualification exit evidence mapped to exact
   protected commits, checks, package digests, and independent reviews without
   opening G2 or G6;

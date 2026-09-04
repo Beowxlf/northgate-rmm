@@ -27,6 +27,7 @@ The first executable lesson is
 - [Project charter](PROJECT_CHARTER.md)
 - [Version 1.0 release criteria](docs/governance/V1_RELEASE_CRITERIA.md)
 - [V1A and V1B exit audit](docs/audits/V1A_V1B_EXIT_AUDIT_2026-09-04.md)
+- [V1D live readiness audit](docs/audits/V1D_LIVE_READINESS_AUDIT_2026-09-04.md)
 - [Development phases](docs/governance/PHASES.md)
 - [Authorization gates](docs/governance/AUTHORIZATION_GATES.md)
 - [Licensing policy](docs/governance/LICENSING.md)
@@ -107,7 +108,9 @@ deployment: no issuer/IdP integration, approved deployment configuration,
 command runner, or privileged helper is present.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
-remain G2 blockers.
+remain G2 blockers. A 2026-09-04 read-only V1D reconciliation also confirmed
+that the candidate RMM VLANs and installed Factory asset policies do not yet
+exist; no live change was made.
 
 ## Phase 1 developer checks
 

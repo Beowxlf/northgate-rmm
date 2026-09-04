@@ -5,6 +5,22 @@ Candidate change: `NG-CHG-20260830-001`
 Discovery authority: read-only NorthGate MCP and pinned OPNsense guest access  
 Product gate: G1 remains open; G2 remains closed
 
+## 2026-09-04 reconciliation
+
+The current read-only facts and V1D dependency matrix are recorded in
+[`V1D_LIVE_READINESS_AUDIT_2026-09-04.md`](../audits/V1D_LIVE_READINESS_AUDIT_2026-09-04.md).
+The OPNsense configuration hash and APP-TRUNK VLAN list are unchanged. The two
+RMM VM names remain absent. F: has 713,665,462,272 bytes free and remains the
+candidate storage root.
+
+VM Factory protected main `d1d348ac31f78d9781a281e8a641c26c24a51468`
+now contains guarded multi-disk support plus proposed RMM storage, network,
+bootstrap, and recovery profiles. The live host still runs signed release
+`ngcor-1.0.46-fda336c`, whose data bundle has no RMM assets. Source progress
+therefore narrows, but does not remove, the Factory gate: both manifests,
+approved profile records, exact host bindings, a new signed release and rollout
+promotion remain required before a fresh RMM plan can exist.
+
 ## Decision summary
 
 The proposed RMM service VM is `NG-VM-022 / NG-RMM-CP01`. The proposed first
@@ -87,10 +103,11 @@ host policy or the separately controlled network packet, not the VM manifest.
 | Desired state             | Off after creation unless the approved plan includes bounded installation |
 | Destruction control       | `destroyProtection: true`                                                 |
 
-Required Factory additions before a deployable manifest exists:
+Required Factory additions before a deployable manifest exists. Item 1 is
+source-complete on protected VM Factory main but is not installed or promoted:
 
-1. schema, planner, host-plan, executor, receipt, and postcondition support for
-   one explicitly declared service-data disk;
+1. install and qualify the merged schema, planner, host-plan, executor, receipt,
+   and postcondition support for one explicitly declared service-data disk;
 2. a `rmm-linux-gen2-vtpm` firmware profile that requires Secure Boot and vTPM;
 3. a negative-test-covered `rmm-service` network profile;
 4. an asset-bound Debian bootstrap profile with no embedded secret;
@@ -288,9 +305,11 @@ G2 remains closed until evidence identifies and validates:
 - Factory support for the complete server and canary manifests; and
 - before/after network validation and rollback evidence.
 
-Phase 1 code has no listener or real agent. Creating a connected server or
-installing an endpoint agent before these controls exist would not satisfy the
-approved phase model.
+The V1B source now includes real private agent, enrollment, and operator
+listeners plus an executable Debian agent. They remain disabled qualification
+artifacts, not a deployment. Creating a connected server or installing an
+endpoint agent before the remaining V1D controls pass would not satisfy the
+approved version 1.0 contract.
 
 ## Rollback and containment
 

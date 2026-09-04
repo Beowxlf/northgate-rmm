@@ -69,6 +69,10 @@ Those receipt scopes must match the independently owner-approved per-prerequisit
 scope values in the immutable approved-bindings manifest; recomputing inner
 receipt and prerequisite digests cannot substitute evidence from another
 environment.
+Every approved binding, prerequisite, evidence receipt, rollback receipt, and
+network-change artifact must also remain byte-identical at the current
+protected-main tip. Removing or replacing one revokes it; restoring an older
+still-unexpired approval snapshot does not restore authority.
 The Factory plan expiry must cover the full authorization lifetime.
 At every governance validation, the plan must be no more than two hours old and
 its issue-to-expiry lifetime must not exceed 24 hours; older or longer-lived

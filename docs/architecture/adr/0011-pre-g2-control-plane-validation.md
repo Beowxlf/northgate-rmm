@@ -52,6 +52,9 @@ separate change approval, apply receipt, and positive and negative path tests.
 Each prerequisite record must be present and unchanged at the audited
 protected-main commit, owner-approved, unexpired, and bound to evidence and
 rollback. Manifest approval must follow plan approval.
+All approved records and their referenced artifacts must remain byte-identical
+at the current protected-main tip. Deletion or replacement is a revocation, and
+an older still-valid snapshot cannot be replayed after that revocation.
 
 V1D-SV cannot install an endpoint package, issue an endpoint-usable grant or
 identity, admit endpoint traffic, publish or update artifacts, expand the plan,

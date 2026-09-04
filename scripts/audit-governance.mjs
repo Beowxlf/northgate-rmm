@@ -52,6 +52,14 @@ function readAtCommit(commit, relativePath) {
   return result.status === 0 ? result.stdout : null;
 }
 
+function readAtProtectedMain(relativePath) {
+  const result = spawnSync("git", ["show", `origin/main:${relativePath}`], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return result.status === 0 ? result.stdout : null;
+}
+
 function walk(directory) {
   if (!exists(directory)) return [];
   return fs
@@ -139,6 +147,7 @@ for (const authorityError of validateV1dAuthority(gates, {
   isRegularFile,
   readText: read,
   readAtCommit,
+  readAtProtectedMain,
   isCommit,
   isProtectedMainCommit,
 }))

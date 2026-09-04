@@ -319,6 +319,7 @@ function expectFailure(
     recordText,
     approvedText,
     currentApprovedText,
+    protectedMainTexts = {},
   } = {},
 ) {
   const config = clone();
@@ -344,6 +345,12 @@ function expectFailure(
     },
     readAtCommit: (commit, path) => {
       if (commit !== validFields["Audited commit"]) return null;
+      if (path === bindingPath) return priorApproval;
+      return prerequisites[path] ?? null;
+    },
+    readAtProtectedMain: (path) => {
+      if (Object.hasOwn(protectedMainTexts, path))
+        return protectedMainTexts[path];
       if (path === bindingPath) return priorApproval;
       return prerequisites[path] ?? null;
     },
@@ -581,6 +588,12 @@ expectFailure(
 expectFailure("changed approved bindings", open, "changed after the audited", {
   currentApprovedText: "{}",
 });
+expectFailure(
+  "revoked V1C approval restored from an old snapshot",
+  open,
+  "V1C prerequisite was revoked from protected main",
+  { protectedMainTexts: { [v1cPath]: null } },
+);
 expectFailure(
   "mismatched approved binding",
   open,
@@ -837,6 +850,8 @@ assert.deepEqual(
       return exactPrerequisites[path] ?? null;
     },
     readAtCommit: (_commit, path) =>
+      path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
+    readAtProtectedMain: (path) =>
       path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],

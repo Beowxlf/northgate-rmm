@@ -155,6 +155,20 @@ function sha256(text) {
   return `sha256:${createHash("sha256").update(normalizeText(text)).digest("hex")}`;
 }
 
+function validateProtectedMainContinuity(
+  label,
+  recordPath,
+  approvedText,
+  readAtProtectedMain,
+) {
+  const protectedMainText = readAtProtectedMain(recordPath);
+  if (typeof protectedMainText !== "string")
+    return [`${label} was revoked from protected main.`];
+  if (normalizeText(protectedMainText) !== normalizeText(approvedText))
+    return [`${label} was superseded on protected main.`];
+  return [];
+}
+
 const NETWORK_EVIDENCE_ARTIFACTS = [
   ["changeApprovalRecord", "changeApprovalBinding", "ChangeApproved"],
   ["applyReceiptRecord", "applyReceiptDigest", "ChangeApplied"],
@@ -169,7 +183,8 @@ function validateNetworkEvidenceArtifacts(
   options,
 ) {
   const errors = [];
-  const { isRegularFile, readText, readAtCommit, now } = options;
+  const { isRegularFile, readText, readAtCommit, readAtProtectedMain, now } =
+    options;
   const recordedAtByEvent = new Map();
   for (const [pathField, digestField, event] of NETWORK_EVIDENCE_ARTIFACTS) {
     const recordPath = receipt[pathField] ?? "";
@@ -192,6 +207,14 @@ function validateNetworkEvidenceArtifacts(
     }
     if (normalizeText(currentText) !== normalizeText(approvedText))
       errors.push(`V1D-SV network ${event} record changed after approval.`);
+    errors.push(
+      ...validateProtectedMainContinuity(
+        `V1D-SV network ${event} record`,
+        recordPath,
+        approvedText,
+        readAtProtectedMain,
+      ),
+    );
     if (sha256(approvedText) !== receipt[digestField])
       errors.push(`V1D-SV network ${event} record digest mismatches.`);
 
@@ -252,7 +275,8 @@ function validatePrerequisiteEvidence(
   options,
 ) {
   const errors = [];
-  const { isRegularFile, readText, readAtCommit, now } = options;
+  const { isRegularFile, readText, readAtCommit, readAtProtectedMain, now } =
+    options;
   const isEvidence = kind === "evidence";
   const label = isEvidence ? "evidence" : "rollback evidence";
   const pathField = isEvidence ? "evidenceRecord" : "rollbackRecord";
@@ -279,6 +303,14 @@ function validatePrerequisiteEvidence(
     errors.push(
       `V1D-SV ${expectedId} prerequisite ${label} changed after approval.`,
     );
+  errors.push(
+    ...validateProtectedMainContinuity(
+      `V1D-SV ${expectedId} prerequisite ${label}`,
+      recordPath,
+      approvedText,
+      readAtProtectedMain,
+    ),
+  );
   if (sha256(approvedText) !== record[digestField])
     errors.push(
       `V1D-SV ${expectedId} prerequisite ${label} digest mismatches.`,
@@ -368,6 +400,7 @@ function validatePrerequisite(
     isRegularFile,
     readText,
     readAtCommit,
+    readAtProtectedMain,
     now,
     authorityExpiresAt,
     planIssuedAt,
@@ -392,6 +425,14 @@ function validatePrerequisite(
     ];
   if (normalizeText(currentText) !== normalizeText(approvedText))
     errors.push(`V1D-SV ${expectedId} prerequisite changed after approval.`);
+  errors.push(
+    ...validateProtectedMainContinuity(
+      `V1D-SV ${expectedId} prerequisite`,
+      recordPath,
+      approvedText,
+      readAtProtectedMain,
+    ),
+  );
   if (sha256(approvedText) !== descriptor.digest)
     errors.push(`V1D-SV ${expectedId} prerequisite digest mismatches.`);
 
@@ -519,7 +560,7 @@ function validatePrerequisites(approval, auditedCommit, options) {
 function validateApprovedBindings(
   fields,
   auditedCommit,
-  { isRegularFile, readText, readAtCommit, now },
+  { isRegularFile, readText, readAtCommit, readAtProtectedMain, now },
 ) {
   const errors = [];
   const recordPath = fields.get("Approved bindings record") ?? "";
@@ -543,6 +584,14 @@ function validateApprovedBindings(
   }
   if (normalizeText(currentText) !== normalizeText(approvedText))
     errors.push("V1D-SV approved bindings changed after the audited commit.");
+  errors.push(
+    ...validateProtectedMainContinuity(
+      "V1D-SV approved bindings",
+      recordPath,
+      approvedText,
+      readAtProtectedMain,
+    ),
+  );
 
   const approval = parseCanonicalJson(approvedText);
   if (!approval)
@@ -598,6 +647,7 @@ function validateApprovedBindings(
       isRegularFile,
       readText,
       readAtCommit,
+      readAtProtectedMain,
       now,
       authorityExpiresAt: authorizationExpiresAt,
       planIssuedAt: validDate(fields.get("Factory plan issued at")),
@@ -738,6 +788,7 @@ export function validateV1dAuthority(
     isRegularFile = () => false,
     readText = () => null,
     readAtCommit = () => null,
+    readAtProtectedMain = () => null,
     isCommit = () => false,
     isProtectedMainCommit = () => false,
     now = new Date(),
@@ -809,6 +860,7 @@ export function validateV1dAuthority(
             isRegularFile,
             readText,
             readAtCommit,
+            readAtProtectedMain,
             isCommit,
             isProtectedMainCommit,
             now,

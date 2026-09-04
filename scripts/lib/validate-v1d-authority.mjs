@@ -162,7 +162,7 @@ function validateProtectedMainContinuity(
   recordPath,
   approvedText,
   readAtProtectedMain,
-  isPathUnchangedSinceCommit,
+  isPathImmutableOnProtectedMain,
   auditedCommit,
 ) {
   const protectedMainText = readAtProtectedMain(recordPath);
@@ -170,8 +170,8 @@ function validateProtectedMainContinuity(
     return [`${label} was revoked from protected main.`];
   if (normalizeText(protectedMainText) !== normalizeText(approvedText))
     return [`${label} was superseded on protected main.`];
-  if (!isPathUnchangedSinceCommit(auditedCommit, recordPath))
-    return [`${label} changed after its audited commit.`];
+  if (!isPathImmutableOnProtectedMain(auditedCommit, recordPath))
+    return [`${label} lacks single-use immutable protected-main history.`];
   return [];
 }
 
@@ -194,7 +194,7 @@ function validateNetworkEvidenceArtifacts(
     readText,
     readAtCommit,
     readAtProtectedMain,
-    isPathUnchangedSinceCommit,
+    isPathImmutableOnProtectedMain,
     now,
   } = options;
   const recordedAtByEvent = new Map();
@@ -225,7 +225,7 @@ function validateNetworkEvidenceArtifacts(
         recordPath,
         approvedText,
         readAtProtectedMain,
-        isPathUnchangedSinceCommit,
+        isPathImmutableOnProtectedMain,
         auditedCommit,
       ),
     );
@@ -294,7 +294,7 @@ function validatePrerequisiteEvidence(
     readText,
     readAtCommit,
     readAtProtectedMain,
-    isPathUnchangedSinceCommit,
+    isPathImmutableOnProtectedMain,
     now,
   } = options;
   const isEvidence = kind === "evidence";
@@ -329,7 +329,7 @@ function validatePrerequisiteEvidence(
       recordPath,
       approvedText,
       readAtProtectedMain,
-      isPathUnchangedSinceCommit,
+      isPathImmutableOnProtectedMain,
       auditedCommit,
     ),
   );
@@ -423,7 +423,7 @@ function validatePrerequisite(
     readText,
     readAtCommit,
     readAtProtectedMain,
-    isPathUnchangedSinceCommit,
+    isPathImmutableOnProtectedMain,
     now,
     authorityExpiresAt,
     planIssuedAt,
@@ -454,7 +454,7 @@ function validatePrerequisite(
       recordPath,
       approvedText,
       readAtProtectedMain,
-      isPathUnchangedSinceCommit,
+      isPathImmutableOnProtectedMain,
       auditedCommit,
     ),
   );
@@ -606,7 +606,7 @@ function validateApprovedBindings(
     readText,
     readAtCommit,
     readAtProtectedMain,
-    isPathUnchangedSinceCommit,
+    isPathImmutableOnProtectedMain,
     now,
   },
 ) {
@@ -638,7 +638,7 @@ function validateApprovedBindings(
       recordPath,
       approvedText,
       readAtProtectedMain,
-      isPathUnchangedSinceCommit,
+      isPathImmutableOnProtectedMain,
       auditedCommit,
     ),
   );
@@ -698,7 +698,7 @@ function validateApprovedBindings(
       readText,
       readAtCommit,
       readAtProtectedMain,
-      isPathUnchangedSinceCommit,
+      isPathImmutableOnProtectedMain,
       now,
       authorityExpiresAt: authorizationExpiresAt,
       planIssuedAt: validDate(fields.get("Factory plan issued at")),
@@ -856,7 +856,7 @@ export function validateV1dAuthority(
     readText = () => null,
     readAtCommit = () => null,
     readAtProtectedMain = () => null,
-    isPathUnchangedSinceCommit = () => false,
+    isPathImmutableOnProtectedMain = () => false,
     isCommit = () => false,
     isProtectedMainCommit = () => false,
     now = new Date(),
@@ -931,7 +931,7 @@ export function validateV1dAuthority(
             readText,
             readAtCommit,
             readAtProtectedMain,
-            isPathUnchangedSinceCommit,
+            isPathImmutableOnProtectedMain,
             isCommit,
             isProtectedMainCommit,
             now,

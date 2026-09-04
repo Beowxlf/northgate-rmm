@@ -55,9 +55,10 @@ rollback. Manifest approval must follow plan approval.
 All approved records and their referenced artifacts must remain byte-identical
 at the current protected-main tip. Deletion or replacement is a revocation, and
 an older still-valid snapshot cannot be replayed after that revocation.
-The validator inspects every protected-main commit after the audited commit for
-changes to those paths; a byte-identical later restoration therefore remains
-revoked until a new approval names a newer audited commit.
+The validator inspects each path's entire protected-main history and accepts
+only a single introduction with no later modification, deletion, or recreation.
+A byte-identical later restoration therefore remains revoked even if its commit
+is selected as the new audit anchor; renewal uses a new record path.
 Strict branch protection requires the authority-opening branch to remain current
 with `main`; a concurrent protected-main revocation therefore invalidates the
 green check and forces merge-time revalidation.

@@ -60,13 +60,21 @@ function readAtProtectedMain(relativePath) {
   return result.status === 0 ? result.stdout : null;
 }
 
-function isPathUnchangedSinceCommit(commit, relativePath) {
-  const result = spawnSync(
+function isPathImmutableOnProtectedMain(commit, relativePath) {
+  const history = spawnSync(
     "git",
-    ["log", "--format=%H", `${commit}..origin/main`, "--", relativePath],
+    ["log", "--format=%H", "--full-history", "origin/main", "--", relativePath],
     { cwd: root, encoding: "utf8" },
   );
-  return result.status === 0 && result.stdout.trim() === "";
+  if (history.status !== 0) return false;
+  const commits = history.stdout.trim().split(/\r?\n/).filter(Boolean);
+  if (commits.length !== 1) return false;
+  return (
+    spawnSync("git", ["merge-base", "--is-ancestor", commits[0], commit], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
 }
 
 function walk(directory) {
@@ -161,7 +169,7 @@ for (const authorityError of validateV1dAuthority(gates, {
   readText: read,
   readAtCommit,
   readAtProtectedMain,
-  isPathUnchangedSinceCommit,
+  isPathImmutableOnProtectedMain,
   isCommit,
   isProtectedMainCommit,
 }))

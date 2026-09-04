@@ -320,7 +320,7 @@ function expectFailure(
     approvedText,
     currentApprovedText,
     protectedMainTexts = {},
-    changedSinceAuditedPaths = [],
+    nonImmutablePaths = [],
   } = {},
 ) {
   const config = clone();
@@ -355,9 +355,9 @@ function expectFailure(
       if (path === bindingPath) return priorApproval;
       return prerequisites[path] ?? null;
     },
-    isPathUnchangedSinceCommit: (commit, path) =>
+    isPathImmutableOnProtectedMain: (commit, path) =>
       commit === validFields["Audited commit"] &&
-      !changedSinceAuditedPaths.includes(path),
+      !nonImmutablePaths.includes(path),
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) =>
       protectedMain && commit === validFields["Audited commit"],
@@ -624,10 +624,10 @@ expectFailure(
   { protectedMainTexts: { [v1cPath]: null } },
 );
 expectFailure(
-  "deleted V1C approval restored with identical bytes",
+  "restored V1C approval selected as the new audit anchor",
   open,
-  "V1C prerequisite changed after its audited commit",
-  { changedSinceAuditedPaths: [v1cPath] },
+  "V1C prerequisite lacks single-use immutable protected-main history",
+  { nonImmutablePaths: [v1cPath] },
 );
 expectFailure(
   "mismatched approved binding",
@@ -902,7 +902,7 @@ assert.deepEqual(
       path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
     readAtProtectedMain: (path) =>
       path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
-    isPathUnchangedSinceCommit: (commit) =>
+    isPathImmutableOnProtectedMain: (commit) =>
       commit === validFields["Audited commit"],
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],

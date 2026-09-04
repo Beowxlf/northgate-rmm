@@ -77,8 +77,10 @@ Every approved binding, prerequisite, evidence receipt, rollback receipt, and
 network-change artifact must also remain byte-identical at the current
 protected-main tip. Removing or replacing one revokes it; restoring an older
 still-unexpired approval snapshot does not restore authority. Validation also
-checks the protected-main path history after the audited commit, so a later
-byte-identical restoration still requires a new approval and audited commit.
+checks each path's entire protected-main history. Every approval path is
+single-use: it must be introduced once and never changed, deleted, or recreated.
+A later byte-identical restoration remains revoked even when its restoration
+commit is selected as the audit anchor; renewal requires a new record path.
 The protected branch requires strict up-to-date status checks, so any `main`
 advance between validation and merge makes the authority-opening pull request
 stale and forces these checks to rerun against the new protected-main tip.

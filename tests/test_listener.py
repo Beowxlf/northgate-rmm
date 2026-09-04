@@ -283,6 +283,8 @@ def test_extract_verified_client_certificate_rejects_profile_variants() -> None:
         ("port", -1, "port"),
         ("request_timeout_seconds", 0.5, "timeout"),
         ("authority", "RMM.TEST", "authority"),
+        ("authority", "rmm.test:", "authority"),
+        ("authority", "[::1]:", "authority"),
         ("authority", "rmm.test:99999", "authority"),
         ("authority", "-rmm.test", "authority"),
         ("authority", ":443", "authority"),

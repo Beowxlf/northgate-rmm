@@ -542,6 +542,8 @@ def _validate_authority(authority: str) -> None:
         raise ValidationError("listener authority is invalid") from error
     if hostname is None or parsed.username is not None or parsed.password is not None:
         raise ValidationError("listener authority is invalid")
+    if authority.endswith(":") and port is None:
+        raise ValidationError("listener authority is invalid")
     if port is not None and not 1 <= port <= 65_535:
         raise ValidationError("listener authority is invalid")
     try:

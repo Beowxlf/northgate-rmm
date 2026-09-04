@@ -118,7 +118,8 @@ Every externally reachable operation has authentication where possible, request
 and decompression limits, rate limits, bounded parsing, timeouts, backpressure,
 and observable rejection. The agent listener closes stalled TLS and partial
 headers on deadline, admits bounded global and per-certificate body readers
-before buffering, applies global and endpoint-certificate rate ceilings, and
+before buffering, caps the HTTP parser queue at two messages and closes on a
+second parsed request, applies global and endpoint-certificate rate ceilings, and
 configures PostgreSQL connection, statement, and lock deadlines. Endpoint spool
 and result output have hard quotas.
 

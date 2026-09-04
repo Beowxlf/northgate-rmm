@@ -22,7 +22,8 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from aiohttp import HttpVersion11, web
-from aiohttp.web_protocol import RequestHandler
+from aiohttp.http_parser import HttpRequestParser
+from aiohttp.web_protocol import RequestHandler, RequestPayloadError
 from aiohttp.web_server import Server
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -655,7 +656,26 @@ class _HardenedRequestHandler(RequestHandler):
         connection_admission: _ConnectionAdmission,
         **kwargs: object,
     ) -> None:
+        loop = cast(asyncio.AbstractEventLoop, kwargs["loop"])
+        read_bufsize = cast(int, kwargs.get("read_bufsize", 2**16))
+        max_line_size = cast(int, kwargs.get("max_line_size", 8_190))
+        max_field_size = cast(int, kwargs.get("max_field_size", 8_190))
+        max_headers = cast(int, kwargs.get("max_headers", 128))
+        auto_decompress = cast(bool, kwargs.get("auto_decompress", True))
         super().__init__(manager, **kwargs)  # type: ignore[arg-type]
+        self._max_msg_queue_size = 2
+        self._msg_queue_resume_size = 1
+        self._parser = HttpRequestParser(
+            self,
+            loop,
+            read_bufsize,
+            max_line_size=max_line_size,
+            max_field_size=max_field_size,
+            max_headers=max_headers,
+            payload_exception=RequestPayloadError,
+            auto_decompress=auto_decompress,
+            max_msg_queue_size=2,
+        )
         self._header_timeout_seconds = header_timeout_seconds
         self._header_timeout_handle: asyncio.TimerHandle | None = None
         self._connection_admission = connection_admission

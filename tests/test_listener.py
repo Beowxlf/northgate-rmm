@@ -675,10 +675,11 @@ async def run_listener_pipeline_scenario(tmp_path: Path) -> None:
     try:
         host, port = listener.addresses[0]
         context = client_ssl_context(paths)
-        first = request_bytes(inventory_body(material.endpoint_id, now))
-        second = request_bytes(inventory_body(material.endpoint_id, now))
+        requests = [
+            request_bytes(inventory_body(material.endpoint_id, now)) for _ in range(64)
+        ]
         with contextlib.suppress(ConnectionError):
-            await raw_https_request(host, port, context, first + second)
+            await raw_https_request(host, port, context, b"".join(requests))
         await asyncio.sleep(0.05)
         assert len(store.inventories) <= 1
 

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from cryptography import x509
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID, NameOID
@@ -466,6 +467,37 @@ def test_enrollment_normalizes_lazy_csr_decoding_failures(
 
     with pytest.raises(ValidationError, match="CSR is invalid"):
         service.enroll(token=grant_value(), csr_der=b"signed", now=NOW)
+    assert store.fingerprint is None
+
+
+@pytest.mark.parametrize(
+    "parser_error",
+    [
+        x509.InvalidVersion("invalid CSR version", 7),
+        UnsupportedAlgorithm("unknown CSR public-key algorithm"),
+    ],
+)
+def test_enrollment_normalizes_all_csr_parser_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    parser_error: Exception,
+) -> None:
+    def reject_csr(_encoded: bytes) -> None:
+        raise parser_error
+
+    monkeypatch.setattr(
+        "northgate_rmm.enrollment.x509.load_der_x509_csr",
+        reject_csr,
+    )
+    root, root_key = issue_root()
+    store = RecordingEnrollmentStore()
+    service = EnrollmentService(
+        store,
+        FakeIssuer(root, root_key),
+        issuer_trust_roots=(root,),
+    )
+
+    with pytest.raises(ValidationError, match="CSR is invalid"):
+        service.enroll(token=grant_value(), csr_der=b"structured", now=NOW)
     assert store.fingerprint is None
 
 

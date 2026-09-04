@@ -19,6 +19,8 @@ bounded backoff. Only an explicitly classified registry transport failure is
 retried. A vulnerability report, malformed or unknown failure, and exhausted
 network attempts fail the check; a later response cannot erase a confirmed
 finding.
+Locked dependency installation disables npm's implicit advisory call so this
+explicit bounded, classified audit is the only network-dependent npm audit gate.
 
 ## Python control-plane checks
 

@@ -40,7 +40,7 @@ jobs:
       - name: Install checksum-verified release tools
         run: |
           set -euo pipefail
-          npm ci --ignore-scripts
+          npm ci --ignore-scripts --no-audit
           tools="$RUNNER_TEMP/g2b-tools"
           mkdir -p "$tools"
           curl --fail --location --silent --show-error \

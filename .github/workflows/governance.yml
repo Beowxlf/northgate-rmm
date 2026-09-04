@@ -30,6 +30,6 @@ jobs:
           node-version: "24"
           package-manager-cache: false
       - name: Install locked repository tooling
-        run: npm ci --ignore-scripts
+        run: npm ci --ignore-scripts --no-audit
       - name: Run governance, workflow, secret-pattern, and Markdown checks
         run: npm run audit:pre-code

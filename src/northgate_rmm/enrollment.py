@@ -18,6 +18,7 @@ from typing import Any, Protocol, cast
 from uuid import UUID
 
 from cryptography import x509
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
@@ -361,7 +362,12 @@ def _validate_csr(csr_der: bytes) -> tuple[bytes, str]:
             serialization.PublicFormat.SubjectPublicKeyInfo,
         )
         canonical_csr = csr.public_bytes(serialization.Encoding.DER)
-    except (ValueError, x509.DuplicateExtension) as error:
+    except (
+        UnsupportedAlgorithm,
+        ValueError,
+        x509.DuplicateExtension,
+        x509.InvalidVersion,
+    ) as error:
         raise ValidationError("endpoint CSR is invalid") from error
     return canonical_csr, "sha256:" + hashlib.sha256(subject_public_key).hexdigest()
 

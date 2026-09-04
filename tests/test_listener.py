@@ -472,13 +472,13 @@ async def run_listener_scenario(tmp_path: Path) -> None:
             invalid_profile.public_bytes(serialization.Encoding.PEM)
         )
         profile_context = client_ssl_context(paths)
-        rejected_profile = await raw_https_request(
-            host,
-            port,
-            profile_context,
-            request_bytes(body),
-        )
-        assert rejected_profile.startswith(b"HTTP/1.1 403 Forbidden\r\n")
+        with pytest.raises(ConnectionError):
+            await raw_https_request(
+                host,
+                port,
+                profile_context,
+                request_bytes(body),
+            )
 
         no_identity = ssl.create_default_context(cafile=str(paths["root_certificate"]))
         no_identity.minimum_version = ssl.TLSVersion.TLSv1_3
@@ -538,13 +538,13 @@ async def run_listener_deadline_scenario(tmp_path: Path) -> None:
             await writer.drain()
             partial_connections.append((reader, writer))
         await asyncio.sleep(0.1)
-        busy = await raw_https_request(
-            host,
-            port,
-            client_context,
-            request_bytes(inventory_body(material.endpoint_id, now)),
-        )
-        assert busy.startswith(b"HTTP/1.1 503 Service Unavailable\r\n")
+        with pytest.raises(ConnectionError):
+            await raw_https_request(
+                host,
+                port,
+                client_context,
+                request_bytes(inventory_body(material.endpoint_id, now)),
+            )
     finally:
         for _reader, writer in partial_connections:
             writer.close()

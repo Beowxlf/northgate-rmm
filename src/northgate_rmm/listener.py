@@ -417,6 +417,35 @@ def _discard_before(values: deque[float], cutoff: float) -> None:
         values.popleft()
 
 
+class _ConnectionAdmission:
+    """Bound post-handshake connections before the HTTP parser receives bytes."""
+
+    def __init__(self) -> None:
+        self._active = 0
+        self._active_by_identity: dict[UUID, int] = {}
+
+    def acquire(self, endpoint_id: UUID) -> bool:
+        active_for_identity = self._active_by_identity.get(endpoint_id, 0)
+        if (
+            self._active >= MAX_CONCURRENT_REQUESTS
+            or active_for_identity >= MAX_CONCURRENT_REQUESTS_PER_IDENTITY
+        ):
+            return False
+        self._active += 1
+        self._active_by_identity[endpoint_id] = active_for_identity + 1
+        return True
+
+    def release(self, endpoint_id: UUID) -> None:
+        active_for_identity = self._active_by_identity.get(endpoint_id)
+        if self._active < 1 or active_for_identity is None:
+            raise AssertionError("connection admission accounting is inconsistent")
+        self._active -= 1
+        if active_for_identity == 1:
+            del self._active_by_identity[endpoint_id]
+        else:
+            self._active_by_identity[endpoint_id] = active_for_identity - 1
+
+
 def extract_verified_client_certificate(
     ssl_object: PeerCertificate | None,
 ) -> VerifiedClientCertificate:
@@ -601,14 +630,27 @@ class _HardenedRequestHandler(RequestHandler):
         self,
         *args: object,
         header_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        connection_admission: _ConnectionAdmission,
         **kwargs: object,
     ) -> None:
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self._header_timeout_seconds = header_timeout_seconds
         self._header_timeout_handle: asyncio.TimerHandle | None = None
+        self._connection_admission = connection_admission
+        self._admitted_endpoint_id: UUID | None = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         super().connection_made(transport)
+        ssl_object = cast(asyncio.Transport, transport).get_extra_info("ssl_object")
+        try:
+            peer = extract_verified_client_certificate(ssl_object)
+        except ValidationError:
+            self.force_close()
+            return
+        if not self._connection_admission.acquire(peer.endpoint_id):
+            self.force_close()
+            return
+        self._admitted_endpoint_id = peer.endpoint_id
         self._header_timeout_handle = self._loop.call_later(
             self._header_timeout_seconds, self._expire_incomplete_headers
         )
@@ -620,6 +662,9 @@ class _HardenedRequestHandler(RequestHandler):
 
     def connection_lost(self, exc: BaseException | None) -> None:
         self._cancel_header_timeout()
+        if self._admitted_endpoint_id is not None:
+            self._connection_admission.release(self._admitted_endpoint_id)
+            self._admitted_endpoint_id = None
         super().connection_lost(exc)
 
     def _expire_incomplete_headers(self) -> None:
@@ -656,8 +701,21 @@ class _HardenedRequestHandler(RequestHandler):
 class _HardenedServer(Server):
     """Fail closed instead of falling back to aiohttp's default protocol."""
 
+    def __init__(
+        self,
+        handler: Callable[[web.BaseRequest], Awaitable[web.StreamResponse]],
+        **kwargs: object,
+    ) -> None:
+        super().__init__(handler, **kwargs)  # type: ignore[arg-type]
+        self._connection_admission = _ConnectionAdmission()
+
     def __call__(self) -> RequestHandler:
-        return _HardenedRequestHandler(self, loop=self._loop, **self._kwargs)
+        return _HardenedRequestHandler(
+            self,
+            loop=self._loop,
+            connection_admission=self._connection_admission,
+            **self._kwargs,
+        )
 
 
 class _HardenedAppRunner(web.AppRunner):

@@ -58,3 +58,5 @@ external-dependency records built from
 Binding-manifest approval must occur after Factory plan approval.
 The authorization expiry must not exceed the expiry of the binding manifest,
 the V1C pass record, or any external-dependency approval record.
+Every prerequisite record must be approved before Factory plan issuance and
+before binding-manifest approval.

@@ -459,6 +459,18 @@ expectFailure("V1C controls are not an array", open, "invalid control set", {
   },
 });
 expectFailure(
+  "V1C approval after Factory planning",
+  open,
+  "V1C prerequisite approval must precede Factory plan issuance",
+  {
+    mutatePrerequisites: (records) => {
+      const record = JSON.parse(records[v1cPath]);
+      record.approvedAt = "2026-09-04T13:00:01Z";
+      records[v1cPath] = canonical(record);
+    },
+  },
+);
+expectFailure(
   "authority outlives V1C approval",
   open,
   "outlives the V1C prerequisite",
@@ -473,6 +485,19 @@ expectFailure(
 expectFailure("dependency approval missing", open, "prerequisite record", {
   mutatePrerequisites: (records) => delete records[dependencyRecords[0][1]],
 });
+expectFailure(
+  "dependency approval after Factory planning",
+  open,
+  "prerequisite approval must precede Factory plan issuance",
+  {
+    mutatePrerequisites: (records) => {
+      const path = dependencyRecords[0][1];
+      const record = JSON.parse(records[path]);
+      record.approvedAt = "2026-09-04T13:59:00Z";
+      records[path] = canonical(record);
+    },
+  },
+);
 expectFailure("dependency set incomplete", open, "incomplete or duplicated", {
   mutateApproval: (approval) => approval.prerequisites.dependencies.pop(),
 });

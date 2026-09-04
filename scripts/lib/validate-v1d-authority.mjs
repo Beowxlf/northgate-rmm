@@ -146,8 +146,15 @@ function validatePrerequisite(
   options,
 ) {
   const errors = [];
-  const { isRegularFile, readText, readAtCommit, now, authorityExpiresAt } =
-    options;
+  const {
+    isRegularFile,
+    readText,
+    readAtCommit,
+    now,
+    authorityExpiresAt,
+    planIssuedAt,
+    bindingsApprovedAt,
+  } = options;
   const recordPath = descriptor?.record ?? "";
   if (
     !/^docs\/governance\/authorizations\/prerequisites\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(
@@ -190,6 +197,22 @@ function validatePrerequisite(
   const expiresAt = validDate(record.expiresAt);
   if (approvedAt === null || approvedAt > now.getTime())
     errors.push(`V1D-SV ${expectedId} prerequisite approval time is invalid.`);
+  if (
+    approvedAt !== null &&
+    planIssuedAt !== null &&
+    approvedAt >= planIssuedAt
+  )
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite approval must precede Factory plan issuance.`,
+    );
+  if (
+    approvedAt !== null &&
+    bindingsApprovedAt !== null &&
+    approvedAt >= bindingsApprovedAt
+  )
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite approval must precede bindings approval.`,
+    );
   if (expiresAt === null || expiresAt <= now.getTime())
     errors.push(`V1D-SV ${expectedId} prerequisite is invalid or expired.`);
   if (
@@ -341,6 +364,8 @@ function validateApprovedBindings(
       readAtCommit,
       now,
       authorityExpiresAt: authorizationExpiresAt,
+      planIssuedAt: validDate(fields.get("Factory plan issued at")),
+      bindingsApprovedAt: approvedAt,
     }),
   );
   return errors;

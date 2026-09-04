@@ -53,7 +53,8 @@ That manifest must hash and reference a protected-main V1C pass record and the
 seven separate external-dependency approval records. Each prerequisite record
 must be owner-approved, unexpired, evidence- and rollback-bound, unchanged from
 the audited commit, valid for its exact required identity and status, and valid
-through the authorization expiry.
+through the authorization expiry. Every prerequisite approval must precede
+Factory plan issuance and approval of the binding manifest.
 
 The authorization permits installation and operation of the named private
 control-plane server only to complete V1D backup/restore, telemetry-outage,

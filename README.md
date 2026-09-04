@@ -41,6 +41,7 @@ The first executable lesson is
 - [Incident response](docs/operations/INCIDENT_RESPONSE.md)
 - [Backup and restore](docs/operations/BACKUP_RESTORE.md)
 - [Linux package lifecycle](docs/operations/LINUX_PACKAGE_LIFECYCLE.md)
+- [Agent service runtime](docs/operations/AGENT_SERVICE_RUNTIME.md)
 
 The Phase 1 trustworthy vertical-slice simulation is complete. Separate,
 bounded authorizations permit **Phase 2 Linux-agent and control-plane source
@@ -62,10 +63,12 @@ now enforces TLS 1.3 mutual authentication, exact certificate URI and public-key
 binding, TLS/header/whole-request deadlines, global and per-identity pre-body
 concurrency admission, database operation deadlines, authenticated rate ceilings,
 single-request connections, bounded HTTP parsing, and generic fail-closed errors
-in real loopback socket tests. It is a source component, not an activated service:
-no operational
-certificate issuer, service entrypoint, network rule, job scheduler, or
-command-execution primitive is present.
+in real loopback socket tests. A source-only executable now composes that agent
+listener with PostgreSQL, reads the DSN from a protected credential file, refuses
+root execution, verifies the exact migration set before binding, and shuts down
+cleanly. Its JSON contract and hardened reference `systemd` unit are not activated
+or installed: no operational certificate issuer, approved network rule, job
+scheduler, or command-execution primitive is present.
 
 The executable Go agent includes strict non-secret configuration, bounded
 allowlisted Linux collectors, the Phase 1-compatible inventory envelope, a
@@ -82,8 +85,8 @@ Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
 test-only signature verification have also passed. Evidence-complete G2A and
 G2B qualification records retain every required digest. The repository still
 has no enrollment or operator network adapter, production issuer/IdP
-integration, deployable listener service configuration, command runner, or
-privileged helper.
+integration, server package or approved deployment configuration, command
+runner, or privileged helper.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.

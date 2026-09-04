@@ -41,6 +41,14 @@ Terminates endpoint mTLS, checks revocation, validates message size/schema/versi
 applies rate limits, binds messages to the authenticated endpoint, and relays
 typed work/results.
 
+## Agent service runtime
+
+Composes only the agent gateway and its least-privilege PostgreSQL adapter. It
+loads secret references separately from non-secret configuration, refuses root,
+verifies the exact packaged migration set before socket bind, and owns graceful
+listener shutdown. Enrollment and operator routes use separate processes and
+credentials.
+
 ## Audit writer
 
 Writes append-oriented structured events with actor, subject, action, decision,

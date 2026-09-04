@@ -157,6 +157,32 @@ class PostgresControlPlane:
             ),
         )
 
+    def verify_schema_state(self) -> tuple[str, ...]:
+        """Fail closed unless every packaged migration is applied byte-for-byte."""
+
+        migrations = tuple(
+            sorted(_default_migration_directory().glob("[0-9][0-9][0-9][0-9]_*.sql"))
+        )
+        if not migrations:
+            raise ValidationError("no database migrations were found")
+        expected = {
+            migration.name: hashlib.sha256(
+                migration.read_text(encoding="utf-8").encode("utf-8")
+            ).hexdigest()
+            for migration in migrations
+        }
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT version, sha256 FROM schema_migrations")
+            actual = {
+                cast(str, row["version"]): cast(str, row["sha256"])
+                for row in cursor.fetchall()
+            }
+        if actual != expected:
+            raise ValidationError(
+                "database migration state does not match this service"
+            )
+        return tuple(expected)
+
     @property
     def observations(self) -> tuple[Observation, ...]:
         with self._connect() as connection, connection.cursor() as cursor:

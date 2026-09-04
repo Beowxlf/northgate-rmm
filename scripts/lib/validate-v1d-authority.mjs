@@ -160,12 +160,16 @@ function validateProtectedMainContinuity(
   recordPath,
   approvedText,
   readAtProtectedMain,
+  isPathUnchangedSinceCommit,
+  auditedCommit,
 ) {
   const protectedMainText = readAtProtectedMain(recordPath);
   if (typeof protectedMainText !== "string")
     return [`${label} was revoked from protected main.`];
   if (normalizeText(protectedMainText) !== normalizeText(approvedText))
     return [`${label} was superseded on protected main.`];
+  if (!isPathUnchangedSinceCommit(auditedCommit, recordPath))
+    return [`${label} changed after its audited commit.`];
   return [];
 }
 
@@ -183,8 +187,14 @@ function validateNetworkEvidenceArtifacts(
   options,
 ) {
   const errors = [];
-  const { isRegularFile, readText, readAtCommit, readAtProtectedMain, now } =
-    options;
+  const {
+    isRegularFile,
+    readText,
+    readAtCommit,
+    readAtProtectedMain,
+    isPathUnchangedSinceCommit,
+    now,
+  } = options;
   const recordedAtByEvent = new Map();
   for (const [pathField, digestField, event] of NETWORK_EVIDENCE_ARTIFACTS) {
     const recordPath = receipt[pathField] ?? "";
@@ -213,6 +223,8 @@ function validateNetworkEvidenceArtifacts(
         recordPath,
         approvedText,
         readAtProtectedMain,
+        isPathUnchangedSinceCommit,
+        auditedCommit,
       ),
     );
     if (sha256(approvedText) !== receipt[digestField])
@@ -275,8 +287,14 @@ function validatePrerequisiteEvidence(
   options,
 ) {
   const errors = [];
-  const { isRegularFile, readText, readAtCommit, readAtProtectedMain, now } =
-    options;
+  const {
+    isRegularFile,
+    readText,
+    readAtCommit,
+    readAtProtectedMain,
+    isPathUnchangedSinceCommit,
+    now,
+  } = options;
   const isEvidence = kind === "evidence";
   const label = isEvidence ? "evidence" : "rollback evidence";
   const pathField = isEvidence ? "evidenceRecord" : "rollbackRecord";
@@ -309,6 +327,8 @@ function validatePrerequisiteEvidence(
       recordPath,
       approvedText,
       readAtProtectedMain,
+      isPathUnchangedSinceCommit,
+      auditedCommit,
     ),
   );
   if (sha256(approvedText) !== record[digestField])
@@ -401,6 +421,7 @@ function validatePrerequisite(
     readText,
     readAtCommit,
     readAtProtectedMain,
+    isPathUnchangedSinceCommit,
     now,
     authorityExpiresAt,
     planIssuedAt,
@@ -431,6 +452,8 @@ function validatePrerequisite(
       recordPath,
       approvedText,
       readAtProtectedMain,
+      isPathUnchangedSinceCommit,
+      auditedCommit,
     ),
   );
   if (sha256(approvedText) !== descriptor.digest)
@@ -560,7 +583,14 @@ function validatePrerequisites(approval, auditedCommit, options) {
 function validateApprovedBindings(
   fields,
   auditedCommit,
-  { isRegularFile, readText, readAtCommit, readAtProtectedMain, now },
+  {
+    isRegularFile,
+    readText,
+    readAtCommit,
+    readAtProtectedMain,
+    isPathUnchangedSinceCommit,
+    now,
+  },
 ) {
   const errors = [];
   const recordPath = fields.get("Approved bindings record") ?? "";
@@ -590,6 +620,8 @@ function validateApprovedBindings(
       recordPath,
       approvedText,
       readAtProtectedMain,
+      isPathUnchangedSinceCommit,
+      auditedCommit,
     ),
   );
 
@@ -648,6 +680,7 @@ function validateApprovedBindings(
       readText,
       readAtCommit,
       readAtProtectedMain,
+      isPathUnchangedSinceCommit,
       now,
       authorityExpiresAt: authorizationExpiresAt,
       planIssuedAt: validDate(fields.get("Factory plan issued at")),
@@ -789,6 +822,7 @@ export function validateV1dAuthority(
     readText = () => null,
     readAtCommit = () => null,
     readAtProtectedMain = () => null,
+    isPathUnchangedSinceCommit = () => false,
     isCommit = () => false,
     isProtectedMainCommit = () => false,
     now = new Date(),
@@ -861,6 +895,7 @@ export function validateV1dAuthority(
             readText,
             readAtCommit,
             readAtProtectedMain,
+            isPathUnchangedSinceCommit,
             isCommit,
             isProtectedMainCommit,
             now,

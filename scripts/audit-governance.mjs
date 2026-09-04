@@ -60,6 +60,15 @@ function readAtProtectedMain(relativePath) {
   return result.status === 0 ? result.stdout : null;
 }
 
+function isPathUnchangedSinceCommit(commit, relativePath) {
+  const result = spawnSync(
+    "git",
+    ["log", "--format=%H", `${commit}..origin/main`, "--", relativePath],
+    { cwd: root, encoding: "utf8" },
+  );
+  return result.status === 0 && result.stdout.trim() === "";
+}
+
 function walk(directory) {
   if (!exists(directory)) return [];
   return fs
@@ -148,6 +157,7 @@ for (const authorityError of validateV1dAuthority(gates, {
   readText: read,
   readAtCommit,
   readAtProtectedMain,
+  isPathUnchangedSinceCommit,
   isCommit,
   isProtectedMainCommit,
 }))

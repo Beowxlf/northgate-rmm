@@ -72,7 +72,9 @@ environment.
 Every approved binding, prerequisite, evidence receipt, rollback receipt, and
 network-change artifact must also remain byte-identical at the current
 protected-main tip. Removing or replacing one revokes it; restoring an older
-still-unexpired approval snapshot does not restore authority.
+still-unexpired approval snapshot does not restore authority. Validation also
+checks the protected-main path history after the audited commit, so a later
+byte-identical restoration still requires a new approval and audited commit.
 The Factory plan expiry must cover the full authorization lifetime.
 At every governance validation, the plan must be no more than two hours old and
 its issue-to-expiry lifetime must not exceed 24 hours; older or longer-lived

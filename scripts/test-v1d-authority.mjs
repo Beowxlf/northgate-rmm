@@ -320,6 +320,7 @@ function expectFailure(
     approvedText,
     currentApprovedText,
     protectedMainTexts = {},
+    changedSinceAuditedPaths = [],
   } = {},
 ) {
   const config = clone();
@@ -354,6 +355,9 @@ function expectFailure(
       if (path === bindingPath) return priorApproval;
       return prerequisites[path] ?? null;
     },
+    isPathUnchangedSinceCommit: (commit, path) =>
+      commit === validFields["Audited commit"] &&
+      !changedSinceAuditedPaths.includes(path),
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) =>
       protectedMain && commit === validFields["Audited commit"],
@@ -593,6 +597,12 @@ expectFailure(
   open,
   "V1C prerequisite was revoked from protected main",
   { protectedMainTexts: { [v1cPath]: null } },
+);
+expectFailure(
+  "deleted V1C approval restored with identical bytes",
+  open,
+  "V1C prerequisite changed after its audited commit",
+  { changedSinceAuditedPaths: [v1cPath] },
 );
 expectFailure(
   "mismatched approved binding",
@@ -853,6 +863,8 @@ assert.deepEqual(
       path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
     readAtProtectedMain: (path) =>
       path === bindingPath ? exactApproval : (exactPrerequisites[path] ?? null),
+    isPathUnchangedSinceCommit: (commit) =>
+      commit === validFields["Audited commit"],
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
     now: fixedNow,

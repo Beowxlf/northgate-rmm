@@ -974,6 +974,8 @@ function validateProductGateLifecycle(
   const closeoutPath = gate.closeout;
   const closeoutText =
     typeof closeoutPath === "string" ? readText(closeoutPath) : null;
+  const protectedCloseoutText =
+    typeof closeoutPath === "string" ? readAtProtectedMain(closeoutPath) : null;
   const closeout =
     typeof closeoutText === "string" ? parseCanonicalJson(closeoutText) : null;
   if (
@@ -985,6 +987,14 @@ function validateProductGateLifecycle(
     errors.push(`${gate.id} cleanup closeout is missing or non-canonical.`);
     return errors;
   }
+  if (
+    typeof protectedCloseoutText !== "string" ||
+    normalizeText(closeoutText) !== normalizeText(protectedCloseoutText) ||
+    protectedMainPathVersionCount(closeoutPath) !== 1
+  )
+    errors.push(
+      `${gate.id} cleanup closeout is not exact owner-accepted protected-main evidence.`,
+    );
   if (
     !hasExactUniqueEntries(Object.keys(closeout), PRODUCT_GATE_CLOSEOUT_FIELDS)
   )
@@ -1016,6 +1026,8 @@ function validateProductGateLifecycle(
   const cleanupPath = closeout.cleanupEvidenceRecord;
   const cleanupText =
     typeof cleanupPath === "string" ? readText(cleanupPath) : null;
+  const protectedCleanupText =
+    typeof cleanupPath === "string" ? readAtProtectedMain(cleanupPath) : null;
   const cleanup =
     typeof cleanupText === "string" ? parseCanonicalJson(cleanupText) : null;
   if (
@@ -1028,6 +1040,14 @@ function validateProductGateLifecycle(
     errors.push(`${gate.id} cleanup closeout lacks exact cleanup evidence.`);
     return errors;
   }
+  if (
+    typeof protectedCleanupText !== "string" ||
+    normalizeText(cleanupText) !== normalizeText(protectedCleanupText) ||
+    protectedMainPathVersionCount(cleanupPath) !== 1
+  )
+    errors.push(
+      `${gate.id} cleanup evidence is not exact owner-accepted protected-main evidence.`,
+    );
   if (!hasExactUniqueEntries(Object.keys(cleanup), PRODUCT_GATE_CLEANUP_FIELDS))
     errors.push(`${gate.id} cleanup evidence has an invalid field set.`);
   if (

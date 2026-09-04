@@ -52,6 +52,13 @@ closed, reopened, or unchanged-open states must preserve every closeout and its
 referenced records byte for byte with single-use protected-main history. Use the
 adjacent product-gate closeout and cleanup-evidence templates.
 
+The cleanup evidence and closeout are first committed as separate immutable
+owner-accepted records while the gate still reflects its active scope, after
+cleanup actually completes. Only a later protected change may append that exact
+closeout to the gate history and close or rescope the gate. Current bytes must
+match the protected-main records exactly; same-change or rewritten evidence
+fails closed.
+
 Phase-specific source development may be authorized by a separate committed
 development record that states an exact non-deployment boundary. Such a record
 does not open the corresponding installation or capability gate. In particular,

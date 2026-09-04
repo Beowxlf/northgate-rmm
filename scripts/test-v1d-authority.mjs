@@ -1669,6 +1669,30 @@ assert.deepEqual(
 );
 passed += 1;
 
+const forgedCleanupOptions = closeoutOptions(g2AfterCloseout, {
+  artifactsOnProtectedMain: true,
+  productGateFixture: g2CloseoutFixture,
+});
+const acceptedReadText = forgedCleanupOptions.readText;
+const forgedCleanup = JSON.parse(g2CloseoutFixture.records[g2CleanupPath]);
+forgedCleanup.verifiedAt = "2026-09-04T13:50:01Z";
+const forgedCleanupText = canonical(forgedCleanup);
+const forgedCloseout = JSON.parse(g2CloseoutFixture.records[g2CloseoutPath]);
+forgedCloseout.cleanupEvidenceDigest = hash(forgedCleanupText);
+const forgedCloseoutText = canonical(forgedCloseout);
+forgedCleanupOptions.readText = (path) => {
+  if (path === g2CleanupPath) return forgedCleanupText;
+  if (path === g2CloseoutPath) return forgedCloseoutText;
+  return acceptedReadText(path);
+};
+assert(
+  validateV1dAuthority(g2ClosedWithCleanup, forgedCleanupOptions).some((item) =>
+    item.includes("not exact owner-accepted protected-main evidence"),
+  ),
+  "rewritten product-gate cleanup evidence was accepted at closeout",
+);
+passed += 1;
+
 const prestagedG2CloseoutFixture = withG2Closeout(g2Fixture);
 const prestagedG2Cleanup = JSON.parse(
   prestagedG2CloseoutFixture.records[g2CleanupPath],

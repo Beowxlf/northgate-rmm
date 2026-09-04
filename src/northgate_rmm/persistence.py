@@ -12,7 +12,7 @@ import json
 import re
 import secrets
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -216,6 +216,7 @@ class PostgresControlPlane:
         """Create one short-lived grant and return its secret exactly once."""
 
         require_aware(now, "now")
+        server_time = now.astimezone(UTC)
         raw_token = GRANT_NAMESPACE + secrets.token_urlsafe(32)
         token_sha256 = hashlib.sha256(raw_token.encode("ascii")).hexdigest()
         grant = EnrollmentGrant(
@@ -224,8 +225,8 @@ class PostgresControlPlane:
             display_name=display_name,
             platform=platform,
             architecture=architecture,
-            created_at=now,
-            expires_at=now + ttl,
+            created_at=server_time,
+            expires_at=server_time + ttl,
             created_by=actor_id,
         )
         correlation_id = uuid4()
@@ -250,7 +251,7 @@ class PostgresControlPlane:
             )
             self._insert_audit(
                 cursor,
-                server_time=now,
+                server_time=server_time,
                 actor_type="operator",
                 actor_id=actor_id,
                 subject=f"enrollment_grant:{grant.grant_id}",
@@ -295,6 +296,7 @@ class PostgresControlPlane:
         """Atomically exchange one valid grant for one endpoint identity."""
 
         require_aware(now, "now")
+        server_time = now.astimezone(UTC)
         if not actor_id or len(actor_id) > 256:
             raise ValidationError("actor_id is empty or too long")
         correlation_id = uuid4()
@@ -331,9 +333,9 @@ class PostgresControlPlane:
                         grant = self._enrollment_grant_from_row(row)
                         if grant.consumed_at is not None:
                             failure_reason = "grant is already consumed"
-                        elif now < grant.created_at:
+                        elif server_time < grant.created_at:
                             failure_reason = "server time predates grant creation"
-                        elif now >= grant.expires_at:
+                        elif server_time >= grant.expires_at:
                             failure_reason = "grant is expired"
                         elif (
                             re.fullmatch(r"sha256:[0-9a-f]{64}", public_key_fingerprint)
@@ -349,7 +351,7 @@ class PostgresControlPlane:
                 if failure_reason is not None:
                     self._insert_audit(
                         cursor,
-                        server_time=now,
+                        server_time=server_time,
                         actor_type="service",
                         actor_id=actor_id,
                         subject=subject,
@@ -365,7 +367,7 @@ class PostgresControlPlane:
                         identity_id=identity_id,
                         endpoint_id=endpoint_id,
                         public_key_fingerprint=public_key_fingerprint,
-                        created_at=now,
+                        created_at=server_time,
                     )
                     endpoint = Endpoint(
                         endpoint_id=endpoint_id,
@@ -373,7 +375,7 @@ class PostgresControlPlane:
                         platform=grant.platform,
                         architecture=grant.architecture,
                         identity_id=identity_id,
-                        enrolled_at=now,
+                        enrolled_at=server_time,
                     )
                     cursor.execute("SET CONSTRAINTS ALL DEFERRED")
                     cursor.execute(
@@ -411,13 +413,13 @@ class PostgresControlPlane:
                         SET consumed_at = %s, consumed_identity_id = %s
                         WHERE grant_id = %s AND consumed_at IS NULL
                         """,
-                        (now, identity.identity_id, grant.grant_id),
+                        (server_time, identity.identity_id, grant.grant_id),
                     )
                     if cursor.rowcount != 1:
                         raise AssertionError("locked grant must be consumable once")
                     self._insert_audit(
                         cursor,
-                        server_time=now,
+                        server_time=server_time,
                         actor_type="service",
                         actor_id=actor_id,
                         subject=subject,
@@ -432,7 +434,7 @@ class PostgresControlPlane:
                     )
                     self._insert_audit(
                         cursor,
-                        server_time=now,
+                        server_time=server_time,
                         actor_type="service",
                         actor_id=actor_id,
                         subject=f"endpoint:{endpoint.endpoint_id}",
@@ -452,7 +454,7 @@ class PostgresControlPlane:
                 else "enrollment_grant:unknown"
             )
             self._record_audit(
-                server_time=now,
+                server_time=server_time,
                 actor_type="service",
                 actor_id=actor_id,
                 subject=subject,

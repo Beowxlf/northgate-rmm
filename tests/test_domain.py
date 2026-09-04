@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -156,6 +157,18 @@ def test_enrollment_grant_enforces_v1_scope_lifetime_and_consumption() -> None:
         grant(consumed_at=NOW + timedelta(minutes=1))
     with pytest.raises(ValidationError, match="consumption time"):
         grant(consumed_at=NOW + timedelta(minutes=15), consumed_identity_id=identity_id)
+
+    fall_back = datetime(
+        2026,
+        11,
+        1,
+        1,
+        55,
+        tzinfo=ZoneInfo("America/New_York"),
+        fold=0,
+    )
+    with pytest.raises(ValidationError, match="lifetime"):
+        grant(created_at=fall_back, expires_at=fall_back + timedelta(minutes=15))
 
 
 def test_payloads_enforce_bounds_and_stable_digests() -> None:

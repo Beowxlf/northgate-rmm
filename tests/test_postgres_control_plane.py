@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import psycopg
 import pytest
@@ -292,6 +293,31 @@ def test_enrollment_grant_secret_is_one_time_and_digest_only(
     ]
     assert [event.decision for event in correlated] == ["accepted", "accepted"]
     assert len({event.correlation_id for event in correlated}) == 1
+
+
+def test_enrollment_grant_expiry_uses_absolute_utc_time(postgres_dsn: str) -> None:
+    plane = PostgresControlPlane(postgres_dsn)
+    fall_back = datetime(
+        2026,
+        11,
+        1,
+        1,
+        55,
+        tzinfo=ZoneInfo("America/New_York"),
+        fold=0,
+    )
+
+    grant, _token = plane.create_enrollment_grant(
+        display_name="dst-canary",
+        platform=Platform.LINUX,
+        architecture="amd64",
+        now=fall_back,
+        actor_id="release-operator",
+    )
+
+    assert grant.created_at.tzinfo is UTC
+    assert grant.expires_at - grant.created_at == timedelta(minutes=15)
+    assert plane.get_enrollment_grant(grant.grant_id) == grant
 
 
 def test_enrollment_grant_rejections_are_generic_and_audited(

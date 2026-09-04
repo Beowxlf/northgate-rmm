@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
@@ -141,14 +141,17 @@ class EnrollmentGrant:
             raise ValidationError("v1 enrollment grants support amd64 only")
         if not self.created_by or len(self.created_by) > 256:
             raise ValidationError("created_by is empty or too long")
-        lifetime = self.expires_at - self.created_at
+        created_utc = self.created_at.astimezone(UTC)
+        expires_utc = self.expires_at.astimezone(UTC)
+        lifetime = expires_utc - created_utc
         if lifetime <= timedelta(0) or lifetime > MAX_ENROLLMENT_GRANT_TTL:
             raise ValidationError("enrollment grant lifetime is invalid")
         if (self.consumed_at is None) != (self.consumed_identity_id is None):
             raise ValidationError("enrollment grant consumption state is incomplete")
         if self.consumed_at is not None:
             require_aware(self.consumed_at, "consumed_at")
-            if not self.created_at <= self.consumed_at < self.expires_at:
+            consumed_utc = self.consumed_at.astimezone(UTC)
+            if not created_utc <= consumed_utc < expires_utc:
                 raise ValidationError("enrollment grant consumption time is invalid")
 
 

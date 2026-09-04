@@ -136,6 +136,8 @@ def load_database_dsn(path: Path) -> str:
         port_value = parameters.get("port")
         if not isinstance(hostname, str) or not isinstance(database_name, str):
             raise ValueError("database target fields are invalid")
+        if "," in hostname:
+            raise ValueError("multiple database targets are not supported")
         if port_value is not None and not isinstance(port_value, str):
             raise ValueError("database port is invalid")
         raw_authority = value.removeprefix("postgresql://").split("/", 1)[0]
@@ -144,7 +146,7 @@ def load_database_dsn(path: Path) -> str:
             raise ValueError("database port is empty")
         if port_value is not None and not 1 <= int(port_value) <= 65_535:
             raise ValueError("database port is outside the supported range")
-        raw_query = value.partition("?")[2].partition("#")[0]
+        raw_query = value.partition("?")[2]
         query_fields = {
             name.lower()
             for name, _field_value in parse_qsl(

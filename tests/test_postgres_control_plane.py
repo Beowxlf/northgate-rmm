@@ -652,6 +652,73 @@ def test_agent_message_api_rejects_unknown_and_revoked_certificates(
     assert plane.observations == ()
 
 
+def test_rotation_keeps_history_and_rejects_the_previous_identity(
+    postgres_dsn: str,
+) -> None:
+    plane, agent = enrolled_plane(postgres_dsn)
+    previous = plane.get_identity(agent.identity_id)
+    replacement_id = uuid4()
+    replacement_fingerprint = "sha256:" + "9" * 64
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+        cursor.execute(
+            """
+            INSERT INTO endpoint_identities (
+                identity_id, endpoint_id, public_key_fingerprint, created_at,
+                identity_status, previous_identity_id
+            ) VALUES (%s, %s, %s, %s, 'active', %s)
+            """,
+            (
+                replacement_id,
+                agent.endpoint_id,
+                replacement_fingerprint,
+                NOW + timedelta(minutes=1),
+                previous.identity_id,
+            ),
+        )
+        cursor.execute(
+            """
+            UPDATE endpoint_identities
+            SET identity_status = 'retired'
+            WHERE identity_id = %s
+            """,
+            (previous.identity_id,),
+        )
+        cursor.execute(
+            "UPDATE endpoints SET identity_id = %s WHERE endpoint_id = %s",
+            (replacement_id, agent.endpoint_id),
+        )
+
+    with pytest.raises(AuthorizationError, match="unauthorized"):
+        plane.authenticate_endpoint_certificate(
+            endpoint_id=agent.endpoint_id,
+            public_key_fingerprint=previous.public_key_fingerprint,
+            authenticated_at=NOW + timedelta(minutes=2),
+            correlation_id=uuid4(),
+        )
+    replacement = plane.authenticate_endpoint_certificate(
+        endpoint_id=agent.endpoint_id,
+        public_key_fingerprint=replacement_fingerprint,
+        authenticated_at=NOW + timedelta(minutes=2),
+        correlation_id=uuid4(),
+    )
+    assert replacement.identity_id == replacement_id
+    assert plane.get_endpoint(agent.endpoint_id).identity_id == replacement_id
+    assert plane.get_identity(previous.identity_id) == previous
+    with pytest.raises(AuthorizationError, match="not current"):
+        plane.ingest_heartbeat(
+            authenticated_identity_id=previous.identity_id,
+            message=agent.heartbeat(now=NOW + timedelta(minutes=2)),
+            received_at=NOW + timedelta(minutes=2, seconds=1),
+        )
+    rejected_authentication = next(
+        event
+        for event in plane.audit_events
+        if event.action == "certificate.authenticate" and event.decision == "rejected"
+    )
+    assert rejected_authentication.reason == "certificate identity is not current"
+
+
 def test_inventory_binding_and_both_replay_classes_fail_closed(
     postgres_dsn: str,
 ) -> None:

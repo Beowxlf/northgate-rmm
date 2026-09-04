@@ -636,11 +636,14 @@ class PostgresControlPlane:
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT identity_id, endpoint_id, public_key_fingerprint, created_at,
-                       revoked_at, revocation_reason
-                FROM endpoint_identities
-                WHERE endpoint_id = %s AND public_key_fingerprint = %s
-                FOR UPDATE
+                SELECT i.identity_id, i.endpoint_id, i.public_key_fingerprint,
+                       i.created_at, i.revoked_at, i.revocation_reason,
+                       i.identity_status, e.identity_id = i.identity_id AS is_current
+                FROM endpoint_identities AS i
+                JOIN endpoints AS e ON e.endpoint_id = i.endpoint_id
+                WHERE i.endpoint_id = %s
+                  AND i.public_key_fingerprint = %s
+                FOR UPDATE OF i
                 """,
                 (endpoint_id, public_key_fingerprint),
             )
@@ -651,6 +654,8 @@ class PostgresControlPlane:
                 identity = self._identity_from_row(row)
                 if identity.revoked_at is not None:
                     failure_reason = "certificate identity is revoked"
+                elif row["identity_status"] != "active" or not row["is_current"]:
+                    failure_reason = "certificate identity is not current"
             self._insert_audit(
                 cursor,
                 server_time=server_time,
@@ -744,7 +749,8 @@ class PostgresControlPlane:
             cursor.execute(
                 """
                 UPDATE endpoint_identities
-                SET revoked_at = %s, revocation_reason = %s
+                SET revoked_at = %s, revocation_reason = %s,
+                    identity_status = 'revoked'
                 WHERE identity_id = %s
                 """,
                 (now, reason, identity_id),
@@ -784,6 +790,8 @@ class PostgresControlPlane:
                     """
                     SELECT i.identity_id, i.endpoint_id, i.public_key_fingerprint,
                            i.created_at, i.revoked_at, i.revocation_reason,
+                           i.identity_status,
+                           e.identity_id = i.identity_id AS is_current,
                            e.platform, e.architecture
                     FROM endpoint_identities AS i
                     JOIN endpoints AS e ON e.endpoint_id = i.endpoint_id
@@ -801,6 +809,15 @@ class PostgresControlPlane:
 
                 if failure is None and identity is not None and identity.revoked_at:
                     failure = (AuthorizationError, "authenticated identity is revoked")
+                if (
+                    failure is None
+                    and row is not None
+                    and (row["identity_status"] != "active" or not row["is_current"])
+                ):
+                    failure = (
+                        AuthorizationError,
+                        "authenticated identity is not current",
+                    )
                 if (
                     failure is None
                     and identity is not None

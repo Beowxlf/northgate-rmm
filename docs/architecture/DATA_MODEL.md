@@ -95,7 +95,9 @@ The executable schema is migrations
 `src/northgate_rmm/migrations/0001_phase1.sql` and
 `src/northgate_rmm/migrations/0002_enrollment_grants.sql`, with exact retry
 digests added by
-`src/northgate_rmm/migrations/0003_message_idempotency.sql`. Jobs, leases,
+`src/northgate_rmm/migrations/0003_message_idempotency.sql` and current-identity,
+certificate-lifecycle, and rotation lineage constraints added by
+`src/northgate_rmm/migrations/0004_identity_rotation.sql`. Jobs, leases,
 results, and approvals remain future schema and are not executable capabilities.
 
 ## Retention

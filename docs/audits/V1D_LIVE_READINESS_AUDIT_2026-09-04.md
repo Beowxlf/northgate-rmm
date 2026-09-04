@@ -61,17 +61,21 @@ and evidence records.
    provenance, signing profile, trust root, distribution location, canary ring,
    expiry, and rollback boundary. Sign and independently verify those artifacts
    without activating automatic updates or signing the final acceptance record.
+   Establish and verify the protected distribution and bootstrap procedure, and
+   complete the signing-key loss and compromise tests. V1C remains open until
+   every production-release-trust control in the release criteria passes.
 5. Obtain separate approval for the backup-bound VLAN 170/180 network change;
    apply it in isolation and retain positive and negative path evidence.
 6. Install and promote the new Factory release only through its own reviewed
    bootstrap and activation ceremony.
-7. Under a separate bounded V1D server-validation authorization, generate the
-   fresh control-plane Factory plan after current-state validation. Obtain exact
-   owner approval of that plan ID and authenticated state hash after issuance,
-   then deploy and harden only the control plane without installing an endpoint.
-   Prove database-consistent backup and isolated restore, telemetry-outage and
-   capacity behavior, certificate revocation, containment, and rollback; V1D
-   remains open until every required proof passes.
+7. Only after V1C passes, under a separate bounded V1D server-validation
+   authorization, generate the fresh control-plane Factory plan after
+   current-state validation. Obtain exact owner approval of that plan ID and
+   authenticated state hash after issuance, then deploy and harden only the
+   control plane without installing an endpoint. Prove database-consistent
+   backup and isolated restore, telemetry-outage and capacity behavior,
+   certificate revocation, containment, and rollback; V1D remains open until
+   every required proof passes.
 8. Only after V1D passes and the owner accepts the hardened-server and recovery
    evidence, open G2 for only the disposable canary while binding the exact
    deployed server, signed release, network policy, identities, expiry,

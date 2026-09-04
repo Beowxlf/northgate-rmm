@@ -10,7 +10,7 @@ import threading
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -31,6 +31,7 @@ from northgate_rmm.listener import (
     build_server_ssl_context,
     create_agent_web_application,
     extract_verified_client_certificate,
+    validate_endpoint_certificate,
 )
 
 
@@ -150,6 +151,18 @@ class EmptySSLObject:
         return b"" if binary_form else {}
 
 
+class MalformedExtensions:
+    def get_extension_for_class(self, extension_type: object) -> NoReturn:
+        del extension_type
+        raise ValueError("malformed encoded extension")
+
+
+class MalformedExtensionCertificate:
+    @property
+    def extensions(self) -> MalformedExtensions:
+        return MalformedExtensions()
+
+
 def test_extract_verified_client_certificate_binds_uri_and_spki() -> None:
     material = issue_material(datetime.now(UTC))
     peer = extract_verified_client_certificate(
@@ -164,6 +177,13 @@ def test_extract_verified_client_certificate_binds_uri_and_spki() -> None:
     assert (
         peer.public_key_fingerprint == "sha256:" + hashlib.sha256(expected).hexdigest()
     )
+
+
+def test_validate_endpoint_certificate_normalizes_malformed_extensions() -> None:
+    certificate = cast(x509.Certificate, MalformedExtensionCertificate())
+
+    with pytest.raises(ValidationError, match="profile"):
+        validate_endpoint_certificate(certificate)
 
 
 def test_extract_verified_client_certificate_rejects_profile_variants() -> None:

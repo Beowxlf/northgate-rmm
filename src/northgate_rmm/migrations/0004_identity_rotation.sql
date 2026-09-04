@@ -19,9 +19,7 @@ WHERE revoked_at IS NOT NULL;
 
 ALTER TABLE endpoint_identities
     ADD CONSTRAINT endpoint_identities_status_check
-        CHECK (
-            identity_status IN ('pending', 'issued', 'active', 'retired', 'revoked')
-        ),
+        CHECK (identity_status IN ('pending', 'active', 'retired', 'revoked')),
     ADD CONSTRAINT endpoint_identities_revocation_status_check
         CHECK (
             (identity_status = 'revoked' AND revoked_at IS NOT NULL)

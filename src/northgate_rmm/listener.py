@@ -480,7 +480,7 @@ def validate_endpoint_certificate(
         names = certificate.extensions.get_extension_for_class(
             x509.SubjectAlternativeName
         ).value
-    except (x509.ExtensionNotFound, x509.DuplicateExtension) as error:
+    except (ValueError, x509.ExtensionNotFound, x509.DuplicateExtension) as error:
         raise ValidationError("client certificate profile is invalid") from error
     if constraints.ca or not usage.digital_signature:
         raise ValidationError("client certificate purpose is invalid")

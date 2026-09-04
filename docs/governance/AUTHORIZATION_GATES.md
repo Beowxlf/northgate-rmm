@@ -57,6 +57,11 @@ must be owner-approved, unexpired, evidence- and rollback-bound, unchanged from
 the audited commit, valid for its exact required identity and status, and valid
 through the authorization expiry. Every prerequisite approval must precede
 Factory plan issuance and approval of the binding manifest.
+Each evidence and rollback binding must identify a separate canonical receipt
+that is present and unchanged at the audited commit, matches the prerequisite,
+records owner-approved verification before prerequisite approval, and binds the
+approved target, identities, flows, provision/verification receipts, rollback
+procedure, and recovery evidence without publishing live values.
 The Factory plan expiry must cover the full authorization lifetime.
 
 The authorization permits installation and operation of the named private

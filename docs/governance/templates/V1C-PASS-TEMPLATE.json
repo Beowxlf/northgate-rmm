@@ -5,7 +5,9 @@
   "approver": "Beowxlf",
   "approvedAt": "PLACEHOLDER",
   "expiresAt": "PLACEHOLDER",
+  "evidenceRecord": "docs/governance/authorizations/prerequisites/evidence/V1C.json",
   "evidenceBinding": "sha256:PLACEHOLDER",
+  "rollbackRecord": "docs/governance/authorizations/prerequisites/rollback/V1C.json",
   "rollbackBinding": "sha256:PLACEHOLDER",
   "controls": [
     "exact production artifacts",

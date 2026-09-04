@@ -56,6 +56,11 @@ JSON is rejected. The manifest must hash and reference the protected-main
 [`V1C-PASS-TEMPLATE.json`](V1C-PASS-TEMPLATE.json) record and all seven separate
 external-dependency records built from
 [`V1D-DEPENDENCY-APPROVAL-TEMPLATE.json`](V1D-DEPENDENCY-APPROVAL-TEMPLATE.json).
+Each prerequisite must reference immutable scoped provision/verification and
+rollback receipts built from
+[`V1D-PREREQUISITE-EVIDENCE-TEMPLATE.json`](V1D-PREREQUISITE-EVIDENCE-TEMPLATE.json)
+and
+[`V1D-PREREQUISITE-ROLLBACK-TEMPLATE.json`](V1D-PREREQUISITE-ROLLBACK-TEMPLATE.json).
 Binding-manifest approval must occur after Factory plan approval.
 The authorization expiry must not exceed the expiry of the binding manifest,
 the Factory plan, the V1C pass record, or any external-dependency approval

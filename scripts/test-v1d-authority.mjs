@@ -82,7 +82,42 @@ function hash(text) {
   return `sha256:${createHash("sha256").update(text.replaceAll("\r\n", "\n")).digest("hex")}`;
 }
 
-function renderPrerequisite(id, status, extra = {}) {
+function evidencePath(id) {
+  return `docs/governance/authorizations/prerequisites/evidence/${id}.json`;
+}
+
+function rollbackPath(id) {
+  return `docs/governance/authorizations/prerequisites/rollback/${id}.json`;
+}
+
+function renderEvidence(id) {
+  return canonical({
+    schemaVersion: 1,
+    prerequisiteId: id,
+    status: "ProvisionedAndVerified",
+    approver: "Beowxlf",
+    verifiedAt: "2026-09-04T12:50:00Z",
+    targetBinding: digest,
+    identityBinding: digest,
+    flowBinding: digest,
+    provisionReceiptDigest: digest,
+    verificationReceiptDigest: digest,
+  });
+}
+
+function renderRollbackEvidence(id) {
+  return canonical({
+    schemaVersion: 1,
+    prerequisiteId: id,
+    status: "RollbackVerified",
+    approver: "Beowxlf",
+    verifiedAt: "2026-09-04T12:51:00Z",
+    procedureBinding: digest,
+    recoveryEvidenceBinding: digest,
+  });
+}
+
+function renderPrerequisite(id, status, records, extra = {}) {
   return canonical({
     schemaVersion: 1,
     id,
@@ -90,20 +125,27 @@ function renderPrerequisite(id, status, extra = {}) {
     approver: "Beowxlf",
     approvedAt: "2026-09-04T12:55:00Z",
     expiresAt: "2026-09-05T00:00:00Z",
-    evidenceBinding: digest,
-    rollbackBinding: digest,
+    evidenceRecord: evidencePath(id),
+    evidenceBinding: hash(records[evidencePath(id)]),
+    rollbackRecord: rollbackPath(id),
+    rollbackBinding: hash(records[rollbackPath(id)]),
     ...extra,
   });
 }
 
 function buildPrerequisites() {
-  return Object.fromEntries([
-    [v1cPath, renderPrerequisite("V1C", "Passed", { controls: v1cControls })],
-    ...dependencyRecords.map(([id, path]) => [
-      path,
-      renderPrerequisite(id, "Approved"),
-    ]),
-  ]);
+  const records = {};
+  const ids = ["V1C", ...dependencyRecords.map(([id]) => id)];
+  for (const id of ids) {
+    records[evidencePath(id)] = renderEvidence(id);
+    records[rollbackPath(id)] = renderRollbackEvidence(id);
+  }
+  records[v1cPath] = renderPrerequisite("V1C", "Passed", records, {
+    controls: v1cControls,
+  });
+  for (const [id, path] of dependencyRecords)
+    records[path] = renderPrerequisite(id, "Approved", records);
+  return records;
 }
 
 function renderApprovedBindings(
@@ -521,6 +563,48 @@ expectFailure(
 expectFailure("dependency approval missing", open, "prerequisite record", {
   mutatePrerequisites: (records) => delete records[dependencyRecords[0][1]],
 });
+expectFailure(
+  "dependency approval has only arbitrary evidence hashes",
+  open,
+  "lacks immutable evidence",
+  {
+    mutatePrerequisites: (records) => {
+      const path = dependencyRecords[0][1];
+      const record = JSON.parse(records[path]);
+      delete record.evidenceRecord;
+      record.evidenceBinding = digest;
+      records[path] = canonical(record);
+    },
+  },
+);
+expectFailure(
+  "dependency evidence lacks scoped verification",
+  open,
+  "lacks scoped verificationReceiptDigest",
+  {
+    mutatePrerequisites: (records) => {
+      const id = dependencyRecords[0][0];
+      const path = evidencePath(id);
+      const receipt = JSON.parse(records[path]);
+      receipt.verificationReceiptDigest = "invalid";
+      records[path] = canonical(receipt);
+    },
+  },
+);
+expectFailure(
+  "dependency evidence verified after approval",
+  open,
+  "verified after approval",
+  {
+    mutatePrerequisites: (records) => {
+      const id = dependencyRecords[0][0];
+      const path = evidencePath(id);
+      const receipt = JSON.parse(records[path]);
+      receipt.verifiedAt = "2026-09-04T12:56:00Z";
+      records[path] = canonical(receipt);
+    },
+  },
+);
 expectFailure(
   "dependency approval after Factory planning",
   open,

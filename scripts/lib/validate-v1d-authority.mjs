@@ -149,6 +149,95 @@ function sha256(text) {
   return `sha256:${createHash("sha256").update(normalizeText(text)).digest("hex")}`;
 }
 
+function validatePrerequisiteEvidence(
+  record,
+  expectedId,
+  kind,
+  auditedCommit,
+  approvedAt,
+  options,
+) {
+  const errors = [];
+  const { isRegularFile, readText, readAtCommit, now } = options;
+  const isEvidence = kind === "evidence";
+  const label = isEvidence ? "evidence" : "rollback evidence";
+  const pathField = isEvidence ? "evidenceRecord" : "rollbackRecord";
+  const digestField = isEvidence ? "evidenceBinding" : "rollbackBinding";
+  const folder = isEvidence ? "evidence" : "rollback";
+  const recordPath = record[pathField] ?? "";
+  const pathPattern = new RegExp(
+    `^docs/governance/authorizations/prerequisites/${folder}/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$`,
+  );
+  if (!pathPattern.test(recordPath) || !isRegularFile(recordPath))
+    return [`V1D-SV ${expectedId} prerequisite lacks immutable ${label}.`];
+  if (!/^sha256:[a-f0-9]{64}$/.test(record[digestField] ?? ""))
+    return [
+      `V1D-SV ${expectedId} prerequisite has an invalid ${label} digest.`,
+    ];
+
+  const currentText = readText(recordPath);
+  const approvedText = readAtCommit(auditedCommit, recordPath);
+  if (typeof currentText !== "string" || typeof approvedText !== "string")
+    return [
+      `V1D-SV ${expectedId} prerequisite ${label} is absent from the audited commit.`,
+    ];
+  if (normalizeText(currentText) !== normalizeText(approvedText))
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite ${label} changed after approval.`,
+    );
+  if (sha256(approvedText) !== record[digestField])
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite ${label} digest mismatches.`,
+    );
+
+  const receipt = parseCanonicalJson(approvedText);
+  if (!receipt)
+    return [
+      ...errors,
+      `V1D-SV ${expectedId} prerequisite ${label} is not canonical duplicate-free JSON.`,
+    ];
+  const expectedStatus = isEvidence
+    ? "ProvisionedAndVerified"
+    : "RollbackVerified";
+  if (
+    receipt.schemaVersion !== 1 ||
+    receipt.prerequisiteId !== expectedId ||
+    receipt.status !== expectedStatus
+  )
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite ${label} has invalid scope or status.`,
+    );
+  if (receipt.approver !== "Beowxlf")
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite ${label} lacks owner approval.`,
+    );
+  const verifiedAt = validDate(receipt.verifiedAt);
+  if (verifiedAt === null || verifiedAt > now.getTime())
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite ${label} verification time is invalid.`,
+    );
+  if (verifiedAt !== null && approvedAt !== null && verifiedAt > approvedAt)
+    errors.push(
+      `V1D-SV ${expectedId} prerequisite ${label} was verified after approval.`,
+    );
+  const requiredBindings = isEvidence
+    ? [
+        "targetBinding",
+        "identityBinding",
+        "flowBinding",
+        "provisionReceiptDigest",
+        "verificationReceiptDigest",
+      ]
+    : ["procedureBinding", "recoveryEvidenceBinding"];
+  for (const field of requiredBindings) {
+    if (!/^sha256:[a-f0-9]{64}$/.test(receipt[field] ?? ""))
+      errors.push(
+        `V1D-SV ${expectedId} prerequisite ${label} lacks scoped ${field}.`,
+      );
+  }
+  return errors;
+}
+
 function validatePrerequisite(
   descriptor,
   expectedId,
@@ -234,14 +323,24 @@ function validatePrerequisite(
     errors.push(
       `V1D-SV authorization outlives the ${expectedId} prerequisite.`,
     );
-  if (!/^sha256:[a-f0-9]{64}$/.test(record.evidenceBinding ?? ""))
-    errors.push(
-      `V1D-SV ${expectedId} prerequisite lacks its evidence binding.`,
-    );
-  if (!/^sha256:[a-f0-9]{64}$/.test(record.rollbackBinding ?? ""))
-    errors.push(
-      `V1D-SV ${expectedId} prerequisite lacks its rollback binding.`,
-    );
+  errors.push(
+    ...validatePrerequisiteEvidence(
+      record,
+      expectedId,
+      "evidence",
+      auditedCommit,
+      approvedAt,
+      options,
+    ),
+    ...validatePrerequisiteEvidence(
+      record,
+      expectedId,
+      "rollback",
+      auditedCommit,
+      approvedAt,
+      options,
+    ),
+  );
   if (expectedId === "V1C") {
     const controls = record.controls;
     if (

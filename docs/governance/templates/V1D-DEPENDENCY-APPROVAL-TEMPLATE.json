@@ -5,6 +5,8 @@
   "approver": "Beowxlf",
   "approvedAt": "PLACEHOLDER",
   "expiresAt": "PLACEHOLDER",
+  "evidenceRecord": "docs/governance/authorizations/prerequisites/evidence/PLACEHOLDER.json",
   "evidenceBinding": "sha256:PLACEHOLDER",
+  "rollbackRecord": "docs/governance/authorizations/prerequisites/rollback/PLACEHOLDER.json",
   "rollbackBinding": "sha256:PLACEHOLDER"
 }

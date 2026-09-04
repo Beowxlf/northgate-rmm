@@ -168,11 +168,16 @@ def test_agent_service_verifies_schema_and_closes_listener(
 
     monkeypatch.setattr(service_module, "PostgresControlPlane", FakeStore)
     monkeypatch.setattr(service_module, "AgentTLSListener", FakeListener)
-    monkeypatch.setattr(service_module, "_effective_user_id", lambda: 1_000)
     dsn_path = tmp_path / "database-dsn"
     dsn_path.write_text("postgresql://database.test/northgate", encoding="utf-8")
     if os.name == "posix":
         dsn_path.chmod(0o600)
+    runtime_user_id = dsn_path.stat().st_uid if os.name == "posix" else 1_000
+    monkeypatch.setattr(
+        service_module,
+        "_effective_user_id",
+        lambda: runtime_user_id,
+    )
     loaded = load_agent_service_configuration(
         write_configuration(tmp_path, configuration_value(tmp_path))
     )

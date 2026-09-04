@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import ssl
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -33,6 +34,18 @@ class RecordingOperation:
             leaf_certificate_der=b"leaf",
             intermediate_certificates_der=(),
         )
+
+
+class BlockingOperation(RecordingOperation):
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def enroll(self, *, token: str, csr_der: bytes, now: datetime) -> EnrollmentResult:
+        self.entered.set()
+        if not self.release.wait(timeout=3):
+            raise AssertionError("test did not release enrollment")
+        return super().enroll(token=token, csr_der=csr_der, now=now)
 
 
 def configuration(tmp_path: Path, **changes: object) -> EnrollmentListenerConfiguration:
@@ -201,11 +214,76 @@ def test_enrollment_listener_accepts_only_trusted_tls(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_timed_out_enrollment_retains_admission_until_work_finishes(
+    tmp_path: Path,
+) -> None:
+    root_path, certificate_path, key_path = _write_server_identity(tmp_path)
+    config = configuration(
+        tmp_path,
+        authority="enroll.test",
+        server_certificate=certificate_path,
+        server_private_key=key_path,
+        request_timeout_seconds=1.0,
+    )
+    operation = BlockingOperation()
+
+    async def scenario() -> None:
+        listener = EnrollmentTLSListener(config, operation)
+        await listener.start()
+        try:
+            host, port = listener.addresses[0]
+            context = ssl.create_default_context(cafile=str(root_path))
+            context.minimum_version = ssl.TLSVersion.TLSv1_3
+            context.maximum_version = ssl.TLSVersion.TLSv1_3
+            first = asyncio.create_task(_send_enrollment(host, port, context))
+            assert await asyncio.to_thread(operation.entered.wait, 2)
+            assert (await first).startswith(b"HTTP/1.1 408 Request Timeout\r\n")
+            assert (await _send_enrollment(host, port, context)).startswith(
+                b"HTTP/1.1 503 Service Unavailable\r\n"
+            )
+            operation.release.set()
+            for _index in range(20):
+                await asyncio.sleep(0.01)
+                if not listener._active_sources:
+                    break
+            assert not listener._active_sources
+            assert (await _send_enrollment(host, port, context)).startswith(
+                b"HTTP/1.1 201 Created\r\n"
+            )
+        finally:
+            operation.release.set()
+            await listener.close()
+
+    asyncio.run(scenario())
+
+
 async def _parse_request(encoded: bytes) -> EnrollmentRequest:
     reader = asyncio.StreamReader(limit=2_052)
     reader.feed_data(encoded)
     reader.feed_eof()
     return await _read_request(reader, authority="enroll.northgate.internal")
+
+
+async def _send_enrollment(host: str, port: int, context: ssl.SSLContext) -> bytes:
+    reader, writer = await asyncio.open_connection(
+        host,
+        port,
+        ssl=context,
+        server_hostname="enroll.test",
+    )
+    body = b'{"grant":"g","csr":"eA=="}'
+    writer.write(
+        b"POST /v1/enrollment HTTP/1.1\r\n"
+        b"Host: enroll.test\r\n"
+        b"Content-Type: application/json\r\n"
+        + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+        + body
+    )
+    await writer.drain()
+    response = await reader.read()
+    writer.close()
+    await writer.wait_closed()
+    return response
 
 
 def _write_server_identity(tmp_path: Path) -> tuple[Path, Path, Path]:

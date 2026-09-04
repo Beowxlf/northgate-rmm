@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from northgate_rmm.enrollment_service import (
     load_endpoint_issuer_trust_root,
     load_enrollment_service_configuration,
+    main,
     run_enrollment_service,
 )
 from northgate_rmm.errors import ValidationError
@@ -72,6 +73,32 @@ def test_enrollment_service_configuration_rejects_inexact_values(
         load_enrollment_service_configuration(path)
 
 
+@pytest.mark.parametrize(
+    "encoded",
+    [b"not-json", b"[]", b'{"bind_address":"127.0.0.1","bind_address":"x"}'],
+)
+def test_enrollment_service_configuration_rejects_invalid_documents(
+    tmp_path: Path, encoded: bytes
+) -> None:
+    path = tmp_path / "enrollment.json"
+    path.write_bytes(encoded)
+
+    with pytest.raises(ValidationError):
+        load_enrollment_service_configuration(path)
+
+
+def test_enrollment_service_configuration_rejects_non_integer_issuer_port(
+    tmp_path: Path,
+) -> None:
+    value = _configuration(tmp_path)
+    value["issuer_port"] = True
+    path = tmp_path / "enrollment.json"
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="issuer_port"):
+        load_enrollment_service_configuration(path)
+
+
 def test_endpoint_issuer_trust_root_requires_exactly_one_ca(tmp_path: Path) -> None:
     material = issue_test_endpoint_credential(
         UUID("11111111-1111-4111-8111-111111111111"),
@@ -85,6 +112,30 @@ def test_endpoint_issuer_trust_root_requires_exactly_one_ca(tmp_path: Path) -> N
     assert loaded.fingerprint(hashes.SHA256()) == (
         material.root_certificate.fingerprint(hashes.SHA256())
     )
+
+
+def test_endpoint_issuer_trust_root_rejects_invalid_bundle_and_leaf(
+    tmp_path: Path,
+) -> None:
+    material = issue_test_endpoint_credential(
+        UUID("11111111-1111-4111-8111-111111111111"),
+        now=datetime.now(UTC),
+    )
+    path = tmp_path / "root.pem"
+    path.write_bytes(b"not-a-certificate")
+    with pytest.raises(ValidationError, match="invalid"):
+        load_endpoint_issuer_trust_root(path)
+
+    root = material.root_certificate.public_bytes(serialization.Encoding.PEM)
+    path.write_bytes(root + root)
+    with pytest.raises(ValidationError, match="exactly one"):
+        load_endpoint_issuer_trust_root(path)
+
+    path.write_bytes(
+        material.endpoint_certificate.public_bytes(serialization.Encoding.PEM)
+    )
+    with pytest.raises(ValidationError, match="not a CA"):
+        load_endpoint_issuer_trust_root(path)
 
 
 def test_enrollment_service_verifies_dependencies_and_closes(
@@ -161,3 +212,45 @@ def test_enrollment_service_verifies_dependencies_and_closes(
         "database_shutdown",
         "close",
     ]
+
+
+def test_enrollment_service_entrypoint_is_generic_and_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import northgate_rmm.enrollment_service as service_module
+
+    monkeypatch.setattr(service_module, "_require_unprivileged_process", lambda: None)
+    monkeypatch.setattr(
+        service_module,
+        "load_enrollment_service_configuration",
+        lambda _path: object(),
+    )
+
+    async def fake_run(_configuration: object) -> None:
+        return None
+
+    monkeypatch.setattr(service_module, "run_enrollment_service", fake_run)
+    assert main(["--config", str(tmp_path / "config.json")]) == 0
+
+    def fail() -> None:
+        raise ValidationError("secret internal detail")
+
+    monkeypatch.setattr(service_module, "_require_unprivileged_process", fail)
+    assert main(["--config", str(tmp_path / "config.json")]) == 1
+    captured = capsys.readouterr()
+    assert "failed closed" in captured.err
+    assert "secret internal detail" not in captured.err
+
+
+def test_enrollment_service_entrypoint_preserves_interrupt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import northgate_rmm.enrollment_service as service_module
+
+    def interrupt() -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(service_module, "_require_unprivileged_process", interrupt)
+    assert main(["--config", str(tmp_path / "config.json")]) == 130

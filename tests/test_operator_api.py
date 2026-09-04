@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import pytest
 
@@ -286,3 +287,9 @@ def test_operator_models_reject_invalid_sessions_and_policy() -> None:
         replace(policy(), maximum_session_age=timedelta(days=2))
     with pytest.raises(ValidationError, match="subject"):
         replace(principal(), subject="operator\n001")
+    with pytest.raises(ValidationError, match="subject"):
+        replace(principal(), subject="x" * 257)
+    with pytest.raises(ValidationError, match="subject"):
+        replace(policy(), subject="x" * 257)
+    with pytest.raises(ValidationError, match="mfa"):
+        replace(principal(), mfa=cast(bool, "false"))

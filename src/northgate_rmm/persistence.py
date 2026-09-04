@@ -241,9 +241,9 @@ class PostgresControlPlane:
         """Append an operator read or denial decision before data is returned."""
 
         require_aware(now, "now")
-        if not actor_id or len(actor_id) > 512:
+        if not actor_id or len(actor_id) > 256:
             raise ValidationError("operator audit actor is invalid")
-        if not subject or len(subject) > 512:
+        if not subject or len(subject) > 256:
             raise ValidationError("operator audit subject is invalid")
         if not action or len(action) > 128:
             raise ValidationError("operator audit action is invalid")

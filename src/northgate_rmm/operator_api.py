@@ -22,6 +22,7 @@ from northgate_rmm.views import (
 
 MAX_AUTHORIZATION_HEADER_BYTES = 4_096
 MAX_OPERATOR_VALUE_LENGTH = 512
+MAX_OPERATOR_AUDIT_IDENTIFIER_LENGTH = 256
 MAX_OPERATOR_PATH_LENGTH = 256
 MAX_OPERATOR_SESSION_AGE = timedelta(hours=12)
 
@@ -48,12 +49,15 @@ class OperatorPrincipal:
             ("session_id", self.session_id),
             ("client_id", self.client_id),
         ):
-            if (
-                not value
-                or len(value) > MAX_OPERATOR_VALUE_LENGTH
-                or not value.isprintable()
-            ):
+            maximum_length = (
+                MAX_OPERATOR_AUDIT_IDENTIFIER_LENGTH
+                if name == "subject"
+                else MAX_OPERATOR_VALUE_LENGTH
+            )
+            if not value or len(value) > maximum_length or not value.isprintable():
                 raise ValidationError(f"operator {name} is invalid")
+        if type(self.mfa) is not bool:
+            raise ValidationError("operator mfa is invalid")
         if not self.roles or len(self.roles) > 8:
             raise ValidationError("operator roles are invalid")
         if any(not role or len(role) > 64 for role in self.roles):
@@ -85,11 +89,12 @@ class OperatorAuthorizationPolicy:
             ("client_id", self.client_id),
             ("required_role", self.required_role),
         ):
-            if (
-                not value
-                or len(value) > MAX_OPERATOR_VALUE_LENGTH
-                or not value.isprintable()
-            ):
+            maximum_length = (
+                MAX_OPERATOR_AUDIT_IDENTIFIER_LENGTH
+                if name == "subject"
+                else MAX_OPERATOR_VALUE_LENGTH
+            )
+            if not value or len(value) > maximum_length or not value.isprintable():
                 raise ValidationError(f"operator policy {name} is invalid")
         if not timedelta(minutes=5) <= self.maximum_session_age <= timedelta(hours=24):
             raise ValidationError("operator maximum session age is invalid")
@@ -294,7 +299,10 @@ class OperatorApplication:
             or principal.client_id != self._policy.client_id
         ):
             return "operator identity scope did not match policy"
-        if self._policy.required_role not in principal.roles or not principal.mfa:
+        if (
+            self._policy.required_role not in principal.roles
+            or principal.mfa is not True
+        ):
             return "operator assurance or role was insufficient"
         authenticated_at = principal.authenticated_at.astimezone(UTC)
         expires_at = principal.expires_at.astimezone(UTC)

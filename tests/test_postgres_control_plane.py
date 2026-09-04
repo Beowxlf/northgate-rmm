@@ -197,6 +197,20 @@ def test_operator_view_revalidates_and_persists_read_audit(postgres_dsn: str) ->
     assert persisted.actor_id == "operator-001"
     assert persisted.decision == "accepted"
     assert ("session_id", "postgres-session-001") in persisted.metadata
+    for actor_id, subject, expected in (
+        ("x" * 257, "operator:endpoint-views", "actor"),
+        ("operator-001", "x" * 257, "subject"),
+    ):
+        with pytest.raises(ValidationError, match=expected):
+            plane.record_operator_access(
+                actor_id=actor_id,
+                subject=subject,
+                action="endpoint.detail.read",
+                decision="rejected",
+                reason="schema bound regression",
+                correlation_id=uuid4(),
+                now=NOW,
+            )
 
 
 def test_migrations_are_idempotent_and_checksum_protected(

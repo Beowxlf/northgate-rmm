@@ -62,6 +62,10 @@ that is present and unchanged at the audited commit, matches the prerequisite,
 records owner-approved verification before prerequisite approval, and binds the
 approved target, identities, flows, provision/verification receipts, rollback
 procedure, and recovery evidence without publishing live values.
+Those receipt scopes must match the independently owner-approved per-prerequisite
+scope values in the immutable approved-bindings manifest; recomputing inner
+receipt and prerequisite digests cannot substitute evidence from another
+environment.
 The Factory plan expiry must cover the full authorization lifetime.
 
 The authorization permits installation and operation of the named private

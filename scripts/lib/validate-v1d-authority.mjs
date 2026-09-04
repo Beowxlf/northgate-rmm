@@ -151,6 +151,7 @@ function sha256(text) {
 
 function validatePrerequisiteEvidence(
   record,
+  descriptor,
   expectedId,
   kind,
   auditedCommit,
@@ -229,10 +230,17 @@ function validatePrerequisiteEvidence(
         "verificationReceiptDigest",
       ]
     : ["procedureBinding", "recoveryEvidenceBinding"];
+  const approvedScope = isEvidence
+    ? descriptor?.evidenceScope
+    : descriptor?.rollbackScope;
   for (const field of requiredBindings) {
     if (!/^sha256:[a-f0-9]{64}$/.test(receipt[field] ?? ""))
       errors.push(
         `V1D-SV ${expectedId} prerequisite ${label} lacks scoped ${field}.`,
+      );
+    if (receipt[field] !== approvedScope?.[field])
+      errors.push(
+        `V1D-SV ${expectedId} prerequisite ${label} ${field} mismatches its approved scope.`,
       );
   }
   return errors;
@@ -326,6 +334,7 @@ function validatePrerequisite(
   errors.push(
     ...validatePrerequisiteEvidence(
       record,
+      descriptor,
       expectedId,
       "evidence",
       auditedCommit,
@@ -334,6 +343,7 @@ function validatePrerequisite(
     ),
     ...validatePrerequisiteEvidence(
       record,
+      descriptor,
       expectedId,
       "rollback",
       auditedCommit,

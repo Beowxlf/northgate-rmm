@@ -178,6 +178,17 @@ function renderApprovedBindings(
     digest: prerequisiteRecords[record]
       ? hash(prerequisiteRecords[record])
       : digest,
+    evidenceScope: {
+      targetBinding: fields["Server binding"],
+      identityBinding: fields["Service identity binding"],
+      flowBinding: fields["Private network policy binding"],
+      provisionReceiptDigest: digest,
+      verificationReceiptDigest: digest,
+    },
+    rollbackScope: {
+      procedureBinding: fields["Rollback binding"],
+      recoveryEvidenceBinding: fields["Recovery binding"],
+    },
   });
   return canonical({
     schemaVersion: 1,
@@ -195,6 +206,17 @@ function renderApprovedBindings(
         digest: prerequisiteRecords[v1cPath]
           ? hash(prerequisiteRecords[v1cPath])
           : digest,
+        evidenceScope: {
+          targetBinding: fields["Server binding"],
+          identityBinding: fields["Service identity binding"],
+          flowBinding: fields["Private network policy binding"],
+          provisionReceiptDigest: digest,
+          verificationReceiptDigest: digest,
+        },
+        rollbackScope: {
+          procedureBinding: fields["Rollback binding"],
+          recoveryEvidenceBinding: fields["Recovery binding"],
+        },
       },
       dependencies: dependencyRecords.map(([id, record]) =>
         descriptor(id, record),
@@ -588,6 +610,23 @@ expectFailure(
       const receipt = JSON.parse(records[path]);
       receipt.verificationReceiptDigest = "invalid";
       records[path] = canonical(receipt);
+    },
+  },
+);
+expectFailure(
+  "dependency evidence scope substitution",
+  open,
+  "targetBinding mismatches its approved scope",
+  {
+    mutatePrerequisites: (records) => {
+      const [id, prerequisitePath] = dependencyRecords[0];
+      const receiptPath = evidencePath(id);
+      const receipt = JSON.parse(records[receiptPath]);
+      receipt.targetBinding = `sha256:${"c".repeat(64)}`;
+      records[receiptPath] = canonical(receipt);
+      const prerequisite = JSON.parse(records[prerequisitePath]);
+      prerequisite.evidenceBinding = hash(records[receiptPath]);
+      records[prerequisitePath] = canonical(prerequisite);
     },
   },
 );

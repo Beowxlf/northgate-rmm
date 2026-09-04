@@ -563,6 +563,15 @@ expectFailure(
     mutateFields: (fields) => (fields["Issued at"] = "2026-09-04T13:00:30Z"),
   },
 );
+expectFailure(
+  "authority issued at plan approval",
+  open,
+  "issued after Factory plan approval",
+  {
+    mutateFields: (fields) =>
+      (fields["Issued at"] = fields["Factory plan approved at"]),
+  },
+);
 expectFailure("future authorization", open, "issue time is in the future", {
   mutateFields: (fields) => (fields["Issued at"] = "2026-09-04T15:03:00Z"),
 });

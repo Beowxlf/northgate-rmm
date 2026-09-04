@@ -794,7 +794,11 @@ function validateRecord(text, options) {
     planExpiresAt - planIssuedAt > MAX_PLAN_LIFETIME_MS
   )
     errors.push("V1D-SV Factory plan exceeds the 24-hour lifetime limit.");
-  if (issuedAt !== null && planApprovedAt !== null && issuedAt < planApprovedAt)
+  if (
+    issuedAt !== null &&
+    planApprovedAt !== null &&
+    issuedAt <= planApprovedAt
+  )
     errors.push(
       "V1D-SV authorization must be issued after Factory plan approval.",
     );

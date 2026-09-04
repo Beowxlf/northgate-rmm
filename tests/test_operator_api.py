@@ -353,6 +353,8 @@ def test_operator_models_reject_invalid_sessions_and_policy() -> None:
         replace(principal(), roles=cast(tuple[str, ...], "xadmin"))
     with pytest.raises(ValidationError, match="role"):
         replace(principal(), roles=cast(tuple[str, ...], (1,)))
+    with pytest.raises(ValidationError, match="role"):
+        replace(principal(), roles=("viewer", "bad\nrole"))
     with pytest.raises(ValidationError, match="lifetime"):
         replace(principal(), expires_at=principal().authenticated_at)
     with pytest.raises(ValidationError, match="maximum session age"):

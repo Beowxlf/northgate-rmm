@@ -68,7 +68,10 @@ class OperatorPrincipal:
         if type(self.roles) is not tuple or not self.roles or len(self.roles) > 8:
             raise ValidationError("operator roles are invalid")
         if any(
-            type(role) is not str or not role or len(role) > MAX_OPERATOR_ROLE_LENGTH
+            type(role) is not str
+            or not role
+            or len(role) > MAX_OPERATOR_ROLE_LENGTH
+            or not role.isprintable()
             for role in self.roles
         ):
             raise ValidationError("operator role is invalid")

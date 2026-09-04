@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+action="${1:-}"
+case "$action" in
+  upgrade)
+    ;;
+  remove)
+    for receipt in .server-identities-revoked .evidence-exported; do
+      path="/etc/northgate-rmm/$receipt"
+      if [ ! -f "$path" ] || [ -L "$path" ] || [ ! -s "$path" ] || \
+         [ "$(stat -c '%U:%G:%a' "$path")" != "root:root:600" ]; then
+        echo "refusing server removal without protected revocation and evidence receipts" >&2
+        exit 48
+      fi
+    done
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+
+if [ -d /run/systemd/system ]; then
+  for service in operator enrollment agent; do
+    unit="northgate-rmm-${service}.service"
+    if systemctl is-active --quiet "$unit"; then
+      echo "refusing package operation while $unit is active" >&2
+      exit 49
+    fi
+  done
+  if [ "$action" = "remove" ]; then
+    for service in operator enrollment agent; do
+      unit="northgate-rmm-${service}.service"
+      if ! systemctl disable "$unit" >/dev/null; then
+        echo "refusing removal because $unit could not be disabled" >&2
+        exit 50
+      fi
+      if [ "$(systemctl is-enabled "$unit" 2>/dev/null || true)" != "disabled" ]; then
+        echo "refusing removal because $unit is not verifiably disabled" >&2
+        exit 51
+      fi
+    done
+  fi
+fi
+
+exit 0

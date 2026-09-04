@@ -1,0 +1,10 @@
+Package: northgate-rmm-server
+Version: @VERSION@
+Section: admin
+Priority: optional
+Architecture: amd64
+Maintainer: NorthGate RMM maintainers
+Depends: adduser, python3 (>= 3.11), python3 (<< 3.12), systemd
+Description: private read-only NorthGate RMM control-plane services
+ This source-built package is for network-isolated Debian 12 qualification only.
+ Installation on a NorthGate VM requires separate exact-plan G2 authorization.

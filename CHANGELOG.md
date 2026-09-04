@@ -7,6 +7,9 @@ Changelog structure and will adopt semantic versioning before its first release.
 
 ### Added
 
+- a source-built, offline, reproducible Debian 12 server package with distinct
+  service identities, hash-locked runtime wheels, disabled units, and
+  receipt-gated removal tested in a networkless sandbox without opening G2;
 - a source-only private operator TLS service, fixed-route mTLS session verifier
   client, exact configuration, disabled hardened systemd unit, and fail-closed
   isolation tests without opening G2;

@@ -1,0 +1,80 @@
+#!/bin/sh
+set -eu
+
+action="${1:-}"
+if [ "$action" != "configure" ]; then
+  exit 0
+fi
+
+ensure_identity() {
+  identity="$1"
+  home="$2"
+  if ! getent group "$identity" >/dev/null; then
+    addgroup --system --quiet "$identity"
+  fi
+  if ! getent passwd "$identity" >/dev/null; then
+    adduser --system --quiet --ingroup "$identity" --home "$home" \
+      --no-create-home --shell /usr/sbin/nologin --disabled-password "$identity"
+  fi
+  account="$(getent passwd "$identity")"
+  group="$(getent group "$identity")"
+  case "$account" in
+    "$identity":*:*:*:*:"$home":/usr/sbin/nologin) ;;
+    *) echo "$identity account differs from package policy" >&2; exit 41 ;;
+  esac
+  case "$group" in
+    "$identity":*) ;;
+    *) echo "$identity group differs from package policy" >&2; exit 42 ;;
+  esac
+  account_uid="$(printf '%s\n' "$account" | cut -d: -f3)"
+  account_gid="$(printf '%s\n' "$account" | cut -d: -f4)"
+  group_gid="$(printf '%s\n' "$group" | cut -d: -f3)"
+  case "$account_uid:$account_gid:$group_gid" in
+    *[!0-9:]*|*::*|:*) echo "$identity has invalid numeric fields" >&2; exit 43 ;;
+  esac
+  if [ "$account_uid" -eq 0 ] || [ "$account_uid" -ge 1000 ] || \
+     [ "$account_gid" -ne "$group_gid" ]; then
+    echo "$identity is not a dedicated system identity" >&2
+    exit 44
+  fi
+  set -- $(id -Gn "$identity")
+  if [ "$#" -ne 1 ] || [ "$1" != "$identity" ]; then
+    echo "$identity has unexpected supplementary group access" >&2
+    exit 45
+  fi
+  install -d -o "$identity" -g "$identity" -m 0700 "$home"
+}
+
+install -d -o root -g root -m 0755 /etc/northgate-rmm
+install -d -o root -g root -m 0700 /etc/northgate-rmm/secrets
+install -d -o root -g root -m 0755 /etc/northgate-rmm/tls
+install -d -o root -g root -m 0755 /var/lib/northgate-rmm-server
+for service in agent enrollment operator; do
+  ensure_identity "northgate-rmm-$service" "/var/lib/northgate-rmm-server/$service"
+  config="/etc/northgate-rmm/${service}-service.json"
+  if [ -f "$config" ] && [ ! -L "$config" ]; then
+    chown "root:northgate-rmm-$service" "$config"
+    chmod 0640 "$config"
+  fi
+done
+
+rm -f -- /etc/northgate-rmm/.server-identities-revoked \
+  /etc/northgate-rmm/.evidence-exported \
+  /etc/northgate-rmm/.purge-approved
+
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload
+  for service in agent enrollment operator; do
+    unit="northgate-rmm-${service}.service"
+    if ! systemctl disable "$unit" >/dev/null; then
+      echo "$unit could not be left disabled" >&2
+      exit 46
+    fi
+    if [ "$(systemctl is-enabled "$unit" 2>/dev/null || true)" != "disabled" ]; then
+      echo "$unit did not reach the required disabled state" >&2
+      exit 47
+    fi
+  done
+fi
+
+exit 0

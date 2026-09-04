@@ -99,9 +99,9 @@ jobs:
         run: pip-audit --progress-spinner off
       - name: Check Phase 1 Python quality and types
         run: |
-          ruff format --check src tests
-          ruff check src tests
-          mypy src tests
+          ruff format --check src tests server/packaging/launcher.py
+          ruff check src tests server/packaging/launcher.py
+          mypy src tests server/packaging/launcher.py
       - name: Test Phase 1 Python domain slice
         run: >-
           pytest
@@ -110,7 +110,9 @@ jobs:
           --cov-report=term-missing
           --cov-fail-under=90
       - name: Scan Phase 1 Python with Bandit
-        run: bandit --recursive src --severity-level medium
+        run: >-
+          bandit --recursive src server/packaging/launcher.py
+          --severity-level medium
       - name: Check Phase 2 Go agent
         working-directory: agent
         run: |
@@ -150,10 +152,70 @@ jobs:
             --volume "$PWD/packaging/debian/test-package.sh:/test-package.sh:ro" \
             northgate-rmm-debian-package-test:12 \
             sh /test-package.sh /packages/northgate-rmm-agent_0.2.0_amd64.deb
+      - name: Build and test the server Debian package in isolation
+        run: |
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
+          chmod 0755 \
+            server/packaging/build-deb.sh \
+            server/packaging/debian/test-package.sh
+          mkdir -p \
+            build/server/application-a \
+            build/server/application-b \
+            build/server/runtime \
+            build/server/package-a \
+            build/server/package-b
+          python -m pip wheel \
+            --no-cache-dir \
+            --no-deps \
+            --wheel-dir build/server/application-a \
+            .
+          python -m pip wheel \
+            --no-cache-dir \
+            --no-deps \
+            --wheel-dir build/server/application-b \
+            .
+          cmp \
+            build/server/application-a/northgate_rmm-0.1.0.dev0-py3-none-any.whl \
+            build/server/application-b/northgate_rmm-0.1.0.dev0-py3-none-any.whl
+          python -m pip download \
+            --require-hashes \
+            --only-binary=:all: \
+            --platform manylinux_2_17_x86_64 \
+            --implementation cp \
+            --python-version 311 \
+            --abi cp311 \
+            --dest build/server/runtime \
+            --requirement server/requirements-runtime.txt
+          server/packaging/build-deb.sh \
+            0.1.0~dev0 \
+            build/server/application-a/northgate_rmm-0.1.0.dev0-py3-none-any.whl \
+            build/server/runtime \
+            build/server/package-a
+          server/packaging/build-deb.sh \
+            0.1.0~dev0 \
+            build/server/application-a/northgate_rmm-0.1.0.dev0-py3-none-any.whl \
+            build/server/runtime \
+            build/server/package-b
+          cmp \
+            build/server/package-a/northgate-rmm-server_0.1.0~dev0_amd64.deb \
+            build/server/package-b/northgate-rmm-server_0.1.0~dev0_amd64.deb
+          sha256sum \
+            build/server/package-a/northgate-rmm-server_0.1.0~dev0_amd64.deb
+          docker build --pull=false \
+            --file server/packaging/debian/Dockerfile.test \
+            --tag northgate-rmm-server-package-test:12 .
+          docker run --rm --network none \
+            --security-opt no-new-privileges \
+            --volume "$PWD/build/server/package-a:/packages:ro" \
+            --volume "$PWD/server/packaging/debian/test-package.sh:/test-package.sh:ro" \
+            northgate-rmm-server-package-test:12 \
+            sh /test-package.sh \
+            /packages/northgate-rmm-server_0.1.0~dev0_amd64.deb
       - name: Run Semgrep Community Edition
         run: |
           semgrep scan --config p/javascript --error scripts
-          semgrep scan --config p/python --error src tests
+          semgrep scan --config p/python --error src tests server/packaging/launcher.py
           semgrep scan --config p/golang --error agent
       - name: Audit workflows with Zizmor
         run: zizmor .github/workflows --pedantic

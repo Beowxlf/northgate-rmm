@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+
+action="${1:-}"
+if [ "$action" = "purge" ]; then
+  transaction=/var/lib/northgate-rmm-server-purge-transaction
+  expected_transaction=northgate-rmm-server-purge-v1:authorized
+  if [ -e "$transaction" ]; then
+    if [ ! -f "$transaction" ] || [ -L "$transaction" ] || \
+       [ "$(stat -c '%U:%G:%a' "$transaction")" != "root:root:600" ] || \
+       [ "$(cat "$transaction")" != "$expected_transaction" ]; then
+      echo "refusing server purge with an invalid recovery transaction" >&2
+      exit 52
+    fi
+  else
+    for receipt in .server-identities-revoked .evidence-exported .purge-approved; do
+      path="/etc/northgate-rmm/$receipt"
+      if [ ! -f "$path" ] || [ -L "$path" ] || [ ! -s "$path" ] || \
+         [ "$(stat -c '%U:%G:%a' "$path")" != "root:root:600" ]; then
+        echo "refusing server purge without protected approval receipts" >&2
+        exit 53
+      fi
+    done
+    transaction_temp="${transaction}.tmp"
+    rm -f -- "$transaction_temp"
+    install -o root -g root -m 0600 /dev/null "$transaction_temp"
+    printf '%s\n' "$expected_transaction" > "$transaction_temp"
+    sync -f "$transaction_temp"
+    mv -f -- "$transaction_temp" "$transaction"
+    sync -f /var/lib
+  fi
+
+  rm -rf -- /var/lib/northgate-rmm-server /etc/northgate-rmm
+  test ! -e /var/lib/northgate-rmm-server
+  test ! -e /etc/northgate-rmm
+  for service in operator enrollment agent; do
+    identity="northgate-rmm-$service"
+    if getent passwd "$identity" >/dev/null; then
+      deluser --quiet "$identity"
+    fi
+    if getent passwd "$identity" >/dev/null; then
+      echo "$identity remains after purge" >&2
+      exit 54
+    fi
+    if getent group "$identity" >/dev/null; then
+      delgroup --quiet "$identity"
+    fi
+    if getent group "$identity" >/dev/null; then
+      echo "$identity group remains after purge" >&2
+      exit 55
+    fi
+  done
+fi
+
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload
+fi
+
+exit 0

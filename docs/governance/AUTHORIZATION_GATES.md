@@ -30,6 +30,23 @@ Allows Phase 1 product code. Requires the full Phase 0 document set and a passin
 pre-code audit. Evidence record:
 `docs/governance/authorizations/G1-PRODUCT-CODING.md`.
 
+## Pre-G2 V1D control-plane validation authority
+
+This is an exact, bounded change authorization, not an opened product gate. It
+may be issued only after V1C passes and must name the control-plane server,
+signed release, private network policy, service and database identities,
+synthetic validation identities, expiry, rollback, and evidence boundary. Its
+fresh host-issued VM Factory plan ID and authenticated state hash require exact
+owner approval after issuance.
+
+The authorization permits installation and operation of the named private
+control-plane server only to complete V1D backup/restore, telemetry-outage,
+capacity, certificate-revocation, containment, and rollback proofs. It cannot
+install an endpoint package, create an enrollment grant usable by an endpoint,
+issue a live endpoint identity, admit canary or other endpoint traffic, publish
+or update artifacts, or open G2. G2 remains the separate gate for the one
+disposable Linux endpoint canary.
+
 ## G2 — Linux endpoint installation
 
 Allows one disposable Linux canary. Requires Phase 1 evidence, Linux package and

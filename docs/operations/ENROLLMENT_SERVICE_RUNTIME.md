@@ -10,8 +10,12 @@ workload certificate and accepts only public certificate material in return.
 
 This process has no post-enrollment agent, operator, job, shell, file-transfer,
 update, or remote-access route. This source and disabled reference unit do not
-authorize installation or a lab change. An exact VM Factory plan and separate
-G2 approval remain required.
+authorize installation or a lab change. An exact control-plane authorization
+and post-issued VM Factory plan approval remain required. Before G2, the V1D
+server-validation authority may exercise only synthetic grants that cannot be
+used by an endpoint and may issue only synthetic validation identities. G2
+remains required before creating an endpoint-usable grant or identity or
+admitting any canary or endpoint request.
 
 ## Startup and shutdown contract
 

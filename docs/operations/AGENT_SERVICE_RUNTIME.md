@@ -12,8 +12,12 @@ identities, listener certificates, and firewall policy. Do not add those routes
 to this process for deployment convenience.
 
 This source and reference unit do not authorize installation or a lab change.
-G2 remains required for an exact VM Factory plan, service identity, addresses,
-certificate profile, firewall flows, secret references, expiry, and rollback.
+An exact control-plane authorization remains required for the VM Factory plan,
+service identity, addresses, certificate profile, firewall flows, secret
+references, expiry, and rollback. Before G2, the V1D server-validation authority
+may admit only synthetic validation identities on the named private server with
+all canary and endpoint routes blocked. G2 remains required before this service
+admits traffic from a disposable canary or any other endpoint.
 
 ## Startup contract
 

@@ -100,7 +100,10 @@ operational facts and dependencies are recorded in the
 - telemetry outage, capacity, certificate-revocation, and containment tests have
   observable outcomes and rollback; and
 - secrets, keys, retention, incident response, and service objectives have
-  named owners and runbooks.
+  named owners and runbooks; and
+- any pre-G2 control-plane deployment uses the exact bounded V1D
+  server-validation authority, synthetic validation identities, and blocked
+  endpoint routes defined in the authorization and server lifecycle contracts.
 
 ### V1E — G2 canary
 

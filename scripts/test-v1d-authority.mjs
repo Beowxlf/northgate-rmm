@@ -1763,6 +1763,7 @@ assert(
 passed += 1;
 
 const g2AfterCloseout = structuredClone(closedWithCloseout);
+g2AfterCloseout.currentPhase = 2;
 g2AfterCloseout.gates.find((gate) => gate.id === "G2").status = "open";
 g2AfterCloseout.gates.find((gate) => gate.id === "G2").authorization =
   g2AuthorizationPath;
@@ -1775,6 +1776,57 @@ assert.deepEqual(
     }),
   ),
   [],
+);
+passed += 1;
+
+const wrongPhaseG2 = structuredClone(g2AfterCloseout);
+wrongPhaseG2.currentPhase = 1;
+assert(
+  validateV1dAuthority(
+    wrongPhaseG2,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2Fixture,
+    }),
+  ).some((item) => item.includes("G2 requires active project Phase 2")),
+  "G2 opened outside Phase 2",
+);
+passed += 1;
+
+const skippedG3 = structuredClone(closedWithCloseout);
+skippedG3.currentPhase = 3;
+skippedG3.gates.find((gate) => gate.id === "G3").status = "open";
+skippedG3.gates.find((gate) => gate.id === "G3").authorization =
+  "docs/governance/authorizations/G3-WINDOWS-CANARY-EXACT.md";
+assert(
+  validateV1dAuthority(
+    skippedG3,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+    }),
+  ).some((item) =>
+    item.includes("G3 requires completed G2 lifecycle evidence"),
+  ),
+  "G3 skipped the completed G2 lifecycle",
+);
+passed += 1;
+
+const neverOpenedG2Closing = structuredClone(closedWithCloseout);
+neverOpenedG2Closing.currentPhase = 2;
+neverOpenedG2Closing.gates.find((gate) => gate.id === "G2").status = "closing";
+neverOpenedG2Closing.gates.find((gate) => gate.id === "G2").authorization =
+  g2AuthorizationPath;
+assert(
+  validateV1dAuthority(
+    neverOpenedG2Closing,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2Fixture,
+    }),
+  ).some((item) =>
+    item.includes("requires a preceding protected-main open lifecycle"),
+  ),
+  "a never-opened G2 gate entered cleanup",
 );
 passed += 1;
 

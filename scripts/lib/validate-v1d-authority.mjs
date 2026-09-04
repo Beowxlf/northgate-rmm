@@ -1047,6 +1047,13 @@ function validateProductGateLifecycle(
   const finalizingCloseout =
     priorGate?.status === "closing" && gate.status !== "closing";
   if (
+    gate.status === "closing" &&
+    !["open", "closing"].includes(priorGate?.status)
+  )
+    errors.push(
+      `${gate.id} closing state requires a preceding protected-main open lifecycle.`,
+    );
+  if (
     priorGate?.status === "open" &&
     (scopeChanged || (!enteringClosing && gate.status !== "open"))
   )
@@ -2958,6 +2965,41 @@ export function validateV1dAuthority(
   for (const gateId of REQUIRED_CLOSED_GATES) {
     const gate = gates.gates?.find((item) => item.id === gateId);
     const priorGate = protectedMainGate(readAtProtectedMain, gateId);
+    if (gate?.status === "open" || gate?.status === "closing") {
+      const expectedPhase = Number.parseInt(gateId.slice(1), 10);
+      if (gates.currentPhase !== expectedPhase)
+        errors.push(
+          `${gateId} requires active project Phase ${expectedPhase}.`,
+        );
+      const predecessorIds = REQUIRED_CLOSED_GATES.slice(
+        0,
+        REQUIRED_CLOSED_GATES.indexOf(gateId),
+      );
+      if (gateId === "G2") {
+        if (
+          authority.status !== "closed" ||
+          !Array.isArray(authority.closeouts) ||
+          authority.closeouts.length === 0
+        )
+          errors.push(
+            "G2 requires a completed V1D-SV lifecycle closeout on protected main.",
+          );
+      } else {
+        for (const predecessorId of predecessorIds) {
+          const predecessor = gates.gates?.find(
+            (item) => item.id === predecessorId,
+          );
+          if (
+            predecessor?.status !== "closed" ||
+            !Array.isArray(predecessor.closeouts) ||
+            predecessor.closeouts.length === 0
+          )
+            errors.push(
+              `${gateId} requires completed ${predecessorId} lifecycle evidence.`,
+            );
+        }
+      }
+    }
     if (gate)
       errors.push(
         ...validateProductGateLifecycle(gate, priorGate, {

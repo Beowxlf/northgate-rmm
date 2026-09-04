@@ -37,6 +37,12 @@ Each gate also permits exactly one operation string and one target string. The
 machine validator enforces these semantic prefixes so a correctly hashed scope
 cannot borrow authority from another gate:
 
+An active or closing product gate must equal the numbered active project phase
+(`G2` in Phase 2 through `G8` in Phase 8). G2 additionally requires a completed
+V1D-SV lifecycle closeout. Every later gate requires each earlier product gate
+to be closed with at least one immutable lifecycle closeout, preventing phase
+skips or concurrent activation.
+
 | Gate | Operation prefix                         | Target prefix                                  |
 | ---- | ---------------------------------------- | ---------------------------------------------- |
 | G2   | `install:linux-agent-read-only:`         | `linux-canary:`                                |
@@ -68,6 +74,10 @@ Third, a later change consumes that exact protected-main pending record, appends
 it to `closeouts`, names it as `closeout`, and moves to `closed` or opens a newly
 authorized scope. Direct open-to-closed and open-to-open rescope transitions
 fail closed.
+
+A product gate may enter `closing` only from that same gate's protected-main
+`open` state. A never-opened or already-closed gate cannot manufacture cleanup
+history by moving directly to `closing`.
 
 Cleanup events must follow the start of the exact authorization's frozen
 `closing` run. Finalization requires the pending closeout and evidence to match

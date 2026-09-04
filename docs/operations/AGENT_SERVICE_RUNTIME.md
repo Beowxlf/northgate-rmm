@@ -39,6 +39,9 @@ The v1 DSN names one private or loopback IP literal. DNS names, public
 addresses, libpq multi-host authorities, and `host`, `hostaddr`, or `service`
 query overrides fail closed so the configured connection timeout is an overall
 connection-attempt bound rather than a per-target multiplier.
+The process also refuses every inherited `PG...` libpq environment variable;
+all connection identity, routing, TLS, and timeout inputs must therefore come
+from the validated credential and the service's explicit connection options.
 
 Before opening a socket, startup verifies that every migration packaged with the
 service is present in PostgreSQL with the exact expected checksum. Migration is

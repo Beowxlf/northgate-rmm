@@ -117,6 +117,19 @@ def test_database_dsn_is_loaded_without_entering_configuration(tmp_path: Path) -
     assert load_database_dsn(path) == dsn
 
 
+def test_database_dsn_rejects_inherited_libpq_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "database-dsn"
+    path.write_text("postgresql://service:synthetic@10.30.0.10/northgate")
+    if os.name == "posix":
+        path.chmod(0o600)
+    monkeypatch.setenv("PGHOSTADDR", "8.8.8.8")
+
+    with pytest.raises(ValidationError, match="environment variables"):
+        load_database_dsn(path)
+
+
 @pytest.mark.parametrize(
     "value",
     [

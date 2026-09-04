@@ -117,6 +117,8 @@ def load_agent_service_configuration(path: Path) -> AgentServiceConfiguration:
 def load_database_dsn(path: Path) -> str:
     """Read the PostgreSQL DSN from a bounded owner/root-only credential file."""
 
+    if any(name.startswith("PG") for name in os.environ):
+        raise ValidationError("libpq environment variables are not allowed")
     encoded = _read_regular_file(
         path,
         label="database DSN credential",

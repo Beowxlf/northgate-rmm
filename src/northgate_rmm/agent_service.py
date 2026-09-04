@@ -163,9 +163,12 @@ async def run_agent_service(
         await listener.start()
         await stopped.wait()
     finally:
-        await listener.close()
-        for service_signal in installed_signals:
-            loop.remove_signal_handler(service_signal)
+        store.begin_shutdown()
+        try:
+            await listener.close()
+        finally:
+            for service_signal in installed_signals:
+                loop.remove_signal_handler(service_signal)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

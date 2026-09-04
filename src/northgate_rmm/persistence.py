@@ -12,9 +12,12 @@ import json
 import math
 import re
 import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Lock
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -144,10 +147,17 @@ class PostgresControlPlane:
             )
         self._dsn = dsn
         self._operation_timeout_seconds = operation_timeout_seconds
+        self._connection_lock = Lock()
+        self._active_connections: dict[int, Connection[Row]] = {}
+        self._shutting_down = False
 
-    def _connect(self) -> Connection[Row]:
+    @contextmanager
+    def _connect(self) -> Iterator[Connection[Row]]:
+        with self._connection_lock:
+            if self._shutting_down:
+                raise ValidationError("database control plane is shutting down")
         timeout_milliseconds = math.ceil(self._operation_timeout_seconds * 1_000)
-        return connect(
+        connection = connect(
             self._dsn,
             row_factory=dict_row,
             connect_timeout=math.ceil(self._operation_timeout_seconds),
@@ -156,6 +166,32 @@ class PostgresControlPlane:
                 f"-c lock_timeout={timeout_milliseconds}"
             ),
         )
+        registered = False
+        try:
+            with self._connection_lock:
+                if self._shutting_down:
+                    raise ValidationError("database control plane is shutting down")
+                self._active_connections[id(connection)] = connection
+                registered = True
+            with connection:
+                yield connection
+        finally:
+            if registered:
+                with self._connection_lock:
+                    self._active_connections.pop(id(connection), None)
+            connection.close()
+
+    def begin_shutdown(self) -> None:
+        """Reject new work and interrupt every registered database connection."""
+
+        with self._connection_lock:
+            self._shutting_down = True
+            connections = tuple(self._active_connections.values())
+        for connection in connections:
+            with suppress(Exception):
+                connection.cancel_safe(timeout=1.0)
+            with suppress(Exception):
+                connection.close()
 
     def verify_schema_state(self) -> tuple[str, ...]:
         """Fail closed unless every packaged migration is applied byte-for-byte."""

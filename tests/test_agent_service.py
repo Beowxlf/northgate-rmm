@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -15,6 +15,7 @@ from northgate_rmm.agent_service import (
     run_agent_service,
 )
 from northgate_rmm.errors import ValidationError
+from northgate_rmm.persistence import PostgresControlPlane
 
 
 def configuration_value(tmp_path: Path) -> dict[str, object]:
@@ -169,6 +170,9 @@ def test_agent_service_verifies_schema_and_closes_listener(
             events.append("schema")
             return ("0001_test.sql",)
 
+        def begin_shutdown(self) -> None:
+            events.append("database_shutdown")
+
     class FakeListener:
         def __init__(self, _listener: object, _store: object) -> None:
             events.append("construct")
@@ -207,7 +211,49 @@ def test_agent_service_verifies_schema_and_closes_listener(
 
     asyncio.run(exercise())
 
-    assert events == ["schema", "construct", "start", "close"]
+    assert events == ["schema", "construct", "start", "database_shutdown", "close"]
+
+
+def test_database_shutdown_cancels_active_connection_and_rejects_new_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import northgate_rmm.persistence as persistence_module
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.cancel_timeout: float | None = None
+            self.closed = False
+
+        def __enter__(self) -> FakeConnection:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def cancel_safe(self, *, timeout: float) -> None:
+            self.cancel_timeout = timeout
+
+        def close(self) -> None:
+            self.closed = True
+
+    connection = FakeConnection()
+
+    def connect_fake(*args: object, **kwargs: object) -> Any:
+        del args, kwargs
+        return connection
+
+    monkeypatch.setattr(persistence_module, "connect", connect_fake)
+    store = PostgresControlPlane("postgresql://database.test/northgate")
+    context = store._connect()
+    context.__enter__()
+
+    store.begin_shutdown()
+
+    assert connection.cancel_timeout == 1.0
+    assert connection.closed is True
+    context.__exit__(None, None, None)
+    with pytest.raises(ValidationError, match="shutting down"), store._connect():
+        pass
 
 
 def test_agent_service_refuses_root_before_reading_credentials(

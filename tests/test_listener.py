@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import socket
 import ssl
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import NoReturn
@@ -388,6 +389,10 @@ def test_listener_rate_limits_one_authenticated_identity(tmp_path: Path) -> None
     asyncio.run(run_listener_rate_limit_scenario(tmp_path))
 
 
+def test_listener_rebinds_fixed_port_after_force_closed_request(tmp_path: Path) -> None:
+    asyncio.run(run_listener_restart_scenario(tmp_path))
+
+
 async def run_listener_scenario(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     material = issue_material(now)
@@ -599,6 +604,33 @@ async def run_listener_rate_limit_scenario(tmp_path: Path) -> None:
         assert len(store.inventories) == 32
     finally:
         await listener.close()
+
+
+async def run_listener_restart_scenario(tmp_path: Path) -> None:
+    now = datetime.now(UTC)
+    material = issue_material(now)
+    paths = write_material(tmp_path, material)
+    fingerprint = public_key_fingerprint(material.client_key.public_key())
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    configuration = replace(listener_configuration(paths), port=port)
+
+    for _ in range(2):
+        listener = AgentTLSListener(
+            configuration, RecordingStore(material.endpoint_id, fingerprint)
+        )
+        await listener.start()
+        try:
+            response = await raw_https_request(
+                "127.0.0.1",
+                port,
+                client_ssl_context(paths),
+                request_bytes(inventory_body(material.endpoint_id, datetime.now(UTC))),
+            )
+            assert response.startswith(b"HTTP/1.1 200 OK\r\n")
+        finally:
+            await listener.close()
 
 
 def issue_material(now: datetime) -> CertificateMaterial:

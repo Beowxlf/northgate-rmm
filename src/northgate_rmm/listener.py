@@ -237,7 +237,7 @@ class AgentTLSListener:
                 port=self._configuration.port,
                 ssl_context=build_server_ssl_context(self._configuration),
                 backlog=32,
-                reuse_address=False,
+                reuse_address=True,
                 reuse_port=False,
                 handshake_timeout_seconds=(self._configuration.request_timeout_seconds),
             )

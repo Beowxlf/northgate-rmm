@@ -202,7 +202,12 @@ def _read_regular_file(
         raise ValidationError(f"{label} path must be absolute")
     if path.is_symlink():
         raise ValidationError(f"{label} could not be opened safely")
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     descriptor: int | None = None
     try:
         descriptor = os.open(path, flags)

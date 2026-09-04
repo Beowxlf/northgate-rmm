@@ -93,6 +93,19 @@ def test_agent_service_configuration_rejects_symlink(tmp_path: Path) -> None:
         load_agent_service_configuration(link)
 
 
+def test_agent_service_configuration_rejects_fifo_without_blocking(
+    tmp_path: Path,
+) -> None:
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("POSIX FIFO contract")
+    path = tmp_path / "agent-service.fifo"
+    mkfifo(path)
+
+    with pytest.raises(ValidationError, match="bounded regular file"):
+        load_agent_service_configuration(path)
+
+
 def test_database_dsn_is_loaded_without_entering_configuration(tmp_path: Path) -> None:
     dsn = "postgresql://service:synthetic@database.test/northgate"
     path = tmp_path / "database-dsn"

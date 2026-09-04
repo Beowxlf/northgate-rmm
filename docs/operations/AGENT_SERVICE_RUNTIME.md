@@ -45,7 +45,9 @@ The process refuses to run as root. It binds a fixed, private IP literal and
 non-privileged port, loads a TLS 1.3 server identity, requires an endpoint client
 certificate, and validates the endpoint CA and certificate profile at the
 existing listener boundary. `SIGINT` and `SIGTERM` stop admission and close the
-listener.
+listener. The reference unit allows 45 seconds for the configured maximum
+30-second database operation, listener cleanup, and executor shutdown before
+systemd may force termination.
 
 ## Reference Debian service
 

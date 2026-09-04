@@ -188,23 +188,78 @@ function renderCloseout(
   });
 }
 
-function renderProductGateAuthorization(gateId = "G2", overrides = {}) {
-  return renderRecord({
-    Gate: gateId,
+function buildProductGateFixture({ omitEvidenceId = null } = {}) {
+  const records = {};
+  const requiredEvidence = [
+    "data-collection-inventory-approved",
+    "endpoint-target-approved",
+    "linux-package-qualified",
+    "linux-service-reviewed",
+    "resource-limits-verified",
+    "uninstall-revoke-plan-verified",
+    "v1d-closeout-accepted",
+    "vm-factory-plan-approved",
+  ];
+  const evidenceDescriptors = requiredEvidence
+    .filter((id) => id !== omitEvidenceId)
+    .map((id) => {
+      const record = `docs/governance/authorizations/product-gates/evidence/G2-${id}.json`;
+      records[record] = canonical({
+        schemaVersion: 1,
+        gate: "G2",
+        evidenceId: id,
+        status: "Verified",
+        approver: "Beowxlf",
+        verifiedAt: "2026-09-04T13:00:00Z",
+        targetBinding: digest,
+        resultBinding: digest,
+      });
+      return { id, record, digest: hash(records[record]) };
+    });
+  const scopes = [
+    ["Operation", "Operation record", "Operation binding"],
+    ["TargetSet", "Target set record", "Target set binding"],
+    ["ArtifactSet", "Artifact set record", "Artifact set binding"],
+    ["IdentitySet", "Identity set record", "Identity set binding"],
+    ["NetworkPolicy", "Network policy record", "Network policy binding"],
+    ["Rollback", "Rollback record", "Rollback binding"],
+    [
+      "EvidenceBoundary",
+      "Evidence boundary record",
+      "Evidence boundary binding",
+    ],
+  ];
+  const authorizationFields = {
+    Gate: "G2",
     Status: "Authorized",
     Approver: "Beowxlf",
     "Audited commit": validFields["Audited commit"],
     "Issued at": "2026-09-04T13:40:00Z",
     "Expires at": "2026-09-04T14:30:00Z",
-    "Operation binding": digest,
-    "Target set binding": digest,
-    "Artifact set binding": digest,
-    "Identity set binding": digest,
-    "Network policy binding": digest,
-    "Rollback binding": digest,
-    "Evidence boundary binding": digest,
-    ...overrides,
-  });
+  };
+  for (const [bindingType, pathField, digestField] of scopes) {
+    const slug = bindingType
+      .replaceAll(/([a-z])([A-Z])/g, "$1-$2")
+      .toLowerCase();
+    const record = `docs/governance/authorizations/product-gates/scopes/G2-exact-${slug}.json`;
+    records[record] = canonical({
+      schemaVersion: 1,
+      gate: "G2",
+      bindingType,
+      status: "Approved",
+      approver: "Beowxlf",
+      approvedAt: "2026-09-04T13:20:00Z",
+      expiresAt: "2026-09-04T15:00:00Z",
+      scopeDigest: digest,
+      evidence: bindingType === "EvidenceBoundary" ? evidenceDescriptors : [],
+    });
+    authorizationFields[pathField] = record;
+    authorizationFields[digestField] = hash(records[record]);
+  }
+  return {
+    authorizationText: renderRecord(authorizationFields),
+    records,
+  };
 }
 
 function closeoutOptions(
@@ -213,40 +268,75 @@ function closeoutOptions(
     closeoutText = renderCloseout(),
     evidenceText = renderCleanupEvidence(),
     artifactsOnProtectedMain = false,
-    productGateAuthorizationText = null,
+    productGateFixture = null,
+    productAuthorizationOnProtectedMain = true,
   } = {},
 ) {
+  const productRecords = productGateFixture?.records ?? {};
   return {
     isRegularFile: (path) =>
       path === closeoutPath ||
       path === cleanupEvidencePath ||
-      (productGateAuthorizationText !== null && path === g2AuthorizationPath),
+      (productGateFixture !== null && path === g2AuthorizationPath) ||
+      Object.hasOwn(productRecords, path),
     readText: (path) => {
       if (path === closeoutPath) return closeoutText;
       if (path === cleanupEvidencePath) return evidenceText;
-      if (path === g2AuthorizationPath) return productGateAuthorizationText;
-      return null;
+      if (path === g2AuthorizationPath)
+        return productGateFixture?.authorizationText ?? null;
+      return productRecords[path] ?? null;
     },
+    readAtCommit: (_commit, path) => productRecords[path] ?? null,
+    isPathImmutableOnProtectedMain: (_commit, path) =>
+      Object.hasOwn(productRecords, path),
+    isPathIntroducedBefore: (earlierPath, laterPath) =>
+      Object.hasOwn(productRecords, earlierPath) &&
+      laterPath === g2AuthorizationPath,
     readAtProtectedMain: (path) => {
       if (path === "governance/gates.json")
         return canonical(protectedMainGates);
       if (path === exactPath) return renderRecord();
+      if (path === g2AuthorizationPath && productAuthorizationOnProtectedMain)
+        return productGateFixture?.authorizationText ?? null;
+      if (Object.hasOwn(productRecords, path)) return productRecords[path];
       if (artifactsOnProtectedMain && path === closeoutPath)
         return closeoutText;
       if (artifactsOnProtectedMain && path === cleanupEvidencePath)
         return evidenceText;
       return null;
     },
-    protectedMainPathVersionCount: (path) =>
-      artifactsOnProtectedMain &&
-      (path === closeoutPath || path === cleanupEvidencePath)
-        ? 1
-        : 0,
-    pathIntroductionTime: (path) =>
-      artifactsOnProtectedMain &&
-      (path === closeoutPath || path === cleanupEvidencePath)
-        ? "2026-09-04T13:35:00Z"
-        : null,
+    protectedMainPathVersionCount: (path) => {
+      if (
+        path === g2AuthorizationPath &&
+        productGateFixture &&
+        productAuthorizationOnProtectedMain
+      )
+        return 1;
+      if (
+        artifactsOnProtectedMain &&
+        (path === closeoutPath || path === cleanupEvidencePath)
+      )
+        return 1;
+      return 0;
+    },
+    pathIntroductionTime: (path) => {
+      if (
+        path === g2AuthorizationPath &&
+        productGateFixture &&
+        productAuthorizationOnProtectedMain
+      )
+        return "2026-09-04T13:45:00Z";
+      if (Object.hasOwn(productRecords, path))
+        return path.includes("/evidence/")
+          ? "2026-09-04T13:05:00Z"
+          : "2026-09-04T13:25:00Z";
+      if (
+        artifactsOnProtectedMain &&
+        (path === closeoutPath || path === cleanupEvidencePath)
+      )
+        return "2026-09-04T13:35:00Z";
+      return null;
+    },
     authorityOpenIntroductionTime: () => "2026-09-04T13:10:00Z",
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
@@ -1348,6 +1438,7 @@ assert(
 passed += 1;
 
 const sameChangeG2 = structuredClone(closedWithCloseout);
+const g2Fixture = buildProductGateFixture();
 sameChangeG2.gates.find((gate) => gate.id === "G2").status = "open";
 sameChangeG2.gates.find((gate) => gate.id === "G2").authorization =
   g2AuthorizationPath;
@@ -1355,7 +1446,7 @@ assert(
   validateV1dAuthority(
     sameChangeG2,
     closeoutOptions(priorOpen, {
-      productGateAuthorizationText: renderProductGateAuthorization(),
+      productGateFixture: g2Fixture,
     }),
   ).some((item) => item.includes("must be accepted once on protected main")),
   "same-change G2 opening did not require a prior protected-main closeout",
@@ -1371,10 +1462,72 @@ assert.deepEqual(
     g2AfterCloseout,
     closeoutOptions(closedWithCloseout, {
       artifactsOnProtectedMain: true,
-      productGateAuthorizationText: renderProductGateAuthorization(),
+      productGateFixture: g2Fixture,
     }),
   ),
   [],
+);
+passed += 1;
+
+const workingTreeApprovalErrors = validateV1dAuthority(
+  g2AfterCloseout,
+  closeoutOptions(closedWithCloseout, {
+    artifactsOnProtectedMain: true,
+    productGateFixture: g2Fixture,
+    productAuthorizationOnProtectedMain: false,
+  }),
+);
+assert(
+  workingTreeApprovalErrors.some((item) =>
+    item.includes("owner-accepted once on protected main"),
+  ),
+  `working-tree-only product-gate approval was accepted: ${workingTreeApprovalErrors.join(" | ")}`,
+);
+passed += 1;
+
+const incompleteG2Fixture = buildProductGateFixture({
+  omitEvidenceId: "linux-package-qualified",
+});
+assert(
+  validateV1dAuthority(
+    g2AfterCloseout,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: incompleteG2Fixture,
+    }),
+  ).some((item) => item.includes("evidence set is incomplete or duplicated")),
+  "G2 authorization with unresolved package evidence was accepted",
+);
+passed += 1;
+
+const mismatchedG2Fixture = buildProductGateFixture();
+mismatchedG2Fixture.authorizationText =
+  mismatchedG2Fixture.authorizationText.replace(
+    /^Operation binding:.*$/m,
+    `Operation binding: sha256:${"c".repeat(64)}`,
+  );
+assert(
+  validateV1dAuthority(
+    g2AfterCloseout,
+    closeoutOptions(closedWithCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: mismatchedG2Fixture,
+    }),
+  ).some((item) => item.includes("Operation scope digest mismatches")),
+  "unresolved product-gate scope digest was accepted",
+);
+passed += 1;
+
+const expiredG2Options = closeoutOptions(closedWithCloseout, {
+  artifactsOnProtectedMain: true,
+  productGateFixture: g2Fixture,
+});
+expiredG2Options.now = new Date("2026-09-04T14:31:00Z");
+assert(
+  validateV1dAuthority(g2AfterCloseout, expiredG2Options).some((item) =>
+    item.includes("invalid active time window"),
+  ),
+  "expired product-gate authorization was accepted",
 );
 passed += 1;
 

@@ -21,6 +21,20 @@ cross-gate, duplicated, malformed, placeholder, expired, future, or unprotected
 records fail closed. Use the
 [product-gate authorization template](templates/PRODUCT-GATE-AUTHORIZATION-TEMPLATE.md)
 in addition to the gate-specific requirements below.
+Each of the seven bound scope records and every evidence record must be
+canonical, separately owner-approved, digest-matched, single-use, unchanged on
+protected `main`, and present at the audited commit before the authorization is
+accepted. The exact required evidence IDs are enforced as follows:
+
+| Gate | Required evidence IDs                                                                                                                                                                                                                        |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G2   | `data-collection-inventory-approved`, `endpoint-target-approved`, `linux-package-qualified`, `linux-service-reviewed`, `resource-limits-verified`, `uninstall-revoke-plan-verified`, `v1d-closeout-accepted`, `vm-factory-plan-approved`     |
+| G3   | `data-collection-inventory-approved`, `endpoint-target-approved`, `resource-limits-verified`, `uninstall-revoke-plan-verified`, `v1d-closeout-accepted`, `vm-factory-plan-approved`, `windows-package-qualified`, `windows-service-reviewed` |
+| G4   | `audit-evidence-verified`, `cancellation-result-unknown-tested`, `duplicate-replay-tested`, `exact-target-approved`, `lease-timeout-tested`, `output-bounds-tested`, `typed-action-reviewed`                                                 |
+| G5   | `audit-evidence-verified`, `canary-tested`, `exact-target-approved`, `least-privilege-approved`, `postcondition-verified`, `rollback-verified`, `state-change-reviewed`                                                                      |
+| G6   | `canary-ring-approved`, `distribution-protected`, `exact-release-artifacts-verified`, `key-custody-verified`, `provenance-sbom-verified`, `rollback-freeze-tested`, `signing-profile-approved`                                               |
+| G7   | `break-glass-tested`, `consent-policy-approved`, `exact-target-approved`, `jit-expiry-tested`, `operator-identity-approved`, `protocol-reviewed`, `recording-audit-verified`                                                                 |
+| G8   | `backup-recovery-verified`, `capacity-slo-verified`, `data-retention-approved`, `incident-response-ready`, `multi-tenant-isolation-verified`, `public-exposure-approved`, `topology-approved`                                                |
 
 Phase-specific source development may be authorized by a separate committed
 development record that states an exact non-deployment boundary. Such a record

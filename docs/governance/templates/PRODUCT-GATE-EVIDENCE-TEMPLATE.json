@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "gate": "GN",
+  "evidenceId": "PLACEHOLDER",
+  "status": "Verified",
+  "approver": "Beowxlf",
+  "verifiedAt": "YYYY-MM-DDTHH:MM:SSZ",
+  "targetBinding": "sha256:PLACEHOLDER",
+  "resultBinding": "sha256:PLACEHOLDER"
+}

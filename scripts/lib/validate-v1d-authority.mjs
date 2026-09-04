@@ -26,23 +26,118 @@ const PRODUCT_GATE_AUTHORIZATION_FIELDS = [
   "Audited commit",
   "Issued at",
   "Expires at",
+  "Operation record",
   "Operation binding",
+  "Target set record",
   "Target set binding",
+  "Artifact set record",
   "Artifact set binding",
+  "Identity set record",
   "Identity set binding",
+  "Network policy record",
   "Network policy binding",
+  "Rollback record",
   "Rollback binding",
+  "Evidence boundary record",
   "Evidence boundary binding",
 ];
-const PRODUCT_GATE_DIGEST_FIELDS = [
-  "Operation binding",
-  "Target set binding",
-  "Artifact set binding",
-  "Identity set binding",
-  "Network policy binding",
-  "Rollback binding",
-  "Evidence boundary binding",
+const PRODUCT_GATE_SCOPE_BINDINGS = [
+  ["Operation", "Operation record", "Operation binding"],
+  ["TargetSet", "Target set record", "Target set binding"],
+  ["ArtifactSet", "Artifact set record", "Artifact set binding"],
+  ["IdentitySet", "Identity set record", "Identity set binding"],
+  ["NetworkPolicy", "Network policy record", "Network policy binding"],
+  ["Rollback", "Rollback record", "Rollback binding"],
+  ["EvidenceBoundary", "Evidence boundary record", "Evidence boundary binding"],
 ];
+const PRODUCT_GATE_SCOPE_FIELDS = [
+  "schemaVersion",
+  "gate",
+  "bindingType",
+  "status",
+  "approver",
+  "approvedAt",
+  "expiresAt",
+  "scopeDigest",
+  "evidence",
+];
+const PRODUCT_GATE_EVIDENCE_FIELDS = [
+  "schemaVersion",
+  "gate",
+  "evidenceId",
+  "status",
+  "approver",
+  "verifiedAt",
+  "targetBinding",
+  "resultBinding",
+];
+const PRODUCT_GATE_REQUIRED_EVIDENCE = {
+  G2: [
+    "data-collection-inventory-approved",
+    "endpoint-target-approved",
+    "linux-package-qualified",
+    "linux-service-reviewed",
+    "resource-limits-verified",
+    "uninstall-revoke-plan-verified",
+    "v1d-closeout-accepted",
+    "vm-factory-plan-approved",
+  ],
+  G3: [
+    "data-collection-inventory-approved",
+    "endpoint-target-approved",
+    "resource-limits-verified",
+    "uninstall-revoke-plan-verified",
+    "v1d-closeout-accepted",
+    "vm-factory-plan-approved",
+    "windows-package-qualified",
+    "windows-service-reviewed",
+  ],
+  G4: [
+    "audit-evidence-verified",
+    "cancellation-result-unknown-tested",
+    "duplicate-replay-tested",
+    "exact-target-approved",
+    "lease-timeout-tested",
+    "output-bounds-tested",
+    "typed-action-reviewed",
+  ],
+  G5: [
+    "audit-evidence-verified",
+    "canary-tested",
+    "exact-target-approved",
+    "least-privilege-approved",
+    "postcondition-verified",
+    "rollback-verified",
+    "state-change-reviewed",
+  ],
+  G6: [
+    "canary-ring-approved",
+    "distribution-protected",
+    "exact-release-artifacts-verified",
+    "key-custody-verified",
+    "provenance-sbom-verified",
+    "rollback-freeze-tested",
+    "signing-profile-approved",
+  ],
+  G7: [
+    "break-glass-tested",
+    "consent-policy-approved",
+    "exact-target-approved",
+    "jit-expiry-tested",
+    "operator-identity-approved",
+    "protocol-reviewed",
+    "recording-audit-verified",
+  ],
+  G8: [
+    "backup-recovery-verified",
+    "capacity-slo-verified",
+    "data-retention-approved",
+    "incident-response-ready",
+    "multi-tenant-isolation-verified",
+    "public-exposure-approved",
+    "topology-approved",
+  ],
+};
 
 const REQUIRED_RECORD_FIELDS = [
   "Authority",
@@ -582,9 +677,21 @@ function validateReopen(
   return errors;
 }
 
-function validateProductGateAuthorization(
+export function validateProductGateAuthorization(
   gate,
-  { isRegularFile, readText, isCommit, isProtectedMainCommit, now },
+  {
+    isRegularFile = () => false,
+    readText = () => null,
+    readAtCommit = () => null,
+    readAtProtectedMain = () => null,
+    isPathImmutableOnProtectedMain = () => false,
+    isPathIntroducedBefore = () => false,
+    pathIntroductionTime = () => null,
+    protectedMainPathVersionCount = () => null,
+    isCommit = () => false,
+    isProtectedMainCommit = () => false,
+    now = new Date(),
+  } = {},
 ) {
   const errors = [];
   const authorizationPath = gate.authorization;
@@ -602,6 +709,15 @@ function validateProductGateAuthorization(
   const text = readText(authorizationPath);
   if (typeof text !== "string" || text.trim() === "")
     return [`Open ${gate.id} has an unreadable authorization record.`];
+  const protectedAuthorization = readAtProtectedMain(authorizationPath);
+  if (
+    typeof protectedAuthorization !== "string" ||
+    normalizeText(protectedAuthorization) !== normalizeText(text) ||
+    protectedMainPathVersionCount(authorizationPath) !== 1
+  )
+    errors.push(
+      `${gate.id} authorization must be owner-accepted once on protected main before the gate opens.`,
+    );
   const { fields, duplicates } = parseRecord(text);
   for (const field of duplicates) {
     if (PRODUCT_GATE_AUTHORIZATION_FIELDS.includes(field))
@@ -618,10 +734,6 @@ function validateProductGateAuthorization(
     errors.push(`${gate.id} authorization record is not Authorized.`);
   if (fields.get("Approver") !== "Beowxlf")
     errors.push(`${gate.id} authorization record lacks owner approval.`);
-  for (const field of PRODUCT_GATE_DIGEST_FIELDS) {
-    if (!/^sha256:[a-f0-9]{64}$/.test(fields.get(field) ?? ""))
-      errors.push(`${gate.id} authorization record has an invalid ${field}.`);
-  }
   const auditedCommit = fields.get("Audited commit") ?? "";
   if (!/^[a-f0-9]{40}$/.test(auditedCommit) || !isCommit(auditedCommit))
     errors.push(
@@ -633,15 +745,183 @@ function validateProductGateAuthorization(
     );
   const issuedAt = validDate(fields.get("Issued at"));
   const expiresAt = validDate(fields.get("Expires at"));
+  const authorizationIntroducedAt = Date.parse(
+    pathIntroductionTime(authorizationPath) ?? "",
+  );
   if (
     issuedAt === null ||
     expiresAt === null ||
     expiresAt <= issuedAt ||
     expiresAt - issuedAt > MAX_AUTHORITY_LIFETIME_MS ||
     issuedAt > now.getTime() ||
-    expiresAt <= now.getTime()
+    expiresAt <= now.getTime() ||
+    !Number.isFinite(authorizationIntroducedAt) ||
+    issuedAt > authorizationIntroducedAt
   )
     errors.push(`${gate.id} authorization has an invalid active time window.`);
+
+  const evidenceIds = [];
+  let targetSetScopeDigest = null;
+  for (const [
+    bindingType,
+    pathField,
+    digestField,
+  ] of PRODUCT_GATE_SCOPE_BINDINGS) {
+    const recordPath = fields.get(pathField) ?? "";
+    const expectedDigest = fields.get(digestField) ?? "";
+    if (
+      !new RegExp(
+        `^docs/governance/authorizations/product-gates/scopes/${gate.id}-[A-Za-z0-9][A-Za-z0-9._-]*\\.json$`,
+      ).test(recordPath) ||
+      !/^sha256:[a-f0-9]{64}$/.test(expectedDigest) ||
+      !isRegularFile(recordPath)
+    ) {
+      errors.push(`${gate.id} lacks its exact ${bindingType} scope record.`);
+      continue;
+    }
+    const currentText = readText(recordPath);
+    const auditedText = readAtCommit(auditedCommit, recordPath);
+    const protectedText = readAtProtectedMain(recordPath);
+    if (
+      typeof currentText !== "string" ||
+      typeof auditedText !== "string" ||
+      typeof protectedText !== "string" ||
+      normalizeText(currentText) !== normalizeText(auditedText) ||
+      normalizeText(protectedText) !== normalizeText(auditedText) ||
+      !isPathImmutableOnProtectedMain(auditedCommit, recordPath) ||
+      !isPathIntroducedBefore(recordPath, authorizationPath)
+    ) {
+      errors.push(
+        `${gate.id} ${bindingType} scope is not immutable approved protected-main evidence.`,
+      );
+      continue;
+    }
+    if (sha256(auditedText) !== expectedDigest)
+      errors.push(`${gate.id} ${bindingType} scope digest mismatches.`);
+    const scope = parseCanonicalJson(auditedText);
+    if (!scope) {
+      errors.push(`${gate.id} ${bindingType} scope is not canonical JSON.`);
+      continue;
+    }
+    if (!hasExactUniqueEntries(Object.keys(scope), PRODUCT_GATE_SCOPE_FIELDS))
+      errors.push(`${gate.id} ${bindingType} scope has an invalid field set.`);
+    if (
+      scope.schemaVersion !== 1 ||
+      scope.gate !== gate.id ||
+      scope.bindingType !== bindingType ||
+      scope.status !== "Approved" ||
+      scope.approver !== "Beowxlf" ||
+      !/^sha256:[a-f0-9]{64}$/.test(scope.scopeDigest ?? "")
+    )
+      errors.push(`${gate.id} ${bindingType} scope has invalid approval data.`);
+    if (bindingType === "TargetSet") targetSetScopeDigest = scope.scopeDigest;
+    const approvedAt = validDate(scope.approvedAt);
+    const scopeExpiresAt = validDate(scope.expiresAt);
+    const scopeIntroducedAt = Date.parse(
+      pathIntroductionTime(recordPath) ?? "",
+    );
+    if (
+      approvedAt === null ||
+      scopeExpiresAt === null ||
+      issuedAt === null ||
+      expiresAt === null ||
+      approvedAt >= issuedAt ||
+      scopeExpiresAt < expiresAt ||
+      !Number.isFinite(scopeIntroducedAt) ||
+      approvedAt > scopeIntroducedAt
+    )
+      errors.push(
+        `${gate.id} ${bindingType} scope has an invalid time window.`,
+      );
+    if (!Array.isArray(scope.evidence)) {
+      errors.push(`${gate.id} ${bindingType} scope lacks evidence records.`);
+      continue;
+    }
+    if (bindingType !== "EvidenceBoundary" && scope.evidence.length !== 0)
+      errors.push(
+        `${gate.id} gate evidence must be listed only by the EvidenceBoundary scope.`,
+      );
+    for (const descriptor of scope.evidence) {
+      const evidenceId = descriptor?.id;
+      const evidencePath = descriptor?.record;
+      const evidenceDigest = descriptor?.digest;
+      if (
+        typeof evidenceId !== "string" ||
+        !new RegExp(
+          `^docs/governance/authorizations/product-gates/evidence/${gate.id}-[A-Za-z0-9][A-Za-z0-9._-]*\\.json$`,
+        ).test(evidencePath ?? "") ||
+        !/^sha256:[a-f0-9]{64}$/.test(evidenceDigest ?? "") ||
+        !isRegularFile(evidencePath)
+      ) {
+        errors.push(`${gate.id} ${bindingType} scope has invalid evidence.`);
+        continue;
+      }
+      const currentEvidence = readText(evidencePath);
+      const auditedEvidence = readAtCommit(auditedCommit, evidencePath);
+      const protectedEvidence = readAtProtectedMain(evidencePath);
+      if (
+        typeof currentEvidence !== "string" ||
+        typeof auditedEvidence !== "string" ||
+        typeof protectedEvidence !== "string" ||
+        normalizeText(currentEvidence) !== normalizeText(auditedEvidence) ||
+        normalizeText(protectedEvidence) !== normalizeText(auditedEvidence) ||
+        !isPathImmutableOnProtectedMain(auditedCommit, evidencePath) ||
+        !isPathIntroducedBefore(evidencePath, authorizationPath)
+      ) {
+        errors.push(
+          `${gate.id} evidence ${evidenceId} is not immutable approved protected-main evidence.`,
+        );
+        continue;
+      }
+      if (sha256(auditedEvidence) !== evidenceDigest)
+        errors.push(`${gate.id} evidence ${evidenceId} digest mismatches.`);
+      const evidence = parseCanonicalJson(auditedEvidence);
+      if (!evidence) {
+        errors.push(`${gate.id} evidence ${evidenceId} is not canonical JSON.`);
+        continue;
+      }
+      if (
+        !hasExactUniqueEntries(
+          Object.keys(evidence),
+          PRODUCT_GATE_EVIDENCE_FIELDS,
+        )
+      )
+        errors.push(
+          `${gate.id} evidence ${evidenceId} has an invalid field set.`,
+        );
+      if (
+        evidence.schemaVersion !== 1 ||
+        evidence.gate !== gate.id ||
+        evidence.evidenceId !== evidenceId ||
+        evidence.status !== "Verified" ||
+        evidence.approver !== "Beowxlf" ||
+        !/^sha256:[a-f0-9]{64}$/.test(evidence.targetBinding ?? "") ||
+        !/^sha256:[a-f0-9]{64}$/.test(evidence.resultBinding ?? "") ||
+        evidence.targetBinding !== targetSetScopeDigest
+      )
+        errors.push(
+          `${gate.id} evidence ${evidenceId} has invalid proof data.`,
+        );
+      const verifiedAt = validDate(evidence.verifiedAt);
+      const evidenceIntroducedAt = Date.parse(
+        pathIntroductionTime(evidencePath) ?? "",
+      );
+      if (
+        verifiedAt === null ||
+        approvedAt === null ||
+        verifiedAt > approvedAt ||
+        !Number.isFinite(evidenceIntroducedAt) ||
+        verifiedAt > evidenceIntroducedAt
+      )
+        errors.push(`${gate.id} evidence ${evidenceId} has an invalid time.`);
+      evidenceIds.push(evidenceId);
+    }
+  }
+  const requiredEvidence = PRODUCT_GATE_REQUIRED_EVIDENCE[gate.id] ?? [];
+  if (!hasExactUniqueEntries(evidenceIds, requiredEvidence))
+    errors.push(
+      `${gate.id} gate-specific evidence set is incomplete or duplicated.`,
+    );
   return errors;
 }
 
@@ -1808,6 +2088,12 @@ export function validateV1dAuthority(
         ...validateProductGateAuthorization(gate, {
           isRegularFile,
           readText,
+          readAtCommit,
+          readAtProtectedMain,
+          isPathImmutableOnProtectedMain,
+          isPathIntroducedBefore,
+          pathIntroductionTime,
+          protectedMainPathVersionCount,
           isCommit,
           isProtectedMainCommit,
           now,

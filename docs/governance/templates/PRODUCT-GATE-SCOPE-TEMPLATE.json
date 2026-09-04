@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "gate": "GN",
+  "bindingType": "PLACEHOLDER",
+  "status": "Approved",
+  "approver": "Beowxlf",
+  "approvedAt": "YYYY-MM-DDTHH:MM:SSZ",
+  "expiresAt": "YYYY-MM-DDTHH:MM:SSZ",
+  "scopeDigest": "sha256:PLACEHOLDER",
+  "evidence": [
+    {
+      "id": "PLACEHOLDER",
+      "record": "docs/governance/authorizations/product-gates/evidence/GN-PLACEHOLDER.json",
+      "digest": "sha256:PLACEHOLDER"
+    }
+  ]
+}

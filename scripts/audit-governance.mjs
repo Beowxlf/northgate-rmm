@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { validateV1dAuthority } from "./lib/validate-v1d-authority.mjs";
+
 const root = process.cwd();
 const errors = [];
 const warnings = [];
@@ -95,6 +97,9 @@ if (new Set(gateIds).size !== gateIds.length) error("Duplicate gate ID.");
 for (let number = 0; number <= 8; number += 1) {
   if (!gateIds.includes(`G${number}`)) error(`Missing gate G${number}.`);
 }
+
+for (const authorityError of validateV1dAuthority(gates, exists))
+  error(authorityError);
 
 for (const artifact of gates.requiredPhase0Artifacts) {
   if (!exists(artifact))

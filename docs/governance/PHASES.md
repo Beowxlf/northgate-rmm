@@ -4,7 +4,12 @@ Each phase has a purpose, permitted work, entry evidence, exit evidence, and an
 authorization record. Later-phase operational work is prohibited while an
 earlier gate is closed. Bounded source development may proceed only under the
 separate non-deployment authorization mechanism defined in
-`AUTHORIZATION_GATES.md`.
+`AUTHORIZATION_GATES.md`. The sole pre-G2 operational exception is the bounded
+Phase 2 V1D control-plane validation authority defined there and in
+[ADR 0011](../architecture/adr/0011-pre-g2-control-plane-validation.md). It may
+operate only the named private server with synthetic validation identities and
+blocked endpoint routes after all prerequisites pass; it does not open G2 or
+permit an endpoint installation.
 
 ## Phase 0 — Govern and design
 
@@ -67,6 +72,18 @@ Permitted:
 - bounded read-only collectors;
 - outbound authenticated transport;
 - bounded offline spool.
+
+Pre-G2 V1D validation boundary:
+
+- the machine-readable `V1D-SV` authority remains closed until V1C and every
+  required external dependency implementation pass;
+- a separate exact record and post-issued Factory plan approval may then permit
+  only the named private control-plane server and synthetic validation
+  identities;
+- canary and endpoint routes remain blocked, and no endpoint-usable grant,
+  identity, package, or traffic is permitted; and
+- the negative tests, rollback, and recovery evidence in ADR 0011 and the
+  security test plan must pass before the server evidence can satisfy V1D.
 
 Exit evidence:
 

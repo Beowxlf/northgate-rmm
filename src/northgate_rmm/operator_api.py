@@ -59,9 +59,12 @@ class OperatorPrincipal:
                 raise ValidationError(f"operator {name} is invalid")
         if type(self.mfa) is not bool:
             raise ValidationError("operator mfa is invalid")
-        if not self.roles or len(self.roles) > 8:
+        if type(self.roles) is not tuple or not self.roles or len(self.roles) > 8:
             raise ValidationError("operator roles are invalid")
-        if any(not role or len(role) > MAX_OPERATOR_ROLE_LENGTH for role in self.roles):
+        if any(
+            type(role) is not str or not role or len(role) > MAX_OPERATOR_ROLE_LENGTH
+            for role in self.roles
+        ):
             raise ValidationError("operator role is invalid")
         if len(set(self.roles)) != len(self.roles):
             raise ValidationError("operator roles contain a duplicate")

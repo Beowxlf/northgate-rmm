@@ -26,8 +26,10 @@ fails permanently and is audited.
 The V1B source implements this contract as an in-process application boundary
 behind an agent-only listener adapter. The adapter requires TLS 1.3 mutual
 authentication, disables session tickets, accepts a private exact bind address
-and authority, validates the single canonical endpoint URI SAN and supported
-public key, and removes framework version headers even from parser failures.
+and lowercase canonical authority, validates the single canonical endpoint URI
+SAN and supported public key, closes the connection when the protocol parses a
+second HTTP request, and removes framework version headers even from parser
+failures.
 It bounds TLS-handshake, header-read, and whole-request time; body size; backlog;
 global and per-identity active body readers; database statement/lock time; and
 global and per-identity request rate. Timed-out synchronous store work retains

@@ -109,7 +109,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-44 | Transport redirect or acknowledgement confusion                   | exact HTTPS origin/path, no proxy/redirect/reuse, TLS 1.3 mTLS, exact ID acknowledgement              | reject permanently, retain spool item, investigate trust or routing            |
 | TM-45 | Local identity is replaced, mismatched, or half-written           | create-once publication, private modes, stable-root reads, exact URI binding, bounded strict decode   | fail closed, do not reenroll, quarantine and reconcile uncertain local state   |
 | TM-46 | Logs or service packaging expose secrets or excess host authority | closed log schema; no raw errors; unprivileged hardened unit; bounded resources; lifecycle validation | reject event/package drift; preserve state; revoke identity before removal     |
-| TM-47 | Agent listener accepts downgraded or ambiguous transport          | TLS 1.3 only; mTLS; tickets off; exact URI/SPKI/Host; bounded strict parser; generic errors           | reject connection/request; preserve bounded audit; rotate suspect identity     |
+| TM-47 | Agent listener accepts downgraded or ambiguous transport          | TLS 1.3 only; mTLS; tickets off; exact URI/SPKI/Host; no pipelining; bounded strict parser            | reject connection/request; preserve bounded audit; rotate suspect identity     |
 | TM-48 | Peer exhausts listener or database capacity                       | TLS/header/request deadlines; global/per-identity admission and rate; database timeouts               | return retryable bounded error; retain admission until store exit; investigate |
 
 ## Denial-of-service considerations

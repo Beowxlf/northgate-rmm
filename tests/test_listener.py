@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import socket
@@ -393,6 +394,10 @@ def test_listener_rebinds_fixed_port_after_force_closed_request(tmp_path: Path) 
     asyncio.run(run_listener_restart_scenario(tmp_path))
 
 
+def test_listener_rejects_pipelined_requests(tmp_path: Path) -> None:
+    asyncio.run(run_listener_pipeline_scenario(tmp_path))
+
+
 async def run_listener_scenario(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     material = issue_material(now)
@@ -631,6 +636,37 @@ async def run_listener_restart_scenario(tmp_path: Path) -> None:
             assert response.startswith(b"HTTP/1.1 200 OK\r\n")
         finally:
             await listener.close()
+
+
+async def run_listener_pipeline_scenario(tmp_path: Path) -> None:
+    now = datetime.now(UTC)
+    material = issue_material(now)
+    paths = write_material(tmp_path, material)
+    fingerprint = public_key_fingerprint(material.client_key.public_key())
+    store = RecordingStore(material.endpoint_id, fingerprint)
+    listener = AgentTLSListener(listener_configuration(paths), store)
+    await listener.start()
+    try:
+        host, port = listener.addresses[0]
+        context = client_ssl_context(paths)
+        first = request_bytes(inventory_body(material.endpoint_id, now))
+        second = request_bytes(inventory_body(material.endpoint_id, now))
+        with contextlib.suppress(ConnectionError):
+            await raw_https_request(host, port, context, first + second)
+        await asyncio.sleep(0.05)
+        assert len(store.inventories) <= 1
+
+        accepted_before = len(store.inventories)
+        response = await raw_https_request(
+            host,
+            port,
+            context,
+            request_bytes(inventory_body(material.endpoint_id, datetime.now(UTC))),
+        )
+        assert response.startswith(b"HTTP/1.1 200 OK\r\n")
+        assert len(store.inventories) == accepted_before + 1
+    finally:
+        await listener.close()
 
 
 def issue_material(now: datetime) -> CertificateMaterial:

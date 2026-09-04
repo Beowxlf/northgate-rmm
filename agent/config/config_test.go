@@ -115,6 +115,7 @@ func TestValidateRejectsInvalidControlPlaneURL(t *testing.T) {
 		"https://\u200bexample.com/",
 		"https://éxample.invalid/",
 		"https://%65xample.invalid/",
+		"https://RMM.invalid/",
 		"https://bad_name.invalid/",
 		"https://127.1/",
 		"https://2130706433/",

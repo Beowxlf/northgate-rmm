@@ -628,12 +628,13 @@ class _HardenedRequestHandler(RequestHandler):
 
     def __init__(
         self,
-        *args: object,
+        manager: Server,
+        *,
         header_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
         connection_admission: _ConnectionAdmission,
         **kwargs: object,
     ) -> None:
-        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        super().__init__(manager, **kwargs)  # type: ignore[arg-type]
         self._header_timeout_seconds = header_timeout_seconds
         self._header_timeout_handle: asyncio.TimerHandle | None = None
         self._connection_admission = connection_admission
@@ -657,6 +658,10 @@ class _HardenedRequestHandler(RequestHandler):
 
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
+        if self._request_count > 1:
+            self._messages.clear()
+            self.force_close()
+            return
         if self._messages:
             self._cancel_header_timeout()
 

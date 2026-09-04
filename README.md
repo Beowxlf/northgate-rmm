@@ -56,8 +56,9 @@ in-memory test-only certificate authority. A private, agent-only listener adapte
 now enforces TLS 1.3 mutual authentication, exact certificate URI and public-key
 binding, TLS/header/whole-request deadlines, global and per-identity pre-body
 concurrency admission, database operation deadlines, authenticated rate ceilings,
-bounded HTTP parsing, and generic fail-closed errors in real loopback socket
-tests. It is a source component, not an activated service: no operational
+single-request connections, bounded HTTP parsing, and generic fail-closed errors
+in real loopback socket tests. It is a source component, not an activated service:
+no operational
 certificate issuer, service entrypoint, network rule, job scheduler, or
 command-execution primitive is present.
 

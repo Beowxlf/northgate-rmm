@@ -66,6 +66,23 @@ binding, exposes one bounded server-authenticated TLS route, rate-limits
 pre-identity clients, and owns graceful listener shutdown. Its database,
 inbound-server, and issuer-workload credentials are separate.
 
+## Operator session verifier client
+
+Presents one dedicated operator-service workload certificate to one allowlisted
+private verifier address while checking its independent DNS TLS identity. It
+forwards the opaque bearer credential only to the fixed verification route,
+accepts one exact bounded current-session response, and never caches positive
+identity state or follows redirects.
+
+## Operator service runtime
+
+Composes only the read-only operator application, its least-privilege
+PostgreSQL adapter, and the external session verifier. It refuses root, verifies
+schema and distinct inbound/verifier TLS identities before binding, exposes only
+the endpoint list and canonical detail routes, and owns bounded admission and
+graceful shutdown. It shares no listener or credential with enrollment or agent
+ingress.
+
 ## Audit writer
 
 Writes append-oriented structured events with actor, subject, action, decision,

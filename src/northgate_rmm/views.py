@@ -29,8 +29,25 @@ class EndpointReader(Protocol):
 def render_endpoint_list(reader: EndpointReader, *, now: datetime) -> str:
     """Render an escaped endpoint table from the read-only control-plane API."""
 
+    return render_endpoint_page(
+        reader,
+        reader.list_endpoints(),
+        next_after=None,
+        now=now,
+    )
+
+
+def render_endpoint_page(
+    reader: EndpointReader,
+    endpoints: tuple[Endpoint, ...],
+    *,
+    next_after: UUID | None,
+    now: datetime,
+) -> str:
+    """Render one already-bounded endpoint page and an opaque next cursor."""
+
     rows = []
-    for endpoint in reader.list_endpoints():
+    for endpoint in endpoints:
         status = reader.endpoint_status(endpoint.endpoint_id, now=now)
         rows.append(
             "<tr>"
@@ -44,13 +61,18 @@ def render_endpoint_list(reader: EndpointReader, *, now: datetime) -> str:
             "</tr>"
         )
     body = "".join(rows) or '<tr><td colspan="6">No endpoints</td></tr>'
+    next_link = (
+        f'<nav><a href="/endpoints?after={next_after}">Next page</a></nav>'
+        if next_after is not None
+        else ""
+    )
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         "<title>NorthGate RMM endpoints</title></head><body>"
         "<main><h1>Endpoints</h1><table><thead><tr>"
         "<th>Name</th><th>Platform</th><th>Architecture</th>"
         "<th>Lifecycle</th><th>Health</th><th>Last heartbeat</th>"
-        f"</tr></thead><tbody>{body}</tbody></table></main></body></html>"
+        f"</tr></thead><tbody>{body}</tbody></table>{next_link}</main></body></html>"
     )
 
 

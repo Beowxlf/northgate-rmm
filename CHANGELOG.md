@@ -7,6 +7,9 @@ Changelog structure and will adopt semantic versioning before its first release.
 
 ### Added
 
+- a source-only private operator TLS service, fixed-route mTLS session verifier
+  client, exact configuration, disabled hardened systemd unit, and fail-closed
+  isolation tests without opening G2;
 - version 1.0 release criteria and bounded authorization for isolated
   control-plane source development without opening G2;
 - G2B non-published release-candidate trust qualification pipeline with

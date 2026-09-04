@@ -68,9 +68,9 @@ class FailingAuditPlane(ControlPlane):
         super().__init__()
         self.list_called = False
 
-    def list_endpoints(self):  # type: ignore[no-untyped-def]
+    def list_endpoint_page(self, **kwargs):  # type: ignore[no-untyped-def]
         self.list_called = True
-        return super().list_endpoints()
+        return super().list_endpoint_page(**kwargs)
 
     def record_operator_access(self, **_kwargs):  # type: ignore[no-untyped-def]
         raise RuntimeError("audit sink unavailable")
@@ -146,6 +146,45 @@ def test_operator_list_revalidates_renders_server_freshness_and_audits() -> None
     authentication = plane.audit_events[-2]
     assert authentication.action == "operator.authenticate"
     assert authentication.decision == "accepted"
+
+
+def test_operator_list_uses_bounded_keyset_pages() -> None:
+    app, plane, verifier, _agent = application()
+    for index in range(101):
+        SyntheticAgent.enroll(
+            plane,
+            display_name=f"linux-page-{index:03d}",
+            platform=Platform.LINUX,
+            architecture="amd64",
+            now=NOW - timedelta(minutes=10),
+        )
+    ordered = plane.list_endpoints()
+
+    first = app.handle(
+        OperatorRequest("GET", "/endpoints", AUTHORIZATION),
+        received_at=NOW,
+    )
+    first_cursor = ordered[99].endpoint_id
+    second = app.handle(
+        OperatorRequest(
+            "GET",
+            "/endpoints",
+            AUTHORIZATION,
+            f"after={first_cursor}",
+        ),
+        received_at=NOW,
+    )
+
+    assert first.status == 200
+    assert first.body.count(b'<td><a href="/endpoints/') == 100
+    assert f"/endpoints?after={first_cursor}".encode() in first.body
+    assert str(ordered[100].endpoint_id).encode() not in first.body
+    assert second.status == 200
+    assert second.body.count(b'<td><a href="/endpoints/') == 2
+    assert str(ordered[100].endpoint_id).encode() in second.body
+    assert str(ordered[101].endpoint_id).encode() in second.body
+    assert b"Next page" not in second.body
+    assert verifier.calls == [(AUTHORIZATION, NOW), (AUTHORIZATION, NOW)]
 
 
 def test_operator_detail_is_read_only_escaped_and_audited() -> None:
@@ -303,6 +342,18 @@ def test_operator_identity_scope_assurance_and_time_fail_closed(
     [
         OperatorRequest("POST", "/endpoints", AUTHORIZATION),
         OperatorRequest("GET", "/endpoints", AUTHORIZATION, "page=1"),
+        OperatorRequest(
+            "GET",
+            "/endpoints",
+            AUTHORIZATION,
+            "after=AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA",
+        ),
+        OperatorRequest(
+            "GET",
+            "/endpoints",
+            AUTHORIZATION,
+            "after=00000000-0000-0000-0000-000000000000&extra=1",
+        ),
         OperatorRequest("GET", "/unknown", AUTHORIZATION),
         OperatorRequest("GET", cast(str, 123), AUTHORIZATION),
         OperatorRequest("GET", cast(str, b"/endpoints"), AUTHORIZATION),

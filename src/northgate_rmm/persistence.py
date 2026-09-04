@@ -258,6 +258,44 @@ class PostgresControlPlane:
             )
             return tuple(self._endpoint_from_row(row) for row in cursor.fetchall())
 
+    def list_endpoint_page(
+        self,
+        *,
+        after: UUID | None,
+        limit: int,
+    ) -> tuple[Endpoint, ...]:
+        if after is not None and type(after) is not UUID:
+            raise ValidationError("endpoint page cursor is invalid")
+        if type(limit) is not int or not 1 <= limit <= 1_000:
+            raise ValidationError("endpoint page limit is invalid")
+        with self._connect() as connection, connection.cursor() as cursor:
+            if after is None:
+                cursor.execute(
+                    """
+                    SELECT endpoint_id, display_name, platform, architecture,
+                           identity_id, enrolled_at, last_receipt_at,
+                           last_heartbeat_at
+                    FROM endpoints
+                    ORDER BY endpoint_id
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT endpoint_id, display_name, platform, architecture,
+                           identity_id, enrolled_at, last_receipt_at,
+                           last_heartbeat_at
+                    FROM endpoints
+                    WHERE endpoint_id > %s
+                    ORDER BY endpoint_id
+                    LIMIT %s
+                    """,
+                    (after, limit),
+                )
+            return tuple(self._endpoint_from_row(row) for row in cursor.fetchall())
+
     def get_endpoint(self, endpoint_id: UUID) -> Endpoint:
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(

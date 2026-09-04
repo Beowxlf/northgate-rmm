@@ -112,6 +112,23 @@ server-rendered, escaped, non-cacheable, protected by a restrictive content
 security policy, and derive health from server receipt time. No operator
 mutation route exists in this application.
 
+The collection is keyset-paginated in ascending endpoint-ID order. Each
+database read requests at most 101 records, renders at most 100, and emits an
+optional next link using the exact `after=<canonical-endpoint-uuid>` query.
+Other query forms fail closed. This bounds allocation before rendering rather
+than making a large fleet lose the collection view.
+
+The source-only verifier adapter sends the opaque Authorization value only to
+`POST /v1/operator-sessions/verify` over TLS 1.3 mTLS at one configured private
+IP and independently verified DNS authority. The request has no body. A success
+response is `application/json`, no larger than 16 KiB, and contains exactly:
+`issuer`, `tenant`, `subject`, `session_id`, `client_id`, `roles`,
+`authenticated_at`, `expires_at`, and `mfa`. Times are canonical UTC ISO 8601
+values. Duplicate fields, redirects, compression, transfer encoding, unknown
+status, extra fields, invalid types, non-current sessions, verifier outage, and
+workload-authentication failure all deny the operator request. The bearer value
+is never part of an error, audit record, URL, body, or cache key.
+
 ## Heartbeat and inventory
 
 Heartbeat contains minimal liveness/capability state. Inventory is independent,

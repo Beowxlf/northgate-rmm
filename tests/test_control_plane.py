@@ -305,3 +305,25 @@ def test_list_endpoints_and_missing_records() -> None:
         plane.get_endpoint(uuid4())
     with pytest.raises(NotFoundError, match="identity does not exist"):
         plane.get_identity(uuid4())
+
+
+def test_list_endpoint_page_is_keyset_and_limit_bounded() -> None:
+    plane, _agent = enrolled_linux()
+    for index in range(2):
+        SyntheticAgent.enroll(
+            plane,
+            display_name=f"linux-page-{index}",
+            platform=Platform.LINUX,
+            architecture="amd64",
+            now=NOW,
+        )
+    ordered = plane.list_endpoints()
+
+    assert plane.list_endpoint_page(after=None, limit=2) == ordered[:2]
+    assert (
+        plane.list_endpoint_page(after=ordered[0].endpoint_id, limit=2) == ordered[1:]
+    )
+    with pytest.raises(ValidationError, match="cursor"):
+        plane.list_endpoint_page(after="invalid", limit=2)  # type: ignore[arg-type]
+    with pytest.raises(ValidationError, match="limit"):
+        plane.list_endpoint_page(after=None, limit=1_001)

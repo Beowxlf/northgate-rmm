@@ -109,6 +109,7 @@ Review trigger: every Class 2/3 change and each phase gate
 | TM-44 | Transport redirect or acknowledgement confusion                   | exact HTTPS origin/path, no proxy/redirect/reuse, TLS 1.3 mTLS, exact ID acknowledgement              | reject permanently, retain spool item, investigate trust or routing          |
 | TM-45 | Local identity is replaced, mismatched, or half-written           | create-once publication, private modes, stable-root reads, exact URI binding, bounded strict decode   | fail closed, do not reenroll, quarantine and reconcile uncertain local state |
 | TM-46 | Logs or service packaging expose secrets or excess host authority | closed log schema; no raw errors; unprivileged hardened unit; bounded resources; lifecycle validation | reject event/package drift; preserve state; revoke identity before removal   |
+| TM-47 | Agent listener accepts downgraded or ambiguous transport          | TLS 1.3 only; mTLS; tickets off; exact URI/SPKI/Host; bounded strict parser; generic errors           | reject connection/request; preserve bounded audit; rotate suspect identity   |
 
 ## Denial-of-service considerations
 
@@ -129,9 +130,10 @@ observable rejection. Endpoint spool and result output have hard quotas.
   sequence state and encrypted spool remain unimplemented; an executable Debian
   package and service lifecycle are qualified only in isolated CI and remain
   blocked from publication and live installation by G6 and G2;
-- the mTLS sender and retry policy are source-tested only; endpoint certificate
-  status, operational PKI, runtime logging integration, and live revocation
-  remain G2 blockers;
+- the mTLS sender and private listener adapter are source-tested against real
+  loopback TLS sockets only; endpoint certificate status, operational PKI,
+  service configuration, runtime logging integration, and live revocation remain
+  G2 blockers;
 - selected identity provider, PKI, secrets service, and session gateway versions
   are not yet qualified;
 - Linux desktop backend remains support-matrix dependent;

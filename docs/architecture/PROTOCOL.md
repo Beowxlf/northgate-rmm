@@ -23,12 +23,18 @@ an exact retry returns the same accepted acknowledgement without applying the
 message again. Reuse of the ID with different authenticated identity or payload
 fails permanently and is audited.
 
-The V1B source implements this contract as an in-process application boundary.
-It accepts only identity facts extracted from an already verified client
-certificate, binds both the endpoint URI and public-key fingerprint to an active
-database identity, and retains an encoded-message digest for exact retry. It does
-not open a socket or claim TLS termination; those remain responsibilities of the
-separately qualified listener adapter.
+The V1B source implements this contract as an in-process application boundary
+behind an agent-only listener adapter. The adapter requires TLS 1.3 mutual
+authentication, disables session tickets, accepts a private exact bind address
+and authority, validates the single canonical endpoint URI SAN and supported
+public key, and removes framework version headers even from parser failures.
+It bounds headers, body size, request time, backlog, and concurrent application
+handoffs. Real loopback tests prove successful profiled mTLS delivery and rejection
+of a missing client identity, TLS 1.2, duplicate headers, and wrong authority.
+The application binds the extracted endpoint and public-key fingerprint to an
+active database identity and retains an encoded-message digest for exact retry.
+No listener is activated or configured for a NorthGate network by this source
+qualification.
 
 ## Envelope
 

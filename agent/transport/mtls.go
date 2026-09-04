@@ -296,7 +296,7 @@ func (sender *MTLSSender) Send(ctx context.Context, messageID string, payload []
 
 func retryableStatus(status int) bool {
 	switch status {
-	case http.StatusTooManyRequests, http.StatusInternalServerError,
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusInternalServerError,
 		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:

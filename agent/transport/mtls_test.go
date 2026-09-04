@@ -202,6 +202,7 @@ func TestMTLSSenderBoundsResponseAndClassifiesStatus(t *testing.T) {
 		retryable bool
 	}{
 		{name: "rate limited", status: http.StatusTooManyRequests, retryable: true},
+		{name: "request timeout", status: http.StatusRequestTimeout, retryable: true},
 		{name: "server failure", status: http.StatusServiceUnavailable, retryable: true},
 		{name: "authorization failure", status: http.StatusForbidden, retryable: false},
 		{name: "unsupported operation", status: http.StatusNotImplemented, retryable: false},

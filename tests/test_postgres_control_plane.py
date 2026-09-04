@@ -7,7 +7,7 @@ import re
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -35,6 +35,12 @@ from northgate_rmm.errors import (
     ReplayError,
     ValidationError,
 )
+from northgate_rmm.operator_api import (
+    OperatorApplication,
+    OperatorAuthorizationPolicy,
+    OperatorPrincipal,
+    OperatorRequest,
+)
 from northgate_rmm.persistence import PostgresControlPlane, apply_migrations
 from northgate_rmm.simulator import SyntheticAgent
 
@@ -45,6 +51,16 @@ pytestmark = [
     pytest.mark.postgresql,
     pytest.mark.skipif(DATABASE_URL is None, reason="DATABASE_URL is not configured"),
 ]
+
+
+@dataclass(frozen=True)
+class StaticOperatorVerifier:
+    principal: OperatorPrincipal
+
+    def verify(self, authorization: str, *, now: datetime) -> OperatorPrincipal:
+        assert authorization == "Bearer synthetic-postgres-session"
+        assert now.tzinfo is not None
+        return self.principal
 
 
 @pytest.fixture(scope="session")
@@ -139,6 +155,62 @@ def test_inventory_status_and_missing_records(postgres_dsn: str) -> None:
         plane.get_endpoint(uuid4())
     with pytest.raises(NotFoundError, match="identity"):
         plane.get_identity(uuid4())
+
+
+def test_operator_view_revalidates_and_persists_read_audit(postgres_dsn: str) -> None:
+    plane, agent = enrolled_plane(postgres_dsn)
+    operator = OperatorPrincipal(
+        issuer="https://idp.test/issuer",
+        tenant="northgate-test",
+        subject="operator-001",
+        session_id="postgres-session-001",
+        client_id="northgate-rmm-test",
+        roles=("viewer",),
+        authenticated_at=NOW - timedelta(minutes=5),
+        expires_at=NOW + timedelta(minutes=30),
+        mfa=True,
+    )
+    application = OperatorApplication(
+        plane,
+        StaticOperatorVerifier(operator),
+        OperatorAuthorizationPolicy(
+            issuer=operator.issuer,
+            tenant=operator.tenant,
+            subject=operator.subject,
+            client_id=operator.client_id,
+        ),
+    )
+
+    response = application.handle(
+        OperatorRequest(
+            "GET",
+            f"/endpoints/{agent.endpoint_id}",
+            "Bearer synthetic-postgres-session",  # gitleaks:allow
+        ),
+        received_at=NOW,
+    )
+
+    assert response.status == 200
+    persisted = plane.audit_events[-1]
+    assert persisted.action == "endpoint.detail.read"
+    assert persisted.actor_type == "human_operator"
+    assert persisted.actor_id == "operator-001"
+    assert persisted.decision == "accepted"
+    assert ("session_id", "postgres-session-001") in persisted.metadata
+    for actor_id, subject, expected in (
+        ("x" * 257, "operator:endpoint-views", "actor"),
+        ("operator-001", "x" * 257, "subject"),
+    ):
+        with pytest.raises(ValidationError, match=expected):
+            plane.record_operator_access(
+                actor_id=actor_id,
+                subject=subject,
+                action="endpoint.detail.read",
+                decision="rejected",
+                reason="schema bound regression",
+                correlation_id=uuid4(),
+                now=NOW,
+            )
 
 
 def test_migrations_are_idempotent_and_checksum_protected(

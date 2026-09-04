@@ -94,6 +94,24 @@ or mismatched bundle.
 
 Enrollment grants are bootstrap authorization, not agent identities.
 
+## Operator reads
+
+The V1B operator application exposes only `GET /endpoints` and
+`GET /endpoints/<canonical-endpoint-uuid>`. Before every request it asks an
+external session verifier for the current issuer, tenant, subject, session,
+client, role, expiry, and MFA facts. The application independently matches that
+tuple to its pinned single-operator policy, enforces a maximum session age, and
+fails closed when verification is unavailable, stale, revoked, malformed, or
+out of scope. It does not cache positive identity state.
+
+Successful authentication, authorization denials, accepted reads, unknown
+resources, and invalid routes are recorded with server time and one correlation
+ID. The credential itself is never written to audit evidence. Endpoint data is
+returned only after the read decision is durably appended. Responses are
+server-rendered, escaped, non-cacheable, protected by a restrictive content
+security policy, and derive health from server receipt time. No operator
+mutation route exists in this application.
+
 ## Heartbeat and inventory
 
 Heartbeat contains minimal liveness/capability state. Inventory is independent,

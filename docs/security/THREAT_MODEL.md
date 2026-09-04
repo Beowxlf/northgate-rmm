@@ -130,18 +130,23 @@ and result output have hard quotas.
   operational agent has been authorized, installed, or accepted as supported;
 - the current spool checksum detects accidental corruption but does not provide
   keyed integrity, encryption, or rollback resistance;
-- a permission-restricted create-once identity bundle and crash-durable per-boot
-  message sequence store now exist, but enrollment, encrypted or hardware-backed
-  identity protection, rotation, online status, externally rollback-protected
-  sequence state and encrypted spool remain unimplemented; an executable Debian
+- a permission-restricted create-once identity bundle, crash-durable per-boot
+  message sequence store, and externally issued server enrollment lifecycle now
+  exist, but the agent enrollment client, encrypted or hardware-backed identity
+  protection, online status, externally rollback-protected sequence state, and
+  encrypted spool remain unimplemented; an executable Debian
   package and service lifecycle are qualified only in isolated CI and remain
   blocked from publication and live installation by G6 and G2;
 - the mTLS sender and private listener adapter are source-tested against real
   loopback TLS sockets only; endpoint certificate status, operational PKI,
   service configuration, runtime logging integration, and live revocation remain
   G2 blockers;
-- selected identity provider, PKI, secrets service, and session gateway versions
-  are not yet qualified;
+- an external-verifier operator application now pins the complete session tuple,
+  MFA, role, expiry, and maximum age for every read, but the production IdP,
+  private operator listener, source/device policy, and exact revocation-status
+  integration are not yet selected or qualified;
+- selected PKI, secrets service, and session gateway versions are not yet
+  qualified;
 - Linux desktop backend remains support-matrix dependent;
 - independent penetration testing is deferred to the relevant operational gate.
 

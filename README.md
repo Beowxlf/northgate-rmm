@@ -52,7 +52,12 @@ The control-plane source includes a strict message decoder, transactional
 PostgreSQL adapter and migrations, digest-only single-use enrollment grants,
 certificate-key-to-endpoint authorization, exact-message retry acknowledgement,
 restart/concurrency/recovery tests, escaped server-rendered read models, and an
-in-memory test-only certificate authority. A private, agent-only listener adapter
+in-memory test-only certificate authority. The source-only enrollment boundary
+validates proof-of-possession CSRs and public credentials returned by a separate
+issuer without holding a CA signing key. A read-only operator application
+revalidates an external MFA session against a pinned single-operator policy on
+every request, audits the decision, and exposes only escaped endpoint list and
+detail views. A private, agent-only listener adapter
 now enforces TLS 1.3 mutual authentication, exact certificate URI and public-key
 binding, TLS/header/whole-request deadlines, global and per-identity pre-body
 concurrency admission, database operation deadlines, authenticated rate ceilings,
@@ -76,8 +81,9 @@ resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
 Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
 test-only signature verification have also passed. Evidence-complete G2A and
 G2B qualification records retain every required digest. The repository still
-has no certificate-issuing enrollment network flow, deployable listener service
-configuration, command runner, or privileged helper.
+has no enrollment or operator network adapter, production issuer/IdP
+integration, deployable listener service configuration, command runner, or
+privileged helper.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
 remain G2 blockers.

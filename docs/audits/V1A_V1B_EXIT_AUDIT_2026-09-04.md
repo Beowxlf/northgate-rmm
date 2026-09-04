@@ -33,7 +33,7 @@ G2 or G6, or satisfy V1C through V1F.
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
 | Bounded service endpoints     | Agent `POST /v1/agent/messages`, enrollment `POST /v1/enrollment`, operator `GET /endpoints` and `GET /endpoints/<uuid>`; no operator mutation route                                                                               | Pass  |
 | Grant safety                  | Digest-only secret storage, exact target/platform binding, absolute expiry, atomic single-winner consumption, and generic rejection tests                                                                                          | Pass  |
-| Authenticated message binding | TLS-verified URI SAN and public-key binding, certificate-to-endpoint authorization, exact payload endpoint comparison, exact-message digest acknowledgement, and idempotent retry                                                  | Pass  |
+| Authenticated message binding | TLS-verified URI SAN and public-key binding, certificate-to-endpoint authorization, exact payload endpoint comparison, exact message-ID acknowledgement, and digest-bound idempotent retry                                         | Pass  |
 | PostgreSQL state              | Seven checksum-protected migrations cover endpoints, identities and rotation lineage, grants, sequences, observations, message idempotency, revocation, and append-oriented audit events                                           | Pass  |
 | Safe operator view            | External MFA-session revalidation on every request, pinned single-operator tuple, bounded keyset pages, receipt-time freshness, escaped list/detail output, and audited decisions                                                  | Pass  |
 | Fail-closed inputs            | Isolated tests cover malformed and oversized requests, ambiguous framing, replay and duplicate writers, expiry, unknown and revoked certificates, cross-endpoint binding, rate/admission limits, deadlines, and dependency failure | Pass  |
@@ -71,7 +71,10 @@ with networking disabled. Ephemeral evidence digests were:
 The network-isolated Debian test installed the real endpoint and server
 packages together. It proved server purge preserves endpoint artifacts and the
 reverse endpoint purge preserves server configuration, credentials, TLS
-material, units, runtime, identities, and state.
+material, unit, launcher, package registration, identities, and state root. It
+did not verify application site-package contents or a retained state payload in
+the reverse-purge sequence; those deeper preservation assertions remain V1D
+operational-recovery work.
 
 These are qualification artifacts, not a G6-authorized release or distribution
 record.

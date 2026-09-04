@@ -44,9 +44,12 @@ open gate or replacing its authorization must append exactly one canonical
 cleanup closeout and name it as `closeout`. The closeout binds the consumed
 authorization and separate cleanup evidence proving targets and identities were
 revoked, network access was removed, artifacts were withdrawn, and rollback was
-verified. Later closed, reopened, or unchanged-open states must preserve every
-closeout and its referenced records byte for byte with single-use protected-main
-history. Use the adjacent product-gate closeout and cleanup-evidence templates.
+verified. Cleanup events and both artifacts must follow the actual protected-main
+closed-to-open transition, not merely authorization staging. A consumed
+authorization path or digest can never reopen a gate. Later closed, reopened,
+or unchanged-open states must preserve every closeout and its referenced records
+byte for byte with single-use protected-main history. Use the adjacent
+product-gate closeout and cleanup-evidence templates.
 
 Phase-specific source development may be authorized by a separate committed
 development record that states an exact non-deployment boundary. Such a record

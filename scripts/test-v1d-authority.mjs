@@ -367,6 +367,7 @@ function closeoutOptions(
         productAuthorizationOnProtectedMain
       )
         return 1;
+      if (Object.hasOwn(productRecords, path)) return 1;
       if (
         artifactsOnProtectedMain &&
         (path === closeoutPath || path === cleanupEvidencePath)
@@ -395,6 +396,8 @@ function closeoutOptions(
       return null;
     },
     authorityOpenIntroductionTime: () => "2026-09-04T13:10:00Z",
+    gateOpenIntroductionTime: (gateId) =>
+      gateId === "G2" ? "2026-09-04T13:46:00Z" : null,
     isCommit: (commit) => commit === validFields["Audited commit"],
     isProtectedMainCommit: (commit) => commit === validFields["Audited commit"],
     now: fixedNow,
@@ -1661,6 +1664,55 @@ assert.deepEqual(
     }),
   ),
   [],
+);
+passed += 1;
+
+const prestagedG2CloseoutFixture = withG2Closeout(g2Fixture);
+const prestagedG2Cleanup = JSON.parse(
+  prestagedG2CloseoutFixture.records[g2CleanupPath],
+);
+prestagedG2Cleanup.verifiedAt = "2026-09-04T13:44:00Z";
+prestagedG2CloseoutFixture.records[g2CleanupPath] =
+  canonical(prestagedG2Cleanup);
+const prestagedG2Closeout = JSON.parse(
+  prestagedG2CloseoutFixture.records[g2CloseoutPath],
+);
+prestagedG2Closeout.closedAt = "2026-09-04T13:45:00Z";
+prestagedG2Closeout.cleanupEvidenceDigest = hash(
+  prestagedG2CloseoutFixture.records[g2CleanupPath],
+);
+prestagedG2CloseoutFixture.records[g2CloseoutPath] =
+  canonical(prestagedG2Closeout);
+assert(
+  validateV1dAuthority(
+    g2ClosedWithCleanup,
+    closeoutOptions(g2AfterCloseout, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: prestagedG2CloseoutFixture,
+    }),
+  ).some((item) =>
+    item.includes("cleanup closeout has an invalid event sequence"),
+  ),
+  "G2 cleanup staged before the actual gate opening was accepted",
+);
+passed += 1;
+
+const reopenedG2WithConsumedAuthorization =
+  structuredClone(g2ClosedWithCleanup);
+const reopenedG2 = reopenedG2WithConsumedAuthorization.gates.find(
+  (gate) => gate.id === "G2",
+);
+reopenedG2.status = "open";
+reopenedG2.authorization = g2AuthorizationPath;
+assert(
+  validateV1dAuthority(
+    reopenedG2WithConsumedAuthorization,
+    closeoutOptions(g2ClosedWithCleanup, {
+      artifactsOnProtectedMain: true,
+      productGateFixture: g2CloseoutFixture,
+    }),
+  ).some((item) => item.includes("cannot reuse an authorization consumed")),
+  "G2 reopened with an authorization consumed by its prior closeout",
 );
 passed += 1;
 

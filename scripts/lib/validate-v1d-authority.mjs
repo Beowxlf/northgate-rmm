@@ -865,6 +865,7 @@ function validateProductGateLifecycle(
     readText,
     readAtProtectedMain,
     pathIntroductionTime,
+    gateOpenIntroductionTime,
     protectedMainPathVersionCount,
     now,
   },
@@ -1044,7 +1045,7 @@ function validateProductGateLifecycle(
     errors.push(`${gate.id} cleanup evidence leaves active capability behind.`);
   const verifiedAt = validDate(cleanup.verifiedAt);
   const closedAt = validDate(closeout.closedAt);
-  const openedAt = Date.parse(pathIntroductionTime(authorizationPath) ?? "");
+  const openedAt = Date.parse(gateOpenIntroductionTime(gate.id) ?? "");
   const cleanupIntroducedAt = Date.parse(
     pathIntroductionTime(cleanupPath) ?? "",
   );
@@ -1099,6 +1100,21 @@ export function validateProductGateAuthorization(
   const text = readText(authorizationPath);
   if (typeof text !== "string" || text.trim() === "")
     return [`Open ${gate.id} has an unreadable authorization record.`];
+  const authorizationDigest = sha256(text);
+  for (const closeoutPath of gate.closeouts ?? []) {
+    const closeoutText = readAtProtectedMain(closeoutPath);
+    const closeout =
+      typeof closeoutText === "string"
+        ? parseCanonicalJson(closeoutText)
+        : null;
+    if (
+      closeout?.authorizationRecord === authorizationPath ||
+      closeout?.authorizationDigest === authorizationDigest
+    )
+      errors.push(
+        `${gate.id} cannot reuse an authorization consumed by a prior closeout.`,
+      );
+  }
   const protectedAuthorization = readAtProtectedMain(authorizationPath);
   if (
     typeof protectedAuthorization !== "string" ||
@@ -2396,6 +2412,7 @@ export function validateV1dAuthority(
     isProtectedMainCommit = () => false,
     protectedMainPathVersionCount = () => null,
     authorityOpenIntroductionTime = () => null,
+    gateOpenIntroductionTime = () => null,
     now = new Date(),
   } = {},
 ) {
@@ -2571,6 +2588,7 @@ export function validateV1dAuthority(
           readText,
           readAtProtectedMain,
           pathIntroductionTime,
+          gateOpenIntroductionTime,
           protectedMainPathVersionCount,
           now,
         }),

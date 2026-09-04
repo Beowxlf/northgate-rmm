@@ -7,6 +7,9 @@ Changelog structure and will adopt semantic versioning before its first release.
 
 ### Added
 
+- V1A contract and V1B source-qualification exit evidence mapped to exact
+  protected commits, checks, package digests, and independent reviews without
+  opening G2 or G6;
 - a source-built, offline, reproducible Debian 12 server package with distinct
   service identities, hash-locked runtime wheels, disabled units, and
   receipt-gated removal tested in a networkless sandbox without opening G2;

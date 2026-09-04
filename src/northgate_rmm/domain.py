@@ -16,6 +16,7 @@ from northgate_rmm.errors import ValidationError
 PROTOCOL_VERSION = 1
 MAX_MESSAGE_TTL = timedelta(minutes=5)
 MAX_CLOCK_SKEW = timedelta(minutes=5)
+MAX_ENROLLMENT_GRANT_TTL = timedelta(minutes=15)
 MAX_SEQUENCE = (2**63) - 1
 MAX_DISPLAY_NAME_LENGTH = 128
 MAX_AGENT_VERSION_LENGTH = 64
@@ -110,6 +111,45 @@ class EndpointIdentity:
             if self.revoked_at is not None
             else EndpointLifecycle.ACTIVE
         )
+
+
+@dataclass(frozen=True, slots=True)
+class EnrollmentGrant:
+    """Short-lived, single-use authorization to create one Linux identity."""
+
+    grant_id: UUID
+    token_sha256: str
+    display_name: str
+    platform: Platform
+    architecture: str
+    created_at: datetime
+    expires_at: datetime
+    created_by: str
+    consumed_at: datetime | None = None
+    consumed_identity_id: UUID | None = None
+
+    def __post_init__(self) -> None:
+        require_aware(self.created_at, "created_at")
+        require_aware(self.expires_at, "expires_at")
+        if re.fullmatch(r"[0-9a-f]{64}", self.token_sha256) is None:
+            raise ValidationError("token_sha256 must be a lowercase SHA-256 value")
+        if not self.display_name or len(self.display_name) > MAX_DISPLAY_NAME_LENGTH:
+            raise ValidationError("display_name is empty or too long")
+        if self.platform is not Platform.LINUX:
+            raise ValidationError("v1 enrollment grants support Linux only")
+        if self.architecture != "amd64":
+            raise ValidationError("v1 enrollment grants support amd64 only")
+        if not self.created_by or len(self.created_by) > 256:
+            raise ValidationError("created_by is empty or too long")
+        lifetime = self.expires_at - self.created_at
+        if lifetime <= timedelta(0) or lifetime > MAX_ENROLLMENT_GRANT_TTL:
+            raise ValidationError("enrollment grant lifetime is invalid")
+        if (self.consumed_at is None) != (self.consumed_identity_id is None):
+            raise ValidationError("enrollment grant consumption state is incomplete")
+        if self.consumed_at is not None:
+            require_aware(self.consumed_at, "consumed_at")
+            if not self.created_at <= self.consumed_at < self.expires_at:
+                raise ValidationError("enrollment grant consumption time is invalid")
 
 
 @dataclass(frozen=True, slots=True)

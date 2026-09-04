@@ -35,10 +35,11 @@ world permission. It is never placed in the JSON configuration or command line.
 The reference systemd unit uses `LoadCredential=` so the service receives the
 DSN beneath its private runtime credential directory.
 
-The v1 DSN names one private or loopback IP literal. DNS names, public
-addresses, libpq multi-host authorities, and `host`, `hostaddr`, or `service`
-query overrides fail closed so the configured connection timeout is an overall
-connection-attempt bound rather than a per-target multiplier.
+The v1 DSN names one RFC1918 IPv4, IPv4 loopback, IPv6 ULA, or IPv6 loopback
+literal. DNS names, public, reserved, documentation, link-local, multicast, and
+unspecified addresses, libpq multi-host authorities, and `host`, `hostaddr`, or
+`service` query overrides fail closed so the configured connection timeout is
+an overall connection-attempt bound rather than a per-target multiplier.
 The process also refuses every inherited `PG...` libpq environment variable;
 all connection identity, routing, TLS, and timeout inputs must therefore come
 from the validated credential and the service's explicit connection options.

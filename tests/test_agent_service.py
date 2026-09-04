@@ -166,6 +166,12 @@ def test_database_dsn_rejects_inherited_libpq_environment(
         "&sslrootcert=relative-ca.crt&gssencmode=disable",
         "postgresql://10.30.0.10/northgate?sslmode=verify-full"
         "&sslrootcert=%2Fetc%2Fnorthgate-rmm%2Ftls%2Fdatabase-ca.crt",
+        "postgresql://192.0.2.1/northgate?sslmode=verify-full"
+        "&sslrootcert=%2Fetc%2Fnorthgate-rmm%2Ftls%2Fdatabase-ca.crt"
+        "&gssencmode=disable",
+        "postgresql://240.0.0.1/northgate?sslmode=verify-full"
+        "&sslrootcert=%2Fetc%2Fnorthgate-rmm%2Ftls%2Fdatabase-ca.crt"
+        "&gssencmode=disable",
     ],
 )
 def test_database_dsn_rejects_ambiguous_format(tmp_path: Path, value: str) -> None:

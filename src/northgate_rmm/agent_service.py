@@ -32,6 +32,17 @@ from northgate_rmm.persistence import (
 
 MAX_SERVICE_CONFIGURATION_BYTES = 16_384
 MAX_DATABASE_DSN_BYTES = 4_096
+_ALLOWED_DATABASE_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in (
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "127.0.0.0/8",
+        "fc00::/7",
+        "::1/128",
+    )
+)
 _REQUIRED_CONFIGURATION_FIELDS = frozenset(
     {
         "bind_address",
@@ -175,8 +186,7 @@ def load_database_dsn(path: Path) -> str:
         or query_fields & {"host", "hostaddr", "service"}
         or "hostaddr" in parameters
         or "service" in parameters
-        or address.is_unspecified
-        or not (address.is_private or address.is_loopback)
+        or not any(address in network for network in _ALLOWED_DATABASE_NETWORKS)
     ):
         raise ValidationError("database DSN credential has an invalid format")
     return value

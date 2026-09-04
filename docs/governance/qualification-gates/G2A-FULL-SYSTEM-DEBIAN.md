@@ -1,6 +1,6 @@
 # G2A Full-System Debian Agent Qualification
 
-Status: Pending evidence-complete requalification; [prior partial evidence](../qualification-evidence/G2A-2026-09-03.md)  
+Status: Complete; [final evidence](../qualification-evidence/G2A-2026-09-04.md)  
 Parent gate: G2 remains closed  
 Scope: Synthetic Debian 12 systemd sandbox only
 

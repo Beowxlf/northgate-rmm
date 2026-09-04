@@ -108,9 +108,9 @@ deployment: no issuer/IdP integration, approved deployment configuration,
 command runner, or privileged helper is present.
 Operational PKI, online certificate status, runtime logging integration,
 externally rollback-protected state, encryption, and keyed spool integrity
-remain G2 blockers. A 2026-09-04 read-only V1D reconciliation also confirmed
-that the candidate RMM VLANs and installed Factory asset policies do not yet
-exist; no live change was made.
+remain G2 blockers. A 2026-09-04 private read-only V1D reconciliation confirmed
+that live prerequisites remain incomplete; the public audit is redacted and no
+live change was made.
 
 ## Phase 1 developer checks
 

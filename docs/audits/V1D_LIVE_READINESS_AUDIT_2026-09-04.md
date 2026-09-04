@@ -2,17 +2,14 @@
 
 Status: Open; read-only reconciliation complete  
 Change: `NG-CHG-20260830-001`  
-Host: `HC-HV01`  
 Authorization boundary: discovery and plan maintenance only; G2 and G6 closed
 
 ## Executive outcome
 
 The source-qualified NorthGate RMM control plane is not yet eligible for a
-version 1.0 lab deployment. The intended VM identities remain available and the
-preferred F: volume has enough current capacity for the proposed server and
-canary envelopes. The live network, installed VM Factory release, operational
-PKI, operator verifier, protected audit, and recovery services do not yet meet
-V1D.
+version 1.0 lab deployment. Private read-only reconciliation completed, but the
+VM Factory, network, operational PKI, operator verifier, protected audit, and
+recovery gates do not yet meet V1D.
 
 No VM, switch, VLAN, route, firewall rule, DNS record, service, package,
 identity, certificate, Factory policy, or repository release was changed by
@@ -20,50 +17,41 @@ this audit.
 
 ## Current evidence
 
-Collection completed on 2026-09-04 through the loopback NorthGate MCP path,
-pinned host SSH, the confined VM Factory identity, and audited read-only
-OPNsense access.
+Collection completed on 2026-09-04. Exact host identity, inventory, capacity,
+storage, release, service, network, configuration-hash, listener, and tool
+results are retained only in the approved private Operation-SeeSaw assessment
+and evidence records.
 
-| Area                | Verified state                                                                                                                                                       | V1D consequence                                                                                                 |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| NorthGate MCP       | Approved management path responded and both tunnel endpoints remained loopback-only                                                                                  | Approved management path is healthy                                                                             |
-| Host key            | Pinned host identity matched the approved private baseline                                                                                                           | Read-only SSH fallback retained its trust binding                                                               |
-| VM inventory        | Exact collision checks passed for both proposed RMM names                                                                                                            | Proposed identities remain collision-free at collection time                                                    |
-| Host capacity       | The proposed server and canary resource envelopes passed current read-only feasibility checks                                                                        | A fresh Factory plan must still reserve and prove capacity                                                      |
-| Storage             | The approved candidate storage root retained the required pre-plan headroom                                                                                          | A fresh Factory plan must revalidate the reserve                                                                |
-| Debian source media | The immutable approved Debian 12.12 installation source remained available and digest-matched                                                                        | Source media is available, subject to release revalidation                                                      |
-| Factory service     | The installed signed Factory release is healthy but predates VM Factory PR #56                                                                                       | New source capability is not installed                                                                          |
-| Factory status      | Production create-only status reported no destructive operations and zero incomplete transactions                                                                    | The installed data bundle has no RMM asset, so no RMM plan is eligible                                          |
-| Factory source      | Protected main includes guarded multi-disk support and proposed RMM network, storage, bootstrap, and recovery profiles                                               | Source capability exists; profiles, manifests, host bindings, signed release, and rollout promotion remain open |
-| Hyper-V fabric      | The private application trunk remains unchanged and does not carry the proposed RMM segments                                                                         | The RMM service and canary segments cannot currently carry traffic                                              |
-| OPNsense            | The protected configuration hash matched the prior private baseline; proposed RMM interfaces remain absent; required services and management listeners were observed | A separate backup-bound network change is required                                                              |
-| Audit health        | The NorthGate 60-minute snapshot contained 12 events, no errors, no retry loop, and no repeated-equivalent calls                                                     | Read-only collection did not indicate a control-loop fault                                                      |
-
-The MCP broad VM-list operation failed in its PowerShell/JSON command. Exact
-inventory was therefore collected once through the pinned read-only SSH
-fallback. This is a management-tool defect to repair; it is not evidence of a
-Hyper-V outage.
+| Gate                           | Redacted result                                            | Consequence                                                                      |
+| ------------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Management trust path          | Private verification complete                              | Retain the approved path and repair the privately recorded read-only tool defect |
+| Target identity and capacity   | Private preflight complete                                 | Revalidate through a fresh host-issued plan before any apply                     |
+| Immutable installation source  | Private verification complete                              | Revalidate in the exact release ceremony                                         |
+| Installed VM Factory authority | Does not include an RMM asset                              | Complete, sign, install, and promote the RMM-specific Factory bundle             |
+| RMM network boundary           | Required private segmentation is not established           | Obtain separate backup-bound network approval and prove allow/deny paths         |
+| Audit integrity                | Private collection and publication integrity checks passed | Preserve exact evidence outside the public repository                            |
 
 ## V1D control matrix
 
-| Dependency                        | Current decision or evidence                                                                                                         | State       | Exit evidence required                                                                                               |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------- |
-| VM Factory data disks             | Guarded implementation merged in VM Factory PR #56                                                                                   | Source pass | Installed signed release, RMM asset policies, plan and receipt negative tests                                        |
-| VM Factory profiles and manifests | RMM profiles are proposed and disabled; no `NG-VM-022` or `NG-VM-023` manifest is in the installed bundle                            | Open        | Reviewed approved profiles, both exact manifests, host policy mappings, signed bundle and promotion                  |
-| Network                           | Candidate Z2 VLAN 170 and Z4 VLAN 180 remain absent                                                                                  | Open        | OPNsense backup/hash, exact trunk and interface change, default-deny rules, permitted/denied path tests and rollback |
-| DNS                               | Existing internal DNS is available; final operator and agent names are unassigned                                                    | Open        | Approved names, collision checks, exact records, resolver policy and negative tests                                  |
-| Time                              | Existing OPNsense NTP is observable; the required authenticated-time design is not approved                                          | Open        | Exact trusted time source and policy, offset/freshness alert, outage and no-fallback proof                           |
-| Server TLS and endpoint PKI       | Source clients exist; no approved live issuer, status service, trust roots, or recovery identities exist                             | Open        | Issuer/status design, offline recovery material, lifecycle runbook, revocation and established-channel tests         |
-| Operator identity                 | Source operator service requires a fixed external session verifier; no live verifier or exact identity tuple is approved             | Open        | Exact verifier, phishing-resistant operator authentication, pinned scope, outage/revocation tests                    |
-| PostgreSQL                        | Schema and service code are source-qualified; no live database or role set exists                                                    | Open        | Exact version/configuration, least-privilege roles, local/network boundary, migration and failure tests              |
-| Monitoring and protected audit    | Wazuh exists, but exact RMM intake, protected append-only audit, integrity checkpoints, and independent alert route are not approved | Open        | Exact endpoints/ports/roles, deletion/reordering detection, outage queue bounds and independent alerts               |
-| Backup and recovery               | Runbook exists; no RMM backup set or isolated restore has been executed                                                              | Open        | Encrypted immutable target, retention, RPO/RTO, database-consistent backup and isolated invariant-preserving restore |
-| Storage encryption                | Proposed server uses two LUKS2 volumes; unlock and external recovery-key custody are not approved or tested                          | Open        | Exact key custody, normal unlock, recovery boot, rotation and evidence-redaction proof                               |
-| Release trust                     | G2A/G2B source qualification passed; G6 production signing and publication remain closed                                             | Open        | Exact production artifacts, independent trust root, custody/recovery approval and G6 record                          |
+| Dependency                        | Current decision or evidence                                                                                             | State       | Exit evidence required                                                                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| VM Factory data disks             | Guarded implementation merged in VM Factory PR #56                                                                       | Source pass | Installed signed release, RMM asset policies, plan and receipt negative tests                                        |
+| VM Factory profiles and manifests | RMM profiles are proposed and disabled; no RMM manifest is in the installed bundle                                       | Open        | Reviewed approved profiles, both exact manifests, host policy mappings, signed bundle and promotion                  |
+| Network                           | Required RMM segmentation is not established                                                                             | Open        | Private backup/hash, exact boundary change, default-deny rules, permitted/denied path tests and rollback             |
+| DNS                               | Exact operator and agent DNS dependencies are unresolved                                                                 | Open        | Approved names, collision checks, exact records, resolver policy and negative tests                                  |
+| Time                              | The authenticated-time design is unresolved                                                                              | Open        | Exact trusted time source and policy, offset/freshness alert, outage and no-fallback proof                           |
+| Server TLS and endpoint PKI       | Source clients exist; no approved live issuer, status service, trust roots, or recovery identities exist                 | Open        | Issuer/status design, offline recovery material, lifecycle runbook, revocation and established-channel tests         |
+| Operator identity                 | Source operator service requires a fixed external session verifier; no live verifier or exact identity tuple is approved | Open        | Exact verifier, phishing-resistant operator authentication, pinned scope, outage/revocation tests                    |
+| PostgreSQL                        | Schema and service code are source-qualified; no live database or role set exists                                        | Open        | Exact version/configuration, least-privilege roles, local/network boundary, migration and failure tests              |
+| Monitoring and protected audit    | Exact RMM monitoring, protected audit, integrity checkpoints, and independent alert route are unresolved                 | Open        | Exact endpoints/ports/roles, deletion/reordering detection, outage queue bounds and independent alerts               |
+| Backup and recovery               | Runbook exists; no RMM backup set or isolated restore has been executed                                                  | Open        | Encrypted immutable target, retention, RPO/RTO, database-consistent backup and isolated invariant-preserving restore |
+| Storage encryption                | Proposed server uses two LUKS2 volumes; unlock and external recovery-key custody are not approved or tested              | Open        | Exact key custody, normal unlock, recovery boot, rotation and evidence-redaction proof                               |
+| Release trust                     | G2A/G2B source qualification passed; G6 production signing and publication remain closed                                 | Open        | Exact production artifacts, independent trust root, custody/recovery approval and G6 record                          |
 
 ## Ordered closeout sequence
 
-1. Merge this refreshed evidence and repair the MCP VM-list read-only defect.
+1. Merge this redacted gate result and repair the privately recorded read-only
+   inventory defect.
 2. Complete the VM Factory RMM profiles, exact manifests, host policy mappings,
    signed release candidate, and offline plan/receipt tests without installing it.
 3. Resolve the exact DNS, authenticated time, PKI, operator verifier, PostgreSQL,

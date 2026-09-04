@@ -9,18 +9,17 @@ Product gate: G1 remains open; G2 remains closed
 
 The current read-only facts and V1D dependency matrix are recorded in
 [`V1D_LIVE_READINESS_AUDIT_2026-09-04.md`](../audits/V1D_LIVE_READINESS_AUDIT_2026-09-04.md).
-The protected OPNsense baseline and application trunk are unchanged. Exact
-collision and capacity checks passed for the two proposed RMM identities and
-resource envelopes. Current internal addresses, VLAN inventory, host
-fingerprints, configuration hashes, and listener details remain in the private
-Operation-SeeSaw evidence record rather than this public refresh.
+The private read-only reconciliation is complete. Current internal identities,
+addresses, capacity, storage, VLAN inventory, host fingerprints, configuration
+hashes, listener details, and tool results remain only in the approved private
+Operation-SeeSaw assessment and evidence records.
 
 VM Factory protected main now contains guarded multi-disk support plus proposed
-RMM storage, network, bootstrap, and recovery profiles. The live host still
-runs an earlier signed release whose data bundle has no RMM assets. Source
-progress therefore narrows, but does not remove, the Factory gate: both
-manifests, approved profile records, exact host bindings, a new signed release
-and rollout promotion remain required before a fresh RMM plan can exist.
+RMM storage, network, bootstrap, and recovery profiles. The installed authority
+has no RMM asset. Source progress therefore narrows, but does not remove, the
+Factory gate: both manifests, approved profile records, exact private host
+bindings, a new signed release and rollout promotion remain required before a
+fresh RMM plan can exist.
 
 ## Decision summary
 

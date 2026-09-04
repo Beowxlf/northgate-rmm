@@ -132,12 +132,17 @@ function renderCleanupEvidence(overrides = {}) {
     approver: "Beowxlf",
     factoryPlanId: validFields["Factory plan ID"],
     serverBinding: validFields["Server binding"],
+    externalDependencySetBinding:
+      validFields["External dependency set binding"],
     serviceIdentityBinding: validFields["Service identity binding"],
     databaseIdentityBinding: validFields["Database identity binding"],
     syntheticIdentityProfileBinding:
       validFields["Synthetic identity profile binding"],
     privateNetworkPolicyBinding: validFields["Private network policy binding"],
     serviceStopped: true,
+    serviceIdentityRevoked: true,
+    databaseIdentityRevoked: true,
+    operatorValidationIdentitiesRevoked: true,
     syntheticIdentitiesRevoked: true,
     endpointRoutesBlocked: true,
     temporaryNetworkAccessRemoved: true,
@@ -167,6 +172,9 @@ function renderCloseout(
     cleanupEvidenceRecord: cleanupEvidencePath,
     cleanupEvidenceDigest: hash(evidenceText),
     serviceStopped: true,
+    serviceIdentityRevoked: true,
+    databaseIdentityRevoked: true,
+    operatorValidationIdentitiesRevoked: true,
     syntheticIdentitiesRevoked: true,
     endpointRoutesBlocked: true,
     temporaryNetworkAccessRemoved: true,
@@ -1298,6 +1306,32 @@ assert(
     }),
   ).some((item) => item.includes("syntheticIdentitiesRevoked")),
   "incomplete identity cleanup evidence was accepted",
+);
+passed += 1;
+
+const activeWorkloadEvidence = renderCleanupEvidence({
+  serviceIdentityRevoked: false,
+  operatorValidationIdentitiesRevoked: false,
+});
+const activeWorkloadCloseout = renderCloseout(
+  renderRecord(),
+  activeWorkloadEvidence,
+);
+const activeWorkloadErrors = validateV1dAuthority(
+  closedWithCloseout,
+  closeoutOptions(priorOpen, {
+    closeoutText: activeWorkloadCloseout,
+    evidenceText: activeWorkloadEvidence,
+  }),
+);
+assert(
+  activeWorkloadErrors.some((item) =>
+    item.includes("serviceIdentityRevoked"),
+  ) &&
+    activeWorkloadErrors.some((item) =>
+      item.includes("operatorValidationIdentitiesRevoked"),
+    ),
+  "active workload identities were accepted at closeout",
 );
 passed += 1;
 

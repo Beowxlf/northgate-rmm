@@ -86,9 +86,10 @@ and evidence records.
    Prove database-consistent backup and isolated restore, telemetry-outage and
    capacity behavior, certificate revocation, containment, and rollback; V1D
    remains open until every required proof passes. Stop the validation service,
-   revoke synthetic identities, preserve blocked endpoint routes, remove
-   temporary access and secrets, verify rollback, and merge the immutable
-   cleanup evidence and closeout receipt while G2 through G8 remain closed.
+   revoke service, database, operator-validation, and synthetic identities,
+   preserve blocked endpoint routes, remove temporary access and secrets,
+   verify rollback, and merge the immutable cleanup evidence and closeout
+   receipt while G2 through G8 remain closed.
 9. Only after V1D passes and the owner accepts the hardened-server and recovery
    evidence, and only after the closeout artifacts exist unchanged on protected
    `main`, open G2 for only the disposable canary while binding the exact

@@ -116,13 +116,14 @@ Closing `V1D-SV` after it has opened requires a canonical owner-approved
 closeout receipt and separate canonical cleanup-evidence record. Both records
 must bind the exact protected-main authorization, Factory plan, server, signed
 release, identities, and network policy. They must prove that the validation
-service stopped, synthetic identities were revoked, endpoint routes stayed
-blocked, temporary network access and secrets were removed, and rollback was
-verified within the authorization and Factory-plan windows. The closeout change
-must keep G2 through G8 closed. A later product gate may open only in a separate
-change after both closeout artifacts have been accepted exactly once on
-protected `main`; changed, deleted, recreated, future-dated, or same-change
-closeout evidence fails closed. Use the
+service stopped; service, database, operator-validation, and synthetic
+identities were revoked; endpoint routes stayed blocked; temporary network
+access and secrets were removed; and rollback was verified within the
+authorization and Factory-plan windows. The closeout change must keep G2
+through G8 closed. A later product gate may open only in a separate change after
+both closeout artifacts have been accepted exactly once on protected `main`;
+changed, deleted, recreated, future-dated, or same-change closeout evidence
+fails closed. Use the
 [cleanup-evidence template](templates/V1D-SV-CLEANUP-EVIDENCE-TEMPLATE.json)
 and [closeout template](templates/V1D-SV-CLOSEOUT-TEMPLATE.json).
 

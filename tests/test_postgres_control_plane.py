@@ -571,7 +571,7 @@ def test_enrollment_grant_rejections_are_generic_and_audited(
             public_key_fingerprint="sha256:" + "d" * 64,
             now=NOW + timedelta(minutes=20),
         )
-    assert plane.audit_events[-1].reason == "grant is already consumed"
+    assert plane.audit_events[-1].reason == "grant is expired"
 
 
 def test_concurrent_enrollment_grant_consumption_has_one_winner(
@@ -846,7 +846,10 @@ def test_rotation_keeps_history_and_rejects_the_previous_identity(
     )
     assert replacement.identity_id == replacement_id
     assert plane.get_endpoint(agent.endpoint_id).identity_id == replacement_id
-    assert plane.get_identity(previous.identity_id) == previous
+    assert plane.get_identity(previous.identity_id) == replace(
+        previous,
+        status=EndpointLifecycle.RETIRED,
+    )
     with pytest.raises(AuthorizationError, match="not current"):
         plane.ingest_heartbeat(
             authenticated_identity_id=previous.identity_id,
@@ -872,6 +875,37 @@ def test_rotation_lineage_is_same_endpoint_chronological_and_immutable(
         architecture="x86_64",
         now=NOW,
     )
+
+    second_replacement_id = uuid4()
+    with psycopg.connect(postgres_dsn) as connection, connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+        cursor.execute(
+            """
+            INSERT INTO endpoint_identities (
+                identity_id, endpoint_id, public_key_fingerprint, created_at,
+                identity_status, previous_identity_id
+            ) VALUES (%s, %s, %s, %s, 'active', %s)
+            """,
+            (
+                second_replacement_id,
+                second_agent.endpoint_id,
+                "sha256:" + "4" * 64,
+                NOW + timedelta(minutes=1),
+                second_agent.identity_id,
+            ),
+        )
+        cursor.execute(
+            """
+            UPDATE endpoint_identities
+            SET identity_status = 'retired'
+            WHERE identity_id = %s
+            """,
+            (second_agent.identity_id,),
+        )
+        cursor.execute(
+            "UPDATE endpoints SET identity_id = %s WHERE endpoint_id = %s",
+            (second_replacement_id, second_agent.endpoint_id),
+        )
 
     with (
         pytest.raises(psycopg.errors.ForeignKeyViolation),

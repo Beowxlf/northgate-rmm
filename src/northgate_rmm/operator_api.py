@@ -81,7 +81,16 @@ class OperatorPrincipal:
             raise ValidationError("operator session times must be timezone-aware")
         require_aware(self.authenticated_at, "operator authenticated_at")
         require_aware(self.expires_at, "operator expires_at")
-        if self.expires_at <= self.authenticated_at:
+        try:
+            authenticated_at = self.authenticated_at.astimezone(UTC)
+            expires_at = self.expires_at.astimezone(UTC)
+        except (OverflowError, ValueError) as error:
+            raise ValidationError(
+                "operator session times cannot be normalized to UTC"
+            ) from error
+        object.__setattr__(self, "authenticated_at", authenticated_at)
+        object.__setattr__(self, "expires_at", expires_at)
+        if expires_at <= authenticated_at:
             raise ValidationError("operator session lifetime is invalid")
 
 

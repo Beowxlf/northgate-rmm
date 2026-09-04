@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from typing import cast
 
 import pytest
@@ -380,6 +380,23 @@ def test_operator_models_reject_invalid_sessions_and_policy() -> None:
         replace(
             principal(),
             authenticated_at=NOW.replace(tzinfo=InvalidOffsetTimezone()),
+        )
+    with pytest.raises(ValidationError, match="normalized to UTC"):
+        replace(
+            principal(),
+            authenticated_at=datetime(
+                1,
+                1,
+                1,
+                tzinfo=timezone(timedelta(hours=23)),
+            ),
+            expires_at=datetime(
+                1,
+                1,
+                1,
+                1,
+                tzinfo=timezone(timedelta(hours=23)),
+            ),
         )
     with pytest.raises(ValidationError, match="issuer"):
         replace(policy(), issuer=cast(str, ["not", "a", "string"]))

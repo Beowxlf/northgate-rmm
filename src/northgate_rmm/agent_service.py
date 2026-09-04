@@ -19,7 +19,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.parse import parse_qsl
+
+from psycopg.conninfo import conninfo_to_dict
 
 from northgate_rmm.errors import ValidationError
 from northgate_rmm.listener import AgentListenerConfiguration, AgentTLSListener
@@ -128,29 +130,41 @@ def load_database_dsn(path: Path) -> str:
     if value != value.strip() or "\x00" in value or "\r" in value or "\n" in value:
         raise ValidationError("database DSN credential has an invalid format")
     try:
-        parsed = urlsplit(value)
-        hostname = parsed.hostname
-        _port = parsed.port
+        parameters = conninfo_to_dict(value)
+        hostname = parameters.get("host", "")
+        database_name = parameters.get("dbname", "")
+        port_value = parameters.get("port")
+        if not isinstance(hostname, str) or not isinstance(database_name, str):
+            raise ValueError("database target fields are invalid")
+        if port_value is not None and not isinstance(port_value, str):
+            raise ValueError("database port is invalid")
+        raw_authority = value.removeprefix("postgresql://").split("/", 1)[0]
+        raw_host_authority = raw_authority.split("@", 1)[-1]
+        if raw_host_authority.endswith(":"):
+            raise ValueError("database port is empty")
+        if port_value is not None and not 1 <= int(port_value) <= 65_535:
+            raise ValueError("database port is outside the supported range")
+        raw_query = value.partition("?")[2].partition("#")[0]
         query_fields = {
-            unquote(name).lower()
+            name.lower()
             for name, _field_value in parse_qsl(
-                parsed.query,
+                raw_query,
                 keep_blank_values=True,
                 strict_parsing=True,
             )
         }
-        address = ipaddress.ip_address(unquote(hostname or ""))
+        address = ipaddress.ip_address(hostname)
     except ValueError as error:
         raise ValidationError(
             "database DSN credential has an invalid format"
         ) from error
     if (
-        parsed.scheme != "postgresql"
-        or hostname is None
-        or not parsed.path.startswith("/")
-        or parsed.path == "/"
-        or parsed.fragment
+        not value.startswith("postgresql://")
+        or not database_name
         or query_fields & {"host", "hostaddr", "service"}
+        or "hostaddr" in parameters
+        or "service" in parameters
+        or address.is_unspecified
         or not (address.is_private or address.is_loopback)
     ):
         raise ValidationError("database DSN credential has an invalid format")

@@ -131,6 +131,11 @@ def test_database_dsn_is_loaded_without_entering_configuration(tmp_path: Path) -
         "postgresql://10.30.0.10/northgate?hostaddr=10.30.0.10",
         "postgresql://10.30.0.10/northgate?service=northgate",
         "postgresql://8.8.8.8/northgate",
+        "postgresql://u@8.8.8.8%2C1.1.1.1%2Cx@10.30.0.10/northgate",
+        "postgresql://10.30.0.10:/northgate",
+        "postgresql://10.30.0.10:0/northgate",
+        "postgresql://0.0.0.0/northgate",
+        "postgresql://[::]/northgate",
     ],
 )
 def test_database_dsn_rejects_ambiguous_format(tmp_path: Path, value: str) -> None:

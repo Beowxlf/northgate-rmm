@@ -33,6 +33,12 @@ The implementation entry points, configuration and lifecycle commands are in
 [the Version 1.0 runtime guide](docs/operations/V1_SOURCE_RUNTIME.md).
 Review, deployment and product testing are separate stages.
 
+The owner has approved lab deployment. The current
+[shared lab network decision](docs/governance/authorizations/V1-SHARED-LAB-NETWORK-2026-09-04.md)
+removes dedicated RMM VLANs: the server and test endpoints may share an existing
+private lab subnet. Historical gate and segmentation statements below do not
+override that approval. Actual deployment still requires compatible infrastructure.
+
 ## Project controls
 
 - [Project charter](PROJECT_CHARTER.md)

@@ -30,6 +30,11 @@ Package operations require operational services and timers to be stopped.
 
 ## Configure before activation
 
+For this lab deployment, use the existing shared private lab network described
+in the [owner network decision](../governance/authorizations/V1-SHARED-LAB-NETWORK-2026-09-04.md).
+Dedicated VLANs and separate subnets are optional. Use verified private addresses
+in the listener and client configurations; retain their identity checks.
+
 Copy the relevant `deploy/*.example.json` files to the exact paths in the service
 units. Replace example authorities, network addresses, deployment UUIDs,
 certificate pins and the owner subject from verified deployment inventory.

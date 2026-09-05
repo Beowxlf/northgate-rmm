@@ -28,8 +28,13 @@ try {
     if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $ExpectedSha256) { throw 'Installed hash mismatch.' }
     $configPath = Join-Path $installRoot 'agent.json'
     [IO.File]::WriteAllText($configPath, $configurationText, [Text.UTF8Encoding]::new($false))
-    & sc.exe create $serviceName binPath= ('"{0}" --config "{1}"' -f $destination, $configPath) start= demand obj= "NT SERVICE\$serviceName"
-    if ($LASTEXITCODE -ne 0) { throw 'Service registration failed.' }
+    $registration = Invoke-CimMethod -ClassName Win32_Service -MethodName Create -Arguments @{
+        Name=$serviceName; DisplayName=$serviceName
+        PathName=('"{0}" --config "{1}"' -f $destination, $configPath)
+        ServiceType=[uint32]16; ErrorControl=[uint32]1
+        StartMode='Manual'; StartName="NT SERVICE\$serviceName"
+    }
+    if ($registration.ReturnValue -ne 0) { throw 'Service registration failed.' }
     $createdService = $true
     foreach ($directory in @($installRoot, $stateRoot)) {
         $acl = [Security.AccessControl.DirectorySecurity]::new()

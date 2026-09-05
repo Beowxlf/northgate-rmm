@@ -25,8 +25,8 @@ $config = Join-Path $installRoot 'agent.json'
 $normal = '"{0}" --config "{1}"' -f $executable, $config
 $bootstrap = '{0} --enroll "{1}" --grant-file "{2}" --server-roots "{3}" --issuer-roots "{4}"' -f $normal, $EnrollmentOrigin.AbsoluteUri, $GrantFile, $ServerRoots, $IssuerRoots
 try {
-    & sc.exe config $name binPath= $bootstrap start= demand | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Bootstrap registration failed.' }
+    $registration = Invoke-CimMethod -InputObject (Get-CimInstance Win32_Service -Filter "Name='$name'") -MethodName Change -Arguments @{PathName=$bootstrap; StartMode='Manual'}
+    if ($registration.ReturnValue -ne 0) { throw 'Bootstrap registration failed.' }
     & sc.exe start $name | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Bootstrap start failed.' }
     $deadline = [DateTime]::UtcNow.AddSeconds(75)
@@ -37,7 +37,7 @@ try {
     $finished = Get-CimInstance Win32_Service -Filter "Name='NorthGateRMMAgent'"
     if ($service.Status -ne 'Stopped' -or $finished.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $identityPath)) { throw 'Enrollment outcome requires reconciliation.' }
 } finally {
-    & sc.exe config $name binPath= $normal start= demand | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not restore normal service configuration; leave service stopped.' }
+    $registration = Invoke-CimMethod -InputObject (Get-CimInstance Win32_Service -Filter "Name='$name'") -MethodName Change -Arguments @{PathName=$normal; StartMode='Manual'}
+    if ($registration.ReturnValue -ne 0) { throw 'Could not restore normal service configuration; leave service stopped.' }
 }
 Write-Output 'Identity installed. Service remains stopped for acceptance. Securely remove the single-use grant file after verification.'

@@ -57,6 +57,9 @@ TTYPath=/dev/ttyS0
 WantedBy=multi-user.target
 UNIT
 systemctl enable northgate-console-identity.service
+# Public identity only, readable through a read-only host mount for initial pinning.
+test -d /boot/efi/EFI
+install -m 0644 /etc/ssh/ssh_host_ed25519_key.pub /boot/efi/northgate-hostkey.pub
 sync
 # Only transient installer key files are removed. The encrypted escrow survives.
 rm -f "$keys/os.key" "$keys/data.key" "$keys/recovery.tar"

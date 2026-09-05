@@ -3,14 +3,15 @@
 set -eu
 umask 077
 test "$(id -u)" -eq 0
-test "$(cat /sys/class/dmi/id/product_uuid | tr A-F a-f)" = "fd5c00e3-e90d-4730-8e27-819585e7aaaa"
+test "$(cat /sys/class/dmi/id/product_uuid | tr A-F a-f)" = "d1c8820e-16d7-42d6-be8f-cbbf41cb04d4"
 keys=/run/northgate-rmm-install
 media=/root/northgate-media
 test -f "$keys/os.key"
 test ! -e /boot/northgate-rmm-recovery.age
 test "$(blockdev --getsize64 /dev/sda)" = 85899345920
 test "$(blockdev --getsize64 /dev/sdb)" = 107374182400
-test -z "$(blkid -p /dev/sdb 2>/dev/null || true)"
+blank_rc=0; blkid -p /dev/sdb >/dev/null 2>&1 || blank_rc=$?
+test "$blank_rc" -eq 2
 root_devices=$(lsblk -rpn -o NAME,TYPE /dev/sda | awk '$2 == "crypt" {print $1}')
 test "$(printf '%s\n' "$root_devices" | wc -l)" -eq 1
 test -n "$root_devices"
@@ -43,6 +44,19 @@ chmod 0600 /boot/northgate-rmm-recovery.age
 install -d -m 0755 /etc/dracut.conf.d
 printf 'add_dracutmodules+=" crypt tpm2-tss "\n' > /etc/dracut.conf.d/northgate-rmm.conf
 dracut --regenerate-all --force
+cat > /etc/systemd/system/northgate-console-identity.service <<'UNIT'
+[Unit]
+Description=Publish bootstrap public host identity to the Hyper-V serial console
+After=ssh.service
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo NORTHGATE_HOST_IDENTITY_BEGIN; cat /etc/ssh/ssh_host_ed25519_key.pub; echo NORTHGATE_HOST_IDENTITY_END'
+StandardOutput=tty
+TTYPath=/dev/ttyS0
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable northgate-console-identity.service
 sync
 # Only transient installer key files are removed. The encrypted escrow survives.
 rm -f "$keys/os.key" "$keys/data.key" "$keys/recovery.tar"

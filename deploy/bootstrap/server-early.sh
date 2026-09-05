@@ -4,14 +4,18 @@ set -eu
 umask 077
 test "$(id -u)" -eq 0
 test -d /sys/firmware/efi
+modprobe tpm_crb 2>/dev/null || true
 test -c /dev/tpmrm0 -o -c /dev/tpm0
-test "$(cat /sys/class/dmi/id/product_uuid | tr A-F a-f)" = "fd5c00e3-e90d-4730-8e27-819585e7aaaa"
+for required in list-devices blockdev blkid od debconf-set; do command -v "$required" >/dev/null; done
+test "$(cat /sys/class/dmi/id/product_uuid | tr A-F a-f)" = "d1c8820e-16d7-42d6-be8f-cbbf41cb04d4"
 test "$(list-devices disk | wc -l)" -eq 2
 test "$(blockdev --getsize64 /dev/sda)" = 85899345920
 test "$(blockdev --getsize64 /dev/sdb)" = 107374182400
 # Refuse a restart against partially installed or previously used media.
-test -z "$(blkid -p /dev/sda 2>/dev/null || true)"
-test -z "$(blkid -p /dev/sdb 2>/dev/null || true)"
+blank_rc=0; blkid -p /dev/sda >/dev/null 2>&1 || blank_rc=$?
+test "$blank_rc" -eq 2
+blank_rc=0; blkid -p /dev/sdb >/dev/null 2>&1 || blank_rc=$?
+test "$blank_rc" -eq 2
 mkdir -m 0700 /run/northgate-rmm-install
 od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > /run/northgate-rmm-install/os.key
 test "$(wc -c < /run/northgate-rmm-install/os.key)" -eq 64

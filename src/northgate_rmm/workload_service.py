@@ -13,6 +13,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from aiohttp import web
 
@@ -21,10 +22,25 @@ from northgate_rmm.agent_service import (
     _require_unprivileged_process,
 )
 from northgate_rmm.errors import AuthorizationError, ValidationError
-from northgate_rmm.listener import _BoundedTLSSite, _HardenedAppRunner
+from northgate_rmm.listener import PeerCertificate, _BoundedTLSSite, _HardenedAppRunner
 from northgate_rmm.secure_files import private_key_reference, regular_file_reference
 
 Operation = Callable[[str, bytes, str | None], tuple[int, dict[str, Any]]]
+
+
+def workload_peer_identity(
+    peer: PeerCertificate | None, allowed: frozenset[str]
+) -> tuple[UUID, str]:
+    """Admit a TLS-verified, exactly pinned workload without endpoint claims."""
+    if peer is None or peer.version() != "TLSv1.3":
+        raise ValidationError("workload TLS identity missing")
+    certificate = peer.getpeercert(binary_form=True)
+    if not isinstance(certificate, bytes) or not certificate:
+        raise ValidationError("workload client certificate missing")
+    fingerprint = hashlib.sha256(certificate).hexdigest()
+    if fingerprint not in allowed:
+        raise ValidationError("workload certificate pin rejected")
+    return UUID(int=0), fingerprint
 
 
 def strict_object(raw: bytes, *, maximum: int = 65536) -> dict[str, Any]:
@@ -222,6 +238,9 @@ async def serve(
         keepalive_timeout=1,
         shutdown_timeout=15,
         handler_cancellation=True,
+        connection_identity=lambda peer: workload_peer_identity(
+            peer, frozenset(allowed)
+        ),
     )
     await runner.setup()
     stopped = asyncio.Event()

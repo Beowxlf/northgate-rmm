@@ -674,6 +674,8 @@ class _HardenedRequestHandler(RequestHandler):
         *,
         header_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
         connection_admission: _ConnectionAdmission,
+        connection_identity: Callable[[PeerCertificate | None], _IdentityQuotaKey]
+        | None = None,
         **kwargs: object,
     ) -> None:
         loop = cast(asyncio.AbstractEventLoop, kwargs["loop"])
@@ -699,17 +701,24 @@ class _HardenedRequestHandler(RequestHandler):
         self._header_timeout_seconds = header_timeout_seconds
         self._header_timeout_handle: asyncio.TimerHandle | None = None
         self._connection_admission = connection_admission
+        self._connection_identity = connection_identity
         self._admitted_identity_key: _IdentityQuotaKey | None = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         super().connection_made(transport)
-        ssl_object = cast(asyncio.Transport, transport).get_extra_info("ssl_object")
+        ssl_object = cast(
+            PeerCertificate | None,
+            cast(asyncio.Transport, transport).get_extra_info("ssl_object"),
+        )
         try:
-            peer = extract_verified_client_certificate(ssl_object)
+            if self._connection_identity is None:
+                peer = extract_verified_client_certificate(ssl_object)
+                identity_key = (peer.endpoint_id, peer.public_key_fingerprint)
+            else:
+                identity_key = self._connection_identity(ssl_object)
         except ValidationError:
             self.force_close()
             return
-        identity_key = (peer.endpoint_id, peer.public_key_fingerprint)
         if not self._connection_admission.acquire(identity_key):
             self.force_close()
             return

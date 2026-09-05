@@ -6,7 +6,10 @@ param(
     [Parameter(Mandatory)][uri]$TimestampServer
 )
 $ErrorActionPreference = 'Stop'
-if ($TimestampServer.Scheme -ne 'https') { throw 'HTTPS timestamp authority required.' }
+# The native Authenticode timestamp API supports HTTP, not HTTPS. The signed
+# countersignature is authenticated by Windows, and is required below.
+# https://learn.microsoft.com/powershell/module/microsoft.powershell.security/set-authenticodesignature#-timestampserver
+if ($TimestampServer.Scheme -ne 'http' -or $TimestampServer.UserInfo -or $TimestampServer.Fragment) { throw 'A credential-free HTTP Authenticode timestamp authority is required.' }
 $root = (Resolve-Path -LiteralPath $Directory).Path
 $certificate = Get-Item -LiteralPath "Cert:\CurrentUser\My\$CertificateThumbprint"
 if (-not $certificate.HasPrivateKey) { throw 'Signing custody is unavailable.' }
@@ -16,7 +19,7 @@ foreach ($file in $files) {
     if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse point rejected.' }
     if ($file.Extension -in @('.exe', '.ps1')) {
         $signed = Set-AuthenticodeSignature -LiteralPath $file.FullName -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer $TimestampServer.AbsoluteUri
-        if ($signed.Status -ne 'Valid') { throw 'Authenticode signing failed.' }
+        if ($signed.Status -ne 'Valid' -or $null -eq $signed.TimeStamperCertificate) { throw 'Authenticode signing or timestamp verification failed.' }
     }
 }
 foreach ($file in $files) { $file.Refresh() }

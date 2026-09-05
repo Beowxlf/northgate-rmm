@@ -26,7 +26,7 @@ foreach ($record in $manifest.files) {
     if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $file.Length -ne $record.bytes -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne $record.sha256) { throw 'Release file mismatch.' }
     if ($file.Extension -in @('.exe','.ps1')) {
         $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
-        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $ExpectedSignerThumbprint) { throw 'Authenticode identity mismatch.' }
+        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $ExpectedSignerThumbprint -or $null -eq $signature.TimeStamperCertificate) { throw 'Authenticode identity or timestamp mismatch.' }
     }
 }
 if (-not $names.Contains('northgate-rmm-agent.exe') -or @(Get-ChildItem -LiteralPath $root -Force).Count -ne $names.Count+2) { throw 'Release file set mismatch.' }

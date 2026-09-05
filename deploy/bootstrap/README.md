@@ -14,10 +14,23 @@ The normal access payload is still required: authorized management public key,
 SSH configuration, firewall, role hook, and request/provenance records. Rendering
 must resolve every template placeholder and hash the complete payload.
 
-Current validation: server-early.sh and server-storage.sh passed shell syntax
-checks on the Linux build guest. No partitioning, installation, cryptographic
-recovery, TPM boot, or guest service test has been performed. The late wrapper
-and preseed integration still require qualification.
+Current validation: the exact lab VM was installed with targeted recovery
+repairs. Both encrypted volumes were unlocked using independently decrypted
+recovery material, and a subsequent normal boot unlocked both volumes through
+the TPM without console input. Key-only SSH, mounted storage, time synchronization,
+and an empty failed-service list were verified. RMM application acceptance is
+separate and remains pending.
+
+The installer-generated boot image originally omitted crypttab. Explicitly
+include crypttab and cryptsetup in the generic dracut image. TPM enrollment from
+the installer also did not match the installed system's PCR 7 state; this VM
+required reenrollment after a recovery boot. These results qualify the repaired
+VM, not unattended first boot of this installer. A first-boot enrollment workflow
+and the observed installer device-manager notification wait remain unresolved.
+
+Disk letters changed across boots. Post-installation operations must resolve
+the recorded LUKS UUIDs, not assume that sda is the OS disk. The initial blank-disk
+guards are not permission to rerun installation against populated disks.
 
 Remaining checks include Debian Installer command availability, blank-disk and
 wrong-VM rejection, installer passphrase archive cleanup, correct root mapping,

@@ -45,7 +45,7 @@ printf '%s UUID=%s none luks,tpm2-device=auto\nrmm-data UUID=%s none luks,tpm2-d
     "$root_name" "$root_uuid" "$data_uuid" > /etc/crypttab
 printf '/dev/mapper/rmm-data /var/lib/northgate-rmm ext4 defaults 0 2\n' >> /etc/fstab
 install -d -m 0755 /etc/dracut.conf.d
-printf 'add_dracutmodules+=" crypt tpm2-tss "\n' > /etc/dracut.conf.d/northgate-rmm.conf
+printf 'add_dracutmodules+=" crypt tpm2-tss lvm "\ninstall_items+=" /etc/crypttab /usr/sbin/cryptsetup "\nhostonly="no"\n' > /etc/dracut.conf.d/northgate-rmm.conf
 dracut --regenerate-all --force
 cat > /etc/systemd/system/northgate-console-identity.service <<'UNIT'
 [Unit]

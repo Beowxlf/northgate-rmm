@@ -40,6 +40,7 @@ func execute(ctx context.Context, args []string, output io.Writer) int {
 	flags := flag.NewFlagSet("northgate-rmm-agent", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	configPath := flags.String("config", "", "")
+	recoverRenewal := flags.Bool("recover-renewal", false, "")
 	showVersion := flags.Bool("version", false, "")
 	enrollOrigin := flags.String("enroll", "", "")
 	grantFile := flags.String("grant-file", "", "")
@@ -59,6 +60,16 @@ func execute(ctx context.Context, args []string, output io.Writer) int {
 	}
 	if *configPath == "" {
 		return 2
+	}
+	if *recoverRenewal {
+		if *enrollOrigin != "" || *grantFile != "" || *serverRoots != "" || *issuerRoots != "" {
+			return 2
+		}
+		if recoverIdentity(*configPath) != nil {
+			emitSetupFailure(output)
+			return 1
+		}
+		return 0
 	}
 	if *enrollOrigin != "" {
 		if *grantFile == "" || *serverRoots == "" || *issuerRoots == "" {
@@ -122,12 +133,11 @@ func run(ctx context.Context, configPath string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	sender, err := transport.NewMTLSSender(cfg.ControlPlaneURL, transport.Credentials{
-		Certificate: loadedIdentity.Certificate, ServerRoots: loadedIdentity.ServerRoots,
-	}, cfg.RequestTimeout)
+	verify, err := transport.StatusVerifier(cfg.ServerStatusURL, []byte(cfg.ServerStatusPublicKey), loadedIdentity.ServerRoots)
 	if err != nil {
 		return err
 	}
+	sender := transport.ManagedSender{VerifyServer: verify, Origin: cfg.ControlPlaneURL, Directory: filepath.Join(cfg.StateDirectory, "identity"), EndpointID: cfg.EndpointID, Timeout: cfg.RequestTimeout}
 	logger, err := eventlog.New(output)
 	if err != nil {
 		return err
@@ -156,4 +166,28 @@ func emitSetupFailure(output io.Writer) {
 		Component: eventlog.ComponentAgent, Outcome: eventlog.OutcomeFailed,
 		FailureClass: eventlog.FailureInternal,
 	})
+}
+
+func recoverIdentity(configPath string) error {
+	file, err := os.Open(configPath)
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Decode(file)
+	closeErr := file.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := validatePlatformState(cfg.StateDirectory); err != nil {
+		return err
+	}
+	lock, err := sequence.Open(filepath.Join(cfg.StateDirectory, "sequence"))
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	return identity.RecoverRenewal(filepath.Join(cfg.StateDirectory, "identity"), time.Now())
 }

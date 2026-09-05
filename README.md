@@ -3,7 +3,7 @@
 This workspace begins a security-first, cross-platform remote monitoring and
 management (RMM) software project.
 
-The current working branch extends the next monitoring release to Windows
+The current working branch implements the Version 1.0 monitoring source for Linux and Windows
 under the [2026-09-04 owner request](docs/governance/authorizations/V1-CROSS-PLATFORM-OWNER-REQUEST-2026-09-04.md).
 The [Windows runtime candidate](docs/operations/WINDOWS_AGENT_RUNTIME.md) records
 the new source and remaining platform qualification work. This branch is not a
@@ -13,7 +13,7 @@ previous Linux-only baseline.
 The first objective is not to reproduce every feature in TacticalRMM. It is to
 learn the problem deeply and build one trustworthy vertical slice:
 
-1. enroll one Linux test endpoint;
+1. enroll Linux and Windows test endpoints;
 2. give it a durable cryptographic identity;
 3. collect read-only inventory and health data;
 4. display whether the endpoint is healthy, stale, or offline;
@@ -28,6 +28,10 @@ Start with [the learning and build program](docs/RMM_LEARNING_AND_BUILD_PROGRAM.
 then complete [Module 1: The RMM Problem Map](docs/modules/01_RMM_PROBLEM_MAP.md).
 The first executable lesson is
 [Module 2: The Synthetic Trust Slice](docs/modules/02_PHASE1_SYNTHETIC_SLICE.md).
+
+The implementation entry points, configuration and lifecycle commands are in
+[the Version 1.0 runtime guide](docs/operations/V1_SOURCE_RUNTIME.md).
+Review, deployment and product testing are separate stages.
 
 ## Project controls
 

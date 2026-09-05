@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"io"
 	"os"
@@ -47,7 +48,15 @@ func enroll(ctx context.Context, configPath, origin, grantPath, serverRootsPath,
 	if expectedID == bootstrapEndpointID {
 		expectedID = ""
 	}
-	material, err := transport.Enroll(ctx, origin, strings.TrimSpace(string(grant)), expectedID, serverRoots, issuerRoots, cfg.RequestTimeout)
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(serverRoots) {
+		return transport.ErrEnrollment
+	}
+	verify, err := transport.StatusVerifier(cfg.ServerStatusURL, []byte(cfg.ServerStatusPublicKey), roots)
+	if err != nil {
+		return err
+	}
+	material, err := transport.Enroll(ctx, origin, strings.TrimSpace(string(grant)), expectedID, serverRoots, issuerRoots, cfg.RequestTimeout, verify)
 	if err != nil {
 		return err
 	}

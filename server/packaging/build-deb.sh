@@ -66,7 +66,7 @@ find "$site_packages" -type f -exec chmod 0644 {} +
 find "$site_packages" -type d -name __pycache__ -prune -exec rm -rf -- {} +
 find "$site_packages" -type f -name '*.pyc' -delete
 
-for service in agent enrollment operator; do
+for service in agent enrollment operator issuer oidc audit; do
   unit_service="$service"
   if [ "$service" = "agent" ]; then
     unit_service=agent-ingress
@@ -86,6 +86,16 @@ sed "s/@VERSION@/$version/g" "$script_directory/debian/control.in" > \
   "$stage/DEBIAN/control"
 install -m 0755 "$script_directory/launcher.py" \
   "$stage/usr/libexec/northgate-rmm-server/northgate-rmm-admin"
+for unit in audit-export certificate-status backup retention; do
+  install -m 0644 "$script_directory/../../deploy/systemd/northgate-rmm-${unit}.service" "$stage/usr/lib/systemd/system/"
+  install -m 0644 "$script_directory/../../deploy/systemd/northgate-rmm-${unit}.timer" "$stage/usr/lib/systemd/system/"
+done
+for config in audit-export certificate-status recovery renewal-service; do
+  install -m 0644 "$script_directory/../../deploy/${config}.example.json" "$stage/etc/northgate-rmm/"
+done
+for command in audit-export audit-reconcile certificate-status pki-admin recovery retention; do
+  install -m 0755 "$script_directory/launcher.py" "$stage/usr/libexec/northgate-rmm-server/northgate-rmm-${command}"
+done
 install -m 0644 "$script_directory/debian/conffiles" "$stage/DEBIAN/conffiles"
 for maintainer_script in preinst postinst prerm postrm; do
   install -m 0755 "$script_directory/debian/$maintainer_script" \

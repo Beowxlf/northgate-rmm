@@ -15,11 +15,9 @@ and restricts the executable and state directories to administrators, SYSTEM,
 and that service account. It creates no inbound network rule.
 
 Startup rejects reparse points and broad state ACLs. Sequence and spool writers
-use native process-level byte-range locks. Native directory metadata durability,
-ancestor replacement defenses, hard-link alias checks, Windows upgrade/removal,
-signed packaging and installed-service recovery remain qualification work;
-the older non-Linux filesystem shims must not be mistaken for those guarantees.
-Do not enable an installed Windows service until these gaps are resolved.
+use native process-level byte-range locks. Windows now has dedicated directory flushes, ancestor and hard-link checks,
+upgrade/removal scripts, signed-release tooling and renewal recovery. These
+implementations still require installed-service and power-loss qualification.
 
 ## Enrollment
 
@@ -39,4 +37,6 @@ reconciliation before retrying. The input grant file is not automatically
 deleted; the deployment operator must remove it after verified enrollment.
 
 Server-certificate online status, endpoint renewal, external audit anchoring,
-operational issuer and operator identity integration remain release prerequisites.
+the restricted issuer and operator identity bridge are implemented in this
+source. See [the runtime guide](V1_SOURCE_RUNTIME.md) for their configuration.
+End-to-end acceptance remains pending.

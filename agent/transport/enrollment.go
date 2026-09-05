@@ -27,7 +27,7 @@ var grantPattern = regexp.MustCompile(`^ngr1_[A-Za-z0-9_-]{43}$`)
 // a consumed grant, follows redirects, uses ambient proxies, or logs secrets.
 // Both trust bundles and the expected endpoint must come from the operator.
 // The caller installs the returned material through identity.Install.
-func Enroll(ctx context.Context, origin, token, endpointID string, serverRootsPEM, issuerRootsPEM []byte, timeout time.Duration) (identity.Material, error) {
+func Enroll(ctx context.Context, origin, token, endpointID string, serverRootsPEM, issuerRootsPEM []byte, timeout time.Duration, verifiers ...func(tls.ConnectionState) error) (identity.Material, error) {
 	parsed, err := validateOrigin(origin)
 	if err != nil || !grantPattern.MatchString(token) || (endpointID != "" && !uuidPattern.MatchString(endpointID)) || timeout < time.Second || timeout > time.Minute {
 		return identity.Material{}, ErrEnrollment
@@ -62,8 +62,15 @@ func Enroll(ctx context.Context, origin, token, endpointID string, serverRootsPE
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 	request.Close = true
+	var verify func(tls.ConnectionState) error
+	if len(verifiers) > 1 {
+		return identity.Material{}, ErrEnrollment
+	}
+	if len(verifiers) == 1 {
+		verify = verifiers[0]
+	}
 	transport := &http.Transport{
-		TLSClientConfig:    &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: serverRoots},
+		TLSClientConfig:    &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: serverRoots, VerifyConnection: verify},
 		DisableCompression: true, DisableKeepAlives: true,
 		TLSHandshakeTimeout: timeout, ResponseHeaderTimeout: timeout,
 		MaxResponseHeaderBytes: 8192,

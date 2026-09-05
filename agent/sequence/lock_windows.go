@@ -6,6 +6,7 @@ import (
 	"errors"
 	"golang.org/x/sys/windows"
 	"os"
+	"path/filepath"
 )
 
 type fileLock struct {
@@ -21,7 +22,7 @@ func acquireDirectoryLock(root *os.Root) (directoryLock, error) {
 	pathInfo, pathErr := root.Lstat(".lock")
 	if fileErr != nil || pathErr != nil || !fileInfo.Mode().IsRegular() ||
 		pathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(fileInfo, pathInfo) ||
-		!privateFile(fileInfo) || fileInfo.Size() != 0 {
+		!privateFile(fileInfo, filepath.Join(root.Name(), ".lock")) || fileInfo.Size() != 0 {
 		file.Close()
 		return nil, ErrCorrupt
 	}

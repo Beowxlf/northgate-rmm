@@ -1,0 +1,21 @@
+{
+  "bind_address": "127.0.0.1",
+  "port": 8447,
+  "authority": "oidc.rmm.internal:8447",
+  "allowed_client_sha256": [
+    "REPLACE_WITH_EXACT_CALLER_CERTIFICATE_SHA256"
+  ],
+  "client_ca_certificate": "/etc/northgate-rmm/tls/workload-ca.pem",
+  "server_certificate": "/etc/northgate-rmm/tls/oidc-chain.pem",
+  "server_private_key": "/run/credentials/northgate-rmm-oidc.service/server-key",
+  "introspection_url": "https://idp.rmm.internal/realms/northgate/protocol/openid-connect/token/introspect",
+  "idp_connect_address": "127.0.0.1",
+  "idp_ca_certificate": "/etc/northgate-rmm/tls/idp-ca.pem",
+  "client_secret_file": "/run/credentials/northgate-rmm-oidc.service/client-secret",
+  "client_id": "northgate-rmm",
+  "issuer": "https://idp.rmm.internal/realms/northgate",
+  "tenant": "northgate",
+  "subject": "REPLACE_WITH_OWNER_SUBJECT",
+  "required_acr": "2",
+  "required_amr": "otp"
+}

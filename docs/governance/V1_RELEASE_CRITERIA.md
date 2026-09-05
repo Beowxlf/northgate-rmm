@@ -3,7 +3,7 @@
 ## Release promise
 
 NorthGate RMM 1.0 is a single-operator, single-site, lab-supported monitoring
-release for one qualified Debian 12 amd64 endpoint. It proves the complete
+release targeting Debian 12 amd64 and Windows 11 / Windows Server 2022 amd64 endpoints. It proves the complete
 charter slice with production-intent identities and release artifacts while
 keeping endpoint authority read-only.
 
@@ -16,7 +16,7 @@ release verification must preserve those guarantees.
 ## Included scope
 
 - one private NorthGate control-plane deployment;
-- one disposable Debian 12 amd64 canary;
+- disposable Debian 12 amd64 and Windows amd64 monitoring canaries;
 - single-use, expiring enrollment grants;
 - endpoint-bound mutual-TLS identity, renewal, status, and revocation;
 - outbound-only heartbeat and read-only inventory delivery;
@@ -32,12 +32,16 @@ release verification must preserve those guarantees.
 
 ## Explicit exclusions
 
-Version 1.0 does not include Windows support, remote jobs, command text, shell
+Version 1.0 does not include remote jobs, command text, shell
 execution, remediation, privileged helpers, file transfer, agent-driven update
 installation, remote desktop, public-internet exposure, multi-tenancy, or broad
 fleet rollout. Those capabilities remain governed by G3 through G8 and later
 release criteria. The architecture must preserve Windows and Linux as mature
 product requirements without claiming either unqualified platform as supported.
+
+The owner expanded the Version 1.0 implementation scope to Windows on 2026-09-04.
+The source additions are unqualified until the separate review and product-test
+stages finish; this amendment does not claim release acceptance.
 
 ## Qualification ladder
 

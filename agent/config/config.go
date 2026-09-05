@@ -37,21 +37,25 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-
 // Config contains only non-secret settings. Identity keys and enrollment
 // grants belong to a separate protected store.
 type Config struct {
-	EndpointID         string        `json:"endpoint_id"`
-	ControlPlaneURL    string        `json:"control_plane_url"`
-	StateDirectory     string        `json:"state_directory"`
-	CollectionInterval time.Duration `json:"-"`
-	RequestTimeout     time.Duration `json:"-"`
-	MaxSpoolBytes      int64         `json:"max_spool_bytes"`
+	ServerStatusURL       string        `json:"server_status_url"`
+	ServerStatusPublicKey string        `json:"server_status_public_key"`
+	EndpointID            string        `json:"endpoint_id"`
+	ControlPlaneURL       string        `json:"control_plane_url"`
+	StateDirectory        string        `json:"state_directory"`
+	CollectionInterval    time.Duration `json:"-"`
+	RequestTimeout        time.Duration `json:"-"`
+	MaxSpoolBytes         int64         `json:"max_spool_bytes"`
 }
 
 type wireConfig struct {
-	EndpointID         string `json:"endpoint_id"`
-	ControlPlaneURL    string `json:"control_plane_url"`
-	StateDirectory     string `json:"state_directory"`
-	CollectionInterval string `json:"collection_interval"`
-	RequestTimeout     string `json:"request_timeout"`
-	MaxSpoolBytes      int64  `json:"max_spool_bytes"`
+	ServerStatusURL       string `json:"server_status_url"`
+	ServerStatusPublicKey string `json:"server_status_public_key"`
+	EndpointID            string `json:"endpoint_id"`
+	ControlPlaneURL       string `json:"control_plane_url"`
+	StateDirectory        string `json:"state_directory"`
+	CollectionInterval    string `json:"collection_interval"`
+	RequestTimeout        string `json:"request_timeout"`
+	MaxSpoolBytes         int64  `json:"max_spool_bytes"`
 }
 
 // Decode accepts exactly one JSON object, rejects unknown fields, and enforces
@@ -91,6 +95,7 @@ func Decode(reader io.Reader) (Config, error) {
 		return Config{}, errors.New("request_timeout is invalid")
 	}
 	result := Config{
+		ServerStatusURL: wire.ServerStatusURL, ServerStatusPublicKey: wire.ServerStatusPublicKey,
 		EndpointID:         wire.EndpointID,
 		ControlPlaneURL:    wire.ControlPlaneURL,
 		StateDirectory:     wire.StateDirectory,

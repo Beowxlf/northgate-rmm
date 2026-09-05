@@ -1,0 +1,10 @@
+{
+  "endpoint_id": "00000000-0000-4000-8000-000000000000",
+  "control_plane_url": "https://rmm.invalid/",
+  "state_directory": "C:\\ProgramData\\NorthGate RMM",
+  "collection_interval": "5m",
+  "request_timeout": "10s",
+  "max_spool_bytes": 1048576,
+  "server_status_url": "https://status.rmm.internal",
+  "server_status_public_key": "REPLACE_WITH_PINNED_ED25519_PUBLIC_PEM"
+}

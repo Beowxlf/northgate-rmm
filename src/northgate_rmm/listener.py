@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -123,6 +123,8 @@ def create_agent_web_application(
     *,
     authority: str,
     request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    renewal: Callable[[bytes, VerifiedClientCertificate, datetime], dict[str, Any]]
+    | None = None,
 ) -> web.Application:
     """Create the agent-only aiohttp adapter without opening a socket."""
 
@@ -130,7 +132,7 @@ def create_agent_web_application(
     if not 1.0 <= request_timeout_seconds <= 30.0:
         raise ValidationError("listener request timeout is outside the supported range")
     adapter = _AgentTLSAdapter(
-        AgentMessageApplication(store),
+        AgentMessageApplication(store, renewal),
         authority=authority,
         request_timeout_seconds=request_timeout_seconds,
     )
@@ -207,12 +209,15 @@ class AgentTLSListener:
         self,
         configuration: AgentListenerConfiguration,
         store: AgentMessageStore,
+        renewal: Callable[[bytes, VerifiedClientCertificate, datetime], dict[str, Any]]
+        | None = None,
     ) -> None:
         self._configuration = configuration
         self._application = create_agent_web_application(
             store,
             authority=configuration.authority,
             request_timeout_seconds=configuration.request_timeout_seconds,
+            renewal=renewal,
         )
         self._runner: web.AppRunner | None = None
 

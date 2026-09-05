@@ -8,5 +8,5 @@ import (
 )
 
 func privateRecord(_ fs.FileInfo, paths ...string) bool {
-	return len(paths) == 1 && platformfs.Validate(paths[0], true) == nil
+	return len(paths) == 1 && platformfs.ValidateSpoolRecord(paths[0]) == nil
 }

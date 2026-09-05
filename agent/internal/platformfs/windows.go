@@ -24,6 +24,10 @@ func allowedSID(sid *windows.SID) bool {
 }
 
 func Validate(name string, private bool) error {
+	return validateLinks(name, private, 1)
+}
+
+func validateLinks(name string, private bool, links uint32) error {
 	ptr, err := windows.UTF16PtrFromString(name)
 	if err != nil {
 		return ErrUnsafe
@@ -73,11 +77,46 @@ func Validate(name string, private bool) error {
 		}
 		defer windows.CloseHandle(handle)
 		var info windows.ByHandleFileInformation
-		if windows.GetFileInformationByHandle(handle, &info) != nil || info.NumberOfLinks != 1 {
+		if windows.GetFileInformationByHandle(handle, &info) != nil || info.NumberOfLinks != links {
 			return ErrUnsafe
 		}
 	}
 	return nil
+}
+
+// ValidateSpoolRecord permits only the two names of a recoverable queue move.
+// An outside alias, a third link, or an unprotected parent still fails closed.
+func ValidateSpoolRecord(name string) error {
+	if Validate(name, true) == nil {
+		return nil
+	}
+	if filepath.Ext(name) != ".json" || validateLinks(name, true, 2) != nil {
+		return ErrUnsafe
+	}
+	parent, base := filepath.Dir(name), filepath.Base(name)
+	var peers []string
+	switch filepath.Base(parent) {
+	case "rollover":
+		peers = []string{filepath.Join(filepath.Dir(parent), "rejected", base)}
+	case "rejected":
+		peers = []string{filepath.Join(filepath.Dir(parent), base), filepath.Join(filepath.Dir(parent), "rollover", base)}
+	default:
+		peers = []string{filepath.Join(parent, "rejected", base)}
+	}
+	source, err := os.Lstat(name)
+	if err != nil {
+		return ErrUnsafe
+	}
+	for _, peer := range peers {
+		if Validate(parent, true) != nil || Validate(filepath.Dir(peer), true) != nil || validateLinks(peer, true, 2) != nil {
+			continue
+		}
+		target, err := os.Lstat(peer)
+		if err == nil && os.SameFile(source, target) {
+			return nil
+		}
+	}
+	return ErrUnsafe
 }
 
 func Ancestors(name string) error {
@@ -138,6 +177,10 @@ func ValidateTree(path string) error {
 		count++
 		if err != nil || count > 10000 {
 			return ErrUnsafe
+		}
+		relative, relErr := filepath.Rel(path, name)
+		if relErr == nil && len(relative) > 6 && relative[:6] == "spool"+string(os.PathSeparator) {
+			return ValidateSpoolRecord(name)
 		}
 		return Validate(name, true)
 	})

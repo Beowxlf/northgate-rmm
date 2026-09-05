@@ -4,19 +4,19 @@ Scope: implementation of private Linux and Windows monitoring. This record is
 not an independent code review, security qualification, deployment or acceptance
 test result. Earlier release-candidate evidence does not cover these changes.
 
-| Source check | Observed result |
-| --- | --- |
-| Windows amd64 Go build | Passed |
-| Linux amd64 Go cross-build | Passed |
-| Go vet, Windows and Linux targets | Passed |
-| Windows Go test-package compilation, `-run '^$'` | Passed; tests not executed |
-| Python Ruff lint and format | Passed |
-| Python strict mypy, Linux target | Passed, 60 source/test files |
-| Python wheel, configured setuptools 84.0.0 backend | Built, including all 11 migrations and new command entry points |
-| Windows lifecycle script parsing | Passed |
-| Debian build and maintainer shell syntax | Passed |
-| Lightweight secret scan | Zero findings; not a substitute for Gitleaks |
-| Focused native Windows directory flush probe | Write-capable directory opened and flushed successfully on this machine |
+| Source check                                       | Observed result                                                         |
+| -------------------------------------------------- | ----------------------------------------------------------------------- |
+| Windows amd64 Go build                             | Passed                                                                  |
+| Linux amd64 Go cross-build                         | Passed                                                                  |
+| Go vet, Windows and Linux targets                  | Passed                                                                  |
+| Windows Go test-package compilation, `-run '^$'`   | Passed; tests not executed                                              |
+| Python Ruff lint and format                        | Passed                                                                  |
+| Python strict mypy, Linux target                   | Passed, 60 source/test files                                            |
+| Python wheel, configured setuptools 84.0.0 backend | Built, including all 11 migrations and new command entry points         |
+| Windows lifecycle script parsing                   | Passed                                                                  |
+| Debian build and maintainer shell syntax           | Passed                                                                  |
+| Lightweight secret scan                            | Zero findings; not a substitute for Gitleaks                            |
+| Focused native Windows directory flush probe       | Write-capable directory opened and flushed successfully on this machine |
 
 The standalone Python `build` frontend was absent and the environment initially
 had an older setuptools. The wheel was subsequently built through the repository's

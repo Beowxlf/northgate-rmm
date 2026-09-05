@@ -7,8 +7,9 @@ The current working branch implements the Version 1.0 monitoring source for Linu
 under the [2026-09-04 owner request](docs/governance/authorizations/V1-CROSS-PLATFORM-OWNER-REQUEST-2026-09-04.md).
 The [Windows runtime candidate](docs/operations/WINDOWS_AGENT_RUNTIME.md) records
 the new source and remaining platform qualification work. This branch is not a
-completed or deployed release; historical qualification below applies to the
-previous Linux-only baseline.
+completed release. Private lab deployment and selected acceptance tests are
+recorded in the [current lab evidence summary](docs/audits/V1_LAB_ACCEPTANCE_2026-09-05.md);
+historical qualification below applies to the previous Linux-only baseline.
 
 The first objective is not to reproduce every feature in TacticalRMM. It is to
 learn the problem deeply and build one trustworthy vertical slice:

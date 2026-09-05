@@ -8,21 +8,21 @@ capability is added.
 
 ## Components and entry points
 
-| Component | Executable / source |
-| --- | --- |
-| Inventory and heartbeat ingress | `northgate-rmm-agent-service` |
-| One-time enrollment | `northgate-rmm-enrollment-service` |
-| Same-key renewal | `/v1/agent/renew` through authenticated ingress |
-| Restricted endpoint intermediate | `northgate-rmm-issuer-service` |
-| Owner session introspection | `northgate-rmm-oidc-service` |
-| Read-only browser views | `northgate-rmm-operator-service` |
-| Independent audit intake | `northgate-rmm-audit-service` |
-| Outbox delivery | `northgate-rmm-audit-export` |
-| Offline ledger rebuild | `northgate-rmm-audit-reconcile` |
-| Server certificate assertions | `northgate-rmm-certificate-status` |
-| Offline trust material creation | `northgate-rmm-pki-admin` |
-| Encrypted, signed database backups / isolated restore | `northgate-rmm-recovery` |
-| Bounded historical observation cleanup | `northgate-rmm-retention` |
+| Component                                             | Executable / source                             |
+| ----------------------------------------------------- | ----------------------------------------------- |
+| Inventory and heartbeat ingress                       | `northgate-rmm-agent-service`                   |
+| One-time enrollment                                   | `northgate-rmm-enrollment-service`              |
+| Same-key renewal                                      | `/v1/agent/renew` through authenticated ingress |
+| Restricted endpoint intermediate                      | `northgate-rmm-issuer-service`                  |
+| Owner session introspection                           | `northgate-rmm-oidc-service`                    |
+| Read-only browser views                               | `northgate-rmm-operator-service`                |
+| Independent audit intake                              | `northgate-rmm-audit-service`                   |
+| Outbox delivery                                       | `northgate-rmm-audit-export`                    |
+| Offline ledger rebuild                                | `northgate-rmm-audit-reconcile`                 |
+| Server certificate assertions                         | `northgate-rmm-certificate-status`              |
+| Offline trust material creation                       | `northgate-rmm-pki-admin`                       |
+| Encrypted, signed database backups / isolated restore | `northgate-rmm-recovery`                        |
+| Bounded historical observation cleanup                | `northgate-rmm-retention`                       |
 
 All Python commands are declared in `pyproject.toml` and the isolated Debian
 launcher. The server package carries disabled services and timer definitions.

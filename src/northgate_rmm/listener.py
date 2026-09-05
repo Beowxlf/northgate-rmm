@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import ipaddress
+import logging
 import ssl
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Iterable
@@ -644,6 +645,8 @@ def _response(
     *,
     headers: Iterable[tuple[str, str]] = (),
 ) -> web.Response:
+    if status >= 400:
+        logging.getLogger(__name__).warning("agent_http_status=%d", status)
     response = web.Response(status=status, body=body, headers=headers)
     response.headers.setdefault("Content-Type", "application/json")
     response.headers.setdefault("Cache-Control", "no-store")

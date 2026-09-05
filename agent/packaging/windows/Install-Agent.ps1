@@ -31,7 +31,7 @@ try {
     $registration = Invoke-CimMethod -ClassName Win32_Service -MethodName Create -Arguments @{
         Name=$serviceName; DisplayName=$serviceName
         PathName=('"{0}" --config "{1}"' -f $destination, $configPath)
-        ServiceType=[uint32]16; ErrorControl=[uint32]1
+        ServiceType=[byte]16; ErrorControl=[byte]1
         StartMode='Manual'; StartName="NT SERVICE\$serviceName"
     }
     if ($registration.ReturnValue -ne 0) { throw 'Service registration failed.' }

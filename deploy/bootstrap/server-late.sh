@@ -4,8 +4,9 @@ umask 077
 test -f /run/northgate-rmm-install/os.key
 test ! -e /target/root/northgate-media
 cp -a /cdrom/northgate /target/root/northgate-media
-install -d -m 0700 /target/run/northgate-rmm-install
-install -m 0600 /run/northgate-rmm-install/os.key /target/run/northgate-rmm-install/os.key
+mkdir -m 0700 /target/run/northgate-rmm-install
+cp /run/northgate-rmm-install/os.key /target/run/northgate-rmm-install/os.key
+chmod 0600 /target/run/northgate-rmm-install/os.key
 in-target /bin/sh /root/northgate-media/late-command.sh
 in-target /bin/sh /root/northgate-media/server-storage.sh
 # Clear installer passphrase answers before its database is archived.

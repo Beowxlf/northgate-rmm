@@ -49,7 +49,7 @@ d-i partman/confirm_nooverwrite boolean true
 d-i partman-efi/non_efi_system boolean true
 
 tasksel tasksel/first multiselect standard
-d-i pkgsel/include string openssh-server sudo nftables ca-certificates curl cryptsetup-bin dracut age
+d-i pkgsel/include string openssh-server sudo nftables ca-certificates curl cryptsetup-bin dracut age tpm2-tools
 d-i pkgsel/upgrade select safe-upgrade
 popularity-contest popularity-contest/participate boolean false
 

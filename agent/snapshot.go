@@ -73,48 +73,60 @@ func (snapshotter *Snapshotter) Snapshot(
 		return SnapshotResult{}, errors.New("boot identity is unavailable")
 	}
 	var snapshotResult SnapshotResult
-	_, err = snapshotter.sequences.ReserveAndUse(ctx, bootID, func(sequence int64) error {
-		// The shared sequence-store boundary remains held through queue
-		// publication so multiple snapshotters cannot invert delivery order.
-		snapshotResult.Sequence = sequence
-		messageID, err := snapshotter.newID()
+	for _, kind := range []string{"heartbeat", "inventory"} {
+		_, err = snapshotter.sequences.ReserveAndUse(ctx, bootID, func(sequence int64) error {
+			// The shared sequence-store boundary remains held through queue
+			// publication so multiple snapshotters cannot invert delivery order.
+			snapshotResult.Sequence = sequence
+			messageID, err := snapshotter.newID()
+			if err != nil {
+				return err
+			}
+			correlationID, err := snapshotter.newID()
+			if err != nil {
+				return err
+			}
+			now := snapshotter.clock().UTC()
+			raw, err := protocol.EncodeInventory(
+				protocol.Envelope{
+					MessageID:       messageID,
+					EndpointID:      endpointID,
+					BootID:          bootID,
+					Sequence:        sequence,
+					CreatedAt:       now,
+					ExpiresAt:       now.Add(snapshotter.messageTTL),
+					CorrelationID:   correlationID,
+					ProtocolVersion: protocol.Version,
+				},
+				protocol.InventoryPayload{
+					Platform:          result.Platform,
+					Architecture:      result.Architecture,
+					Fields:            result.Fields,
+					CollectorComplete: result.Complete,
+					SchemaVersion:     protocol.InventorySchema,
+				},
+			)
+			if kind == "heartbeat" {
+				raw, err = protocol.EncodeHeartbeat(protocol.Envelope{
+					MessageID: messageID, EndpointID: endpointID, BootID: bootID,
+					Sequence: sequence, CreatedAt: now, ExpiresAt: now.Add(snapshotter.messageTTL),
+					CorrelationID: correlationID, ProtocolVersion: protocol.Version,
+				}, protocol.HeartbeatPayload{AgentVersion: result.Fields["agent.version"], Capabilities: []string{"inventory"}})
+			}
+			if err != nil {
+				return err
+			}
+			snapshotResult.MessageID = messageID
+			snapshotResult.Complete = result.Complete
+			snapshotResult.Issues = append([]collector.Issue(nil), result.Issues...)
+			snapshotResult.Bytes = len(raw)
+			return snapshotter.queue.Enqueue(ctx, messageID, raw)
+		})
 		if err != nil {
-			return err
+			return snapshotResult, err
 		}
-		correlationID, err := snapshotter.newID()
-		if err != nil {
-			return err
-		}
-		now := snapshotter.clock().UTC()
-		raw, err := protocol.EncodeInventory(
-			protocol.Envelope{
-				MessageID:       messageID,
-				EndpointID:      endpointID,
-				BootID:          bootID,
-				Sequence:        sequence,
-				CreatedAt:       now,
-				ExpiresAt:       now.Add(snapshotter.messageTTL),
-				CorrelationID:   correlationID,
-				ProtocolVersion: protocol.Version,
-			},
-			protocol.InventoryPayload{
-				Platform:          result.Platform,
-				Architecture:      result.Architecture,
-				Fields:            result.Fields,
-				CollectorComplete: result.Complete,
-				SchemaVersion:     protocol.InventorySchema,
-			},
-		)
-		if err != nil {
-			return err
-		}
-		snapshotResult.MessageID = messageID
-		snapshotResult.Complete = result.Complete
-		snapshotResult.Issues = append([]collector.Issue(nil), result.Issues...)
-		snapshotResult.Bytes = len(raw)
-		return snapshotter.queue.Enqueue(ctx, messageID, raw)
-	})
-	return snapshotResult, err
+	}
+	return snapshotResult, nil
 }
 
 func newUUID() (string, error) {

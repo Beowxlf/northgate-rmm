@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 
 from northgate_rmm.domain import Endpoint, require_aware
 from northgate_rmm.errors import AuthorizationError, NotFoundError, ValidationError
+from northgate_rmm.presentation import STYLE_SOURCE
 from northgate_rmm.views import (
     EndpointReader,
     render_endpoint_detail,
@@ -471,7 +472,7 @@ def _headers(content_type: str) -> tuple[tuple[str, str], ...]:
         (
             "content-security-policy",
             "default-src 'none'; frame-ancestors 'none'; "
-            "base-uri 'none'; form-action 'none'",
+            f"base-uri 'none'; form-action 'none'; style-src {STYLE_SOURCE}",
         ),
         ("referrer-policy", "no-referrer"),
         ("x-content-type-options", "nosniff"),

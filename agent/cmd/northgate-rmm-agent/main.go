@@ -17,6 +17,7 @@ import (
 	"github.com/Beowxlf/northgate-rmm/agent/config"
 	"github.com/Beowxlf/northgate-rmm/agent/eventlog"
 	"github.com/Beowxlf/northgate-rmm/agent/identity"
+	"github.com/Beowxlf/northgate-rmm/agent/remote"
 	agentruntime "github.com/Beowxlf/northgate-rmm/agent/runtime"
 	"github.com/Beowxlf/northgate-rmm/agent/sequence"
 	"github.com/Beowxlf/northgate-rmm/agent/spool"
@@ -42,6 +43,7 @@ func execute(ctx context.Context, args []string, output io.Writer) int {
 	configPath := flags.String("config", "", "")
 	recoverRenewal := flags.Bool("recover-renewal", false, "")
 	showVersion := flags.Bool("version", false, "")
+	remoteCheck := flags.Bool("remote-check", false, "")
 	enrollOrigin := flags.String("enroll", "", "")
 	grantFile := flags.String("grant-file", "", "")
 	serverRoots := flags.String("server-roots", "", "")
@@ -57,6 +59,20 @@ func execute(ctx context.Context, args []string, output io.Writer) int {
 			return 1
 		}
 		return 0
+	}
+	if *remoteCheck {
+		if len(args) != 1 {
+			return 2
+		}
+		if remote.DesktopReady(ctx) {
+			_, err := io.WriteString(output, "{\"desktop_backend\":\"rdp\",\"ready\":true}\n")
+			if err != nil {
+				return 1
+			}
+			return 0
+		}
+		_, _ = io.WriteString(output, "{\"desktop_backend\":\"rdp\",\"ready\":false}\n")
+		return 1
 	}
 	if *configPath == "" {
 		return 2

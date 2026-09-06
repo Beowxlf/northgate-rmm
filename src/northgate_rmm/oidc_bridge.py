@@ -142,7 +142,9 @@ class OIDCBridge:
             subject=value["sub"],
             session_id=value["sid"],
             client_id=self.config["client_id"],
-            roles=("viewer",),
+            roles=tuple(
+                role for role in ("viewer", "remote_operator") if role in client_roles
+            ),
             authenticated_at=authenticated,
             expires_at=expires,
             mfa=True,

@@ -74,7 +74,7 @@ def render_endpoint_page(
     history_count = len(history_rows)
     body = "".join(rows) or (
         '<tr><td colspan="6" class="empty"><strong>'
-        'No active endpoints on this page</strong>'
+        "No active endpoints on this page</strong>"
         "Enrolled devices will appear here with their latest monitoring "
         "status.</td></tr>"
     )
@@ -203,6 +203,15 @@ def render_endpoint_detail(
         )
         + "</div><div>"
         + panel("Activity", ("Enrolled", "Last receipt", "Last heartbeat"))
+        + (
+            '<section class="panel"><div class="panel-heading"><div>'
+            "<h2>Remote desktop</h2><p>Open a secure desktop session.</p>"
+            f'<a class="button" href="/remote/{endpoint_id}">Connect</a>'
+            "</div></div></section>"
+            if status.lifecycle.value == "active" and status.health.value == "online"
+            else '<section class="panel"><p class="note">Remote desktop is unavailable '
+            "while this device is offline or its enrollment is inactive.</p></section>"
+        )
         + '<section class="panel"><div class="panel-heading"><h2>About '
         "device health</h2></div>"
         '<p class="note">Health reflects the most recent agent heartbeat. '

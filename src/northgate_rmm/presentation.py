@@ -7,6 +7,7 @@ import hashlib
 from html import escape
 
 STYLES = """
+.remote-workspace{width:100%;height:960px;border:0}.remote-section{margin-top:24px}
 :root{
 color-scheme:light;
 --ink:#172b4d;

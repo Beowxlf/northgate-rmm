@@ -62,8 +62,16 @@ rules and disable the dedicated accounts. Preserve monitoring enrollment state.
 
 This private-lab implementation uses direct private-network SSH/RDP. It does not
 implement reverse tunnels, console screen sharing, session recording or a JIT
-credential authority. Browser copy/paste and SFTP are disabled. SSH commands have
+credential authority. Guacamole copy/paste and its generic SFTP interface are disabled. The separate
+[remote workspace](REMOTE-WORKSPACE.md) provides designated-folder uploads using
+server-side SFTP. SSH commands have
 the dedicated account's normal OS permissions.
 
 References: [Guacamole connections](https://guacamole.apache.org/doc/gug/configuring-guacamole.html)
 and [encrypted JSON authentication](https://guacamole.apache.org/doc/gug/json-auth.html).
+
+
+## Embedded workspace
+
+See [Remote workspace](REMOTE-WORKSPACE.md) for saved credentials, the embedded
+terminal, designated upload folders, installation and recovery.

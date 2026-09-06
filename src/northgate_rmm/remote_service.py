@@ -17,6 +17,7 @@ from northgate_rmm.operator_verifier import MTLSOperatorSessionVerifier
 from northgate_rmm.persistence import PostgresControlPlane
 from northgate_rmm.remote_gateway import RemoteGateway
 from northgate_rmm.remote_policy import RemoteTarget
+from northgate_rmm.remote_workspace import RemoteWorkspace, open_credentials
 from northgate_rmm.secure_files import regular_file_reference
 
 
@@ -26,6 +27,7 @@ def main() -> None:
     parser.add_argument("--targets", type=Path, required=True)
     parser.add_argument("--key", type=Path, required=True)
     parser.add_argument("--origin", required=True)
+    parser.add_argument("--credentials", type=Path)
     args = parser.parse_args()
     _require_unprivileged_process()
     config = load_operator_service_configuration(args.operator_config)
@@ -75,6 +77,16 @@ def main() -> None:
         targets[target.endpoint_id] = (target, parameters)
     gateway = RemoteGateway(operation, targets, key, args.origin)
     app = gateway.application()
+    credentials = {}
+    if args.credentials:
+        with regular_file_reference(
+            args.credentials,
+            label="saved remote credentials",
+            maximum_bytes=65536,
+            private=True,
+        ) as path:
+            credentials = open_credentials(key, path.read_bytes())
+    RemoteWorkspace(gateway, credentials).register(app)
     InspectionUI(
         gateway,
         InspectionStore(Path("/var/lib/northgate-rmm-remote/inspection.sqlite3")),

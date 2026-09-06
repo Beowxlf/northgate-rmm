@@ -25,8 +25,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from northgate_rmm.errors import AuthorizationError
 from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
-from northgate_rmm.presentation import STYLE_SOURCE, document
 from northgate_rmm.remote_policy import RemoteLease, RemoteTarget, authorize_remote
+from northgate_rmm.remote_workspace import UPLOAD_REQUEST_LIMIT, frame_response
 
 COOKIE = "__Secure-rmm-remote"
 RECHECK_SECONDS = 30
@@ -176,7 +176,7 @@ class RemoteGateway:
             [
                 f"full address:s:{target.address}:3389",
                 f"username:s:{username}",
-                "prompt for credentials:i:1",
+                "prompt for credentials:i:0",
                 "authentication level:i:2",
                 "enablecredsspsupport:i:1",
                 "redirectclipboard:i:0",
@@ -216,13 +216,14 @@ class RemoteGateway:
                 self.operation._store.get_endpoint, endpoint_id
             )
             content = (
-                f'<a href="/endpoints/{endpoint_id}">← Device profile</a>'
+                f'<a target="_top" href="/endpoints/{endpoint_id}">← Device profile</a>'
                 f"<h1>Connect to {escape(endpoint.display_name)}</h1>"
                 '<section class="panel"><div class="panel-heading"><div>'
                 "<h2>SSH terminal</h2><p>Start a terminal in your browser. "
                 "Sessions end after one hour; "
                 "device and sign-in access are checked throughout.</p>"
-                "<p>Clipboard and file transfer are disabled.</p>"
+                "<p>Use Send a file in the remote workspace "
+                "to upload into NorthGateRMM-Ops.</p>"
                 f'<form method="post" action="/remote/{endpoint_id}">'
                 f'<input type="hidden" name="nonce" value="{nonce}">'
                 '<button class="button" type="submit">Connect SSH Terminal'
@@ -232,18 +233,7 @@ class RemoteGateway:
                 "</form>"
                 "</div></div></section>"
             )
-            return web.Response(
-                text=document("SSH terminal", content, updated=""),
-                content_type="text/html",
-                headers={
-                    "Cache-Control": "no-store",
-                    "Referrer-Policy": "strict-origin",
-                    "Content-Security-Policy": (
-                        "default-src 'none'; frame-ancestors 'none'; "
-                        f"base-uri 'none'; form-action 'self'; style-src {STYLE_SOURCE}"
-                    ),
-                },
-            )
+            return frame_response(content)
         if request.headers.get("Origin") != self.origin:
             raise web.HTTPForbidden()
         form = await request.post()
@@ -360,6 +350,10 @@ class RemoteGateway:
 
     async def proxy(self, request: web.Request) -> web.StreamResponse:
         state, principal = await self.checked_lease(request)
+        if request.content_length and request.content_length > MAX_BODY:
+            raise web.HTTPRequestEntityTooLarge(
+                max_size=MAX_BODY, actual_size=request.content_length
+            )
         if request.method not in {"GET", "POST", "DELETE"}:
             raise web.HTTPMethodNotAllowed(request.method, ["GET", "POST", "DELETE"])
         if request.method != "GET" and request.headers.get("Origin") != self.origin:
@@ -454,7 +448,7 @@ class RemoteGateway:
                 "Cache-Control": "no-store",
                 "Referrer-Policy": "strict-origin",
                 "X-Content-Type-Options": "nosniff",
-                "X-Frame-Options": "DENY",
+                "X-Frame-Options": "SAMEORIGIN",
             }
             for name in ("Content-Type",):
                 if name in upstream.headers:
@@ -474,7 +468,7 @@ class RemoteGateway:
         self.leases.pop(request.cookies.get(COOKIE, ""), None)
         if state.websocket is not None:
             await state.websocket.close()
-        response = web.HTTPFound(f"/endpoints/{state.lease.endpoint_id}")
+        response = web.HTTPFound(f"/remote/{state.lease.endpoint_id}")
         response.del_cookie(COOKIE, path="/")
         return response
 
@@ -542,7 +536,7 @@ class RemoteGateway:
         return browser
 
     def application(self) -> web.Application:
-        app = web.Application(client_max_size=MAX_BODY)
+        app = web.Application(client_max_size=UPLOAD_REQUEST_LIMIT)
         app.router.add_post("/remote/end", self.end)
         app.router.add_get("/remote/keepalive", self.keepalive)
         app.router.add_get("/remote/session.js", self.session_script)

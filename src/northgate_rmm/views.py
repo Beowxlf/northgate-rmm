@@ -215,7 +215,7 @@ def render_endpoint_detail(
             "<h2>Remote access</h2><p>Open Remote Desktop or a browser terminal.</p>"
             f'<a class="button" href="/remote/{endpoint_id}/desktop.rdp">'
             "Open Remote Desktop</a> "
-            f'<a class="button" href="/remote/{endpoint_id}">Connect SSH Terminal</a>'
+            '<a class="button" href="#remote-workspace">Connect SSH Terminal</a>'
             "</div></div></section>"
             if status.lifecycle.value == "active" and status.health.value == "online"
             else '<section class="panel"><p class="note">Remote access is unavailable '
@@ -226,7 +226,16 @@ def render_endpoint_detail(
         '<p class="note">Health reflects the most recent agent heartbeat. '
         "Lifecycle shows whether the device identity is active or "
         "revoked.</p>"
-        "</section></div></div>",
+        "</section></div></div>"
+        + (
+            '<section class="panel remote-section" id="remote-workspace">'
+            '<div class="panel-heading"><div><h2>Remote workspace</h2>'
+            '<p>Terminal, saved credentials and file transfer for this device.</p>'
+            '</div></div>'
+            f'<iframe class="remote-workspace" title="Device remote workspace" '
+            f'loading="lazy" src="/remote/{endpoint_id}/workspace"></iframe></section>'
+            if status.lifecycle.value == "active" else ""
+        ),
         updated=_time(now),
     )
 

@@ -177,7 +177,7 @@ def test_connect_requires_csrf_and_issues_only_the_exact_target():
             rdp = (await response.read()).decode("utf-16")
             assert f"full address:s:{TARGET.address}:3389" in rdp
             assert "synthetic-password" not in rdp
-            assert "prompt for credentials:i:1" in rdp
+            assert "prompt for credentials:i:0" in rdp
             response = await client.get(path, headers=headers)
             assert response.status == 200
             assert response.headers["Referrer-Policy"] == "strict-origin"

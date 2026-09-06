@@ -471,7 +471,7 @@ def _headers(content_type: str) -> tuple[tuple[str, str], ...]:
         ("cache-control", "no-store"),
         (
             "content-security-policy",
-            "default-src 'none'; frame-ancestors 'none'; "
+            "default-src 'none'; frame-src 'self'; frame-ancestors 'none'; "
             f"base-uri 'none'; form-action 'none'; style-src {STYLE_SOURCE}",
         ),
         ("referrer-policy", "no-referrer"),

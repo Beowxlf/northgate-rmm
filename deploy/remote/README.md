@@ -75,3 +75,8 @@ and [encrypted JSON authentication](https://guacamole.apache.org/doc/gug/json-au
 
 See [Remote workspace](REMOTE-WORKSPACE.md) for saved credentials, the embedded
 terminal, designated upload folders, installation and recovery.
+
+
+## Network capture candidate
+
+[Wxlfgar capture integration](capture-integration.md) adds Windows/Linux managed capture jobs. This increment is implemented but not deployed or accepted; bug review is the next phase.

@@ -24,6 +24,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $agentRoot "..\$relative") -Destination $resolvedOutput
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'agent.json.example') -Destination $resolvedOutput
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../tools') -Destination (Join-Path $resolvedOutput 'tools') -Recurse
     $moduleLines = @(& $Go list -m '-f={{.Path}}|{{.Version}}' all)
     if ($LASTEXITCODE -ne 0) { throw 'Module inventory failed.' }
     $packages = @()

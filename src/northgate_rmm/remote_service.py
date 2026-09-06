@@ -10,6 +10,8 @@ from uuid import UUID
 from aiohttp import web
 
 from northgate_rmm.agent_service import _require_unprivileged_process, load_database_dsn
+from northgate_rmm.capture_ui import CaptureUI
+from northgate_rmm.capture_store import CaptureStore
 from northgate_rmm.inspection import InspectionStore, InspectionUI
 from northgate_rmm.operator_api import OperatorApplication
 from northgate_rmm.operator_service import load_operator_service_configuration
@@ -87,6 +89,7 @@ def main() -> None:
         ) as path:
             credentials = open_credentials(key, path.read_bytes())
     RemoteWorkspace(gateway, credentials).register(app)
+    CaptureUI(gateway, CaptureStore(Path("/var/lib/northgate-rmm-remote/captures"))).register(app)
     InspectionUI(
         gateway,
         InspectionStore(Path("/var/lib/northgate-rmm-remote/inspection.sqlite3")),

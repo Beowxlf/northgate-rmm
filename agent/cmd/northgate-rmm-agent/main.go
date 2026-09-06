@@ -22,6 +22,7 @@ import (
 	agentruntime "github.com/Beowxlf/northgate-rmm/agent/runtime"
 	"github.com/Beowxlf/northgate-rmm/agent/sequence"
 	"github.com/Beowxlf/northgate-rmm/agent/spool"
+	"github.com/Beowxlf/northgate-rmm/agent/tools"
 	"github.com/Beowxlf/northgate-rmm/agent/transport"
 )
 
@@ -39,6 +40,12 @@ func main() {
 }
 
 func execute(ctx context.Context, args []string, output io.Writer) int {
+	if len(args) == 1 && args[0] == "--tools" {
+		return tools.Inventory(output)
+	}
+	if len(args) == 1 && args[0] == "--capture-request" {
+		return tools.Capture(ctx, os.Stdin, output)
+	}
 	flags := flag.NewFlagSet("northgate-rmm-agent", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	configPath := flags.String("config", "", "")

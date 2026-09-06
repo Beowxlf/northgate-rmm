@@ -4,9 +4,15 @@ param(
     [Parameter(Mandatory)][uri]$EnrollmentOrigin,
     [Parameter(Mandatory)][string]$GrantFile,
     [Parameter(Mandatory)][string]$ServerRoots,
-    [Parameter(Mandatory)][string]$IssuerRoots
+    [Parameter(Mandatory)][string]$IssuerRoots,
+    [string]$WxlfgarBinary,
+    [string]$WxlfgarSha256,
+    [string]$WxlfgarSignerThumbprint,
+    [string]$RmmToolPublicKey
 )
 $ErrorActionPreference = 'Stop'
+if($WxlfgarBinary -and (-not $WxlfgarSha256 -or -not $WxlfgarSignerThumbprint -or -not $RmmToolPublicKey)){throw 'Tool enrollment requires binary checksum, signer and RMM tool public key.'}
+
 $name = 'NorthGateRMMAgent'
 $service = Get-Service -Name $name
 if ($service.Status -ne 'Stopped') { throw 'Enrollment requires the service to be stopped.' }
@@ -41,3 +47,13 @@ try {
     if ($registration.ReturnValue -ne 0) { throw 'Could not restore normal service configuration; leave service stopped.' }
 }
 Write-Output 'Identity installed. Service remains stopped for acceptance. Securely remove the single-use grant file after verification.'
+
+if($WxlfgarBinary){
+    $profile=Join-Path $stateRoot 'wxlfgar-enrollment-public.json'
+    try {
+        [IO.File]::WriteAllText($profile,(@{public_key=$RmmToolPublicKey;endpoint_id='';identity_id=''}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+         $toolInstaller=Join-Path $PSScriptRoot 'tools/Install-Wxlfgar.ps1'
+        if(-not(Test-Path -LiteralPath $toolInstaller)){$toolInstaller=Join-Path $PSScriptRoot '../tools/Install-Wxlfgar.ps1'}
+        & $toolInstaller -Binary $WxlfgarBinary -ExpectedSha256 $WxlfgarSha256 -ExpectedSignerThumbprint $WxlfgarSignerThumbprint -Configuration $profile -AgentIdentity $identityPath
+    } finally {if(Test-Path -LiteralPath $profile){Remove-Item -LiteralPath $profile -Force}}
+}

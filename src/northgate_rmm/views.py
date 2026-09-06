@@ -221,6 +221,10 @@ def render_endpoint_detail(
             else '<section class="panel"><p class="note">Remote access is unavailable '
             "while this device is offline or its enrollment is inactive.</p></section>"
         )
+        + '<section class="panel"><div class="panel-heading"><div><h2>Network capture</h2>'
+        '<p>Start or stop Wxlfgar and view network evidence.</p>'
+        f'<a class="button" href="/remote/{endpoint_id}/capture">Open network capture</a>'
+        '</div></div></section>'
         + '<section class="panel"><div class="panel-heading"><h2>About '
         "device health</h2></div>"
         '<p class="note">Health reflects the most recent agent heartbeat. '

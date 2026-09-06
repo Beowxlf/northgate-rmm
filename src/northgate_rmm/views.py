@@ -6,7 +6,7 @@ provide a mutation, job, shell, or remote-access route.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from html import escape
 from typing import Protocol
 from uuid import UUID
@@ -48,28 +48,52 @@ def render_endpoint_page(
     """Render one already-bounded endpoint page and an opaque next cursor."""
 
     rows = []
+    history_rows = []
     counts = {"online": 0, "stale": 0, "offline": 0}
     for endpoint in endpoints:
         status = reader.endpoint_status(endpoint.endpoint_id, now=now)
-        counts[status.health.value] += 1
-        rows.append(
+        active = status.lifecycle.value == "active"
+        if active:
+            counts[status.health.value] += 1
+        target_rows = rows if active else history_rows
+        target_rows.append(
             "<tr>"
             '<td><div class="device"><span class="device-icon" '
             'aria-hidden="true">▣</span><div>'
             f'<a href="/endpoints/{endpoint.endpoint_id}">'
-            f"{escape(endpoint.display_name)}</a><small>Managed "
-            f"endpoint</small></div></div></td>"
+            f"{escape(endpoint.display_name)}</a><small>"
+            f"{str(endpoint.endpoint_id)[:8]}</small></div></div></td>"
             f"<td>{escape(endpoint.platform.value)}</td>"
             f'<td class="secondary">{escape(endpoint.architecture)}</td>'
             f"<td>{_badge(status.lifecycle.value)}</td>"
             f"<td>{_badge(status.health.value)}</td>"
-            f'<td class="secondary">{_time(status.last_heartbeat_at)}</td>'
+            f'<td class="secondary">{_heartbeat(status.last_heartbeat_at, now)}</td>'
             "</tr>"
         )
+    active_count = len(rows)
+    history_count = len(history_rows)
     body = "".join(rows) or (
-        '<tr><td colspan="6" class="empty"><strong>No endpoints</strong>'
+        '<tr><td colspan="6" class="empty"><strong>'
+        'No active endpoints on this page</strong>'
         "Enrolled devices will appear here with their latest monitoring "
         "status.</td></tr>"
+    )
+    table_header = (
+        '<thead><tr><th scope="col">Device name</th>'
+        '<th scope="col">Platform</th><th scope="col">Architecture</th>'
+        '<th scope="col">Lifecycle</th><th scope="col">Health</th>'
+        '<th scope="col">Last heartbeat</th></tr></thead>'
+    )
+    history = (
+        '<details class="panel history"><summary>Enrollment history · '
+        f"{history_count} inactive records on this page</summary>"
+        '<p class="note">Retained for audit. These identities are excluded from '
+        'active device health totals.</p><div class="table-scroll">'
+        f'<table aria-label="Enrollment history">{table_header}<tbody>'
+        + "".join(history_rows)
+        + "</tbody></table></div></details>"
+        if history_count
+        else ""
     )
     next_link = (
         f'<nav aria-label="Pagination"><a class="button" '
@@ -77,7 +101,9 @@ def render_endpoint_page(
         if next_after is not None
         else "<span>End of results</span>"
     )
-    metrics = _metric("Endpoints", len(endpoints), "Devices on this page", "", "▦")
+    metrics = _metric(
+        "Active devices", active_count, "On this page · history excluded", "", "▦"
+    )
     for health, label, note in (
         ("online", "Online", "Reporting normally"),
         ("stale", "Stale", "Heartbeat delayed"),
@@ -89,14 +115,14 @@ def render_endpoint_page(
         '<section class="page-heading"><div><div class="eyebrow">Device '
         "management</div>"
         '<h1>Endpoints</h1><p class="description">An overview of your '
-        "devices and their latest health.</p>"
+        "active devices and their latest health. Open a device for details.</p>"
         '</div><a class="button" href="/endpoints">↻ Refresh overview</a></section>'
         f'<section class="metrics" aria-label="Status totals for this '
         f'page">{metrics}</section>'
         '<section class="panel" aria-labelledby="inventory-heading"><div '
         'class="panel-heading">'
-        f'<div><h2 id="inventory-heading">Device inventory <span '
-        f'class="count">{len(endpoints)} devices</span></h2>'
+        f'<div><h2 id="inventory-heading">Active inventory <span '
+        f'class="count">{active_count} devices</span></h2>'
         "<p>Select a device to view its health, activity and identity.</p></div>"
         '<span class="secondary">Current page</span></div><div class="table-scroll">'
         '<table aria-label="Endpoint inventory"><thead><tr>'
@@ -105,8 +131,8 @@ def render_endpoint_page(
         '<th scope="col">Lifecycle</th><th scope="col">Health</th><th '
         'scope="col">Last heartbeat</th>'
         f'</tr></thead><tbody>{body}</tbody></table></div><div class="table-footer">'
-        f"<span>Showing {len(endpoints)} devices · All times include their "
-        f"UTC offset</span>{next_link}</div></section>",
+        f"<span>{active_count} active · {history_count} historical on this page "
+        f"· Times in UTC</span>{next_link}</div></section>{history}",
         updated=_time(now),
     )
 
@@ -205,4 +231,22 @@ def _metric(label: str, total: int, note: str, state: str, icon: str) -> str:
 def _time(value: datetime | None) -> str:
     if value is None:
         return "Never"
-    return value.isoformat()
+    return value.astimezone(UTC).strftime("%d %b %Y, %H:%M:%S UTC")
+
+
+def _heartbeat(value: datetime | None, now: datetime) -> str:
+    if value is None:
+        return "Never received"
+    seconds = max(0, int((now - value).total_seconds()))
+    if seconds < 60:
+        age = f"{seconds}s ago"
+    elif seconds < 3600:
+        age = f"{seconds // 60}m ago"
+    elif seconds < 86400:
+        age = f"{seconds // 3600}h ago"
+    else:
+        age = f"{seconds // 86400}d ago"
+    return (
+        f'<time datetime="{value.isoformat()}">{age}</time>'
+        f'<small class="heartbeat-time">{_time(value)}</small>'
+    )

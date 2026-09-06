@@ -455,7 +455,7 @@ margin-left:0}
 .topbar{
 height:62px;
 padding:0 20px}
-.account small,.signout{
+.account small{
 display:none}
 main{
 padding:24px 16px}
@@ -477,6 +477,10 @@ grid-template-columns:120px minmax(0,1fr)}
 flex-direction:column;
 gap:3px}
 }
+
+.heartbeat-time{display:block;font-size:11px;margin-top:3px}
+.history summary{padding:20px 24px;cursor:pointer;font-weight:600}
+.history summary:focus-visible{outline:3px solid #78aaff}
 
 @media(prefers-reduced-motion:reduce){
 *{

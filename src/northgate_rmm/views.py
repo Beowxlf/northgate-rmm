@@ -6,12 +6,13 @@ provide a mutation, job, shell, or remote-access route.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from html import escape
 from typing import Protocol
 from uuid import UUID
 
 from northgate_rmm.domain import Endpoint, EndpointIdentity, EndpointStatus
+from northgate_rmm.presentation import document
 
 
 class EndpointReader(Protocol):
@@ -47,32 +48,92 @@ def render_endpoint_page(
     """Render one already-bounded endpoint page and an opaque next cursor."""
 
     rows = []
+    history_rows = []
+    counts = {"online": 0, "stale": 0, "offline": 0}
     for endpoint in endpoints:
         status = reader.endpoint_status(endpoint.endpoint_id, now=now)
-        rows.append(
+        active = status.lifecycle.value == "active"
+        if active:
+            counts[status.health.value] += 1
+        target_rows = rows if active else history_rows
+        target_rows.append(
             "<tr>"
-            f'<td><a href="/endpoints/{endpoint.endpoint_id}">'
-            f"{escape(endpoint.display_name)}</a></td>"
+            '<td><div class="device"><span class="device-icon" '
+            'aria-hidden="true">▣</span><div>'
+            f'<a href="/endpoints/{endpoint.endpoint_id}">'
+            f"{escape(endpoint.display_name)}</a><small>"
+            f"{str(endpoint.endpoint_id)[:8]}</small></div></div></td>"
             f"<td>{escape(endpoint.platform.value)}</td>"
-            f"<td>{escape(endpoint.architecture)}</td>"
-            f"<td>{escape(status.lifecycle.value)}</td>"
-            f"<td>{escape(status.health.value)}</td>"
-            f"<td>{_time(status.last_heartbeat_at)}</td>"
+            f'<td class="secondary">{escape(endpoint.architecture)}</td>'
+            f"<td>{_badge(status.lifecycle.value)}</td>"
+            f"<td>{_badge(status.health.value)}</td>"
+            f'<td class="secondary">{_heartbeat(status.last_heartbeat_at, now)}</td>'
             "</tr>"
         )
-    body = "".join(rows) or '<tr><td colspan="6">No endpoints</td></tr>'
-    next_link = (
-        f'<nav><a href="/endpoints?after={next_after}">Next page</a></nav>'
-        if next_after is not None
+    active_count = len(rows)
+    history_count = len(history_rows)
+    body = "".join(rows) or (
+        '<tr><td colspan="6" class="empty"><strong>'
+        "No active endpoints on this page</strong>"
+        "Enrolled devices will appear here with their latest monitoring "
+        "status.</td></tr>"
+    )
+    table_header = (
+        '<thead><tr><th scope="col">Device name</th>'
+        '<th scope="col">Platform</th><th scope="col">Architecture</th>'
+        '<th scope="col">Lifecycle</th><th scope="col">Health</th>'
+        '<th scope="col">Last heartbeat</th></tr></thead>'
+    )
+    history = (
+        '<details class="panel history"><summary>Enrollment history · '
+        f"{history_count} inactive records on this page</summary>"
+        '<p class="note">Retained for audit. These identities are excluded from '
+        'active device health totals.</p><div class="table-scroll">'
+        f'<table aria-label="Enrollment history">{table_header}<tbody>'
+        + "".join(history_rows)
+        + "</tbody></table></div></details>"
+        if history_count
         else ""
     )
-    return (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        "<title>NorthGate RMM endpoints</title></head><body>"
-        "<main><h1>Endpoints</h1><table><thead><tr>"
-        "<th>Name</th><th>Platform</th><th>Architecture</th>"
-        "<th>Lifecycle</th><th>Health</th><th>Last heartbeat</th>"
-        f"</tr></thead><tbody>{body}</tbody></table>{next_link}</main></body></html>"
+    next_link = (
+        f'<nav aria-label="Pagination"><a class="button" '
+        f'href="/endpoints?after={next_after}">Next page →</a></nav>'
+        if next_after is not None
+        else "<span>End of results</span>"
+    )
+    metrics = _metric(
+        "Active devices", active_count, "On this page · history excluded", "", "▦"
+    )
+    for health, label, note in (
+        ("online", "Online", "Reporting normally"),
+        ("stale", "Stale", "Heartbeat delayed"),
+        ("offline", "Offline", "No recent heartbeat"),
+    ):
+        metrics += _metric(label, counts[health], note, health, "●")
+    return document(
+        "Endpoints",
+        '<section class="page-heading"><div><div class="eyebrow">Device '
+        "management</div>"
+        '<h1>Endpoints</h1><p class="description">An overview of your '
+        "active devices and their latest health. Open a device for details.</p>"
+        '</div><a class="button" href="/endpoints">↻ Refresh overview</a></section>'
+        f'<section class="metrics" aria-label="Status totals for this '
+        f'page">{metrics}</section>'
+        '<section class="panel" aria-labelledby="inventory-heading"><div '
+        'class="panel-heading">'
+        f'<div><h2 id="inventory-heading">Active inventory <span '
+        f'class="count">{active_count} devices</span></h2>'
+        "<p>Select a device to view its health, activity and identity.</p></div>"
+        '<span class="secondary">Current page</span></div><div class="table-scroll">'
+        '<table aria-label="Endpoint inventory"><thead><tr>'
+        '<th scope="col">Device name</th><th scope="col">Platform</th><th '
+        'scope="col">Architecture</th>'
+        '<th scope="col">Lifecycle</th><th scope="col">Health</th><th '
+        'scope="col">Last heartbeat</th>'
+        f'</tr></thead><tbody>{body}</tbody></table></div><div class="table-footer">'
+        f"<span>{active_count} active · {history_count} historical on this page "
+        f"· Times in UTC</span>{next_link}</div></section>{history}",
+        updated=_time(now),
     )
 
 
@@ -102,19 +163,117 @@ def render_endpoint_detail(
         ("Revoked", _time(identity.revoked_at)),
         ("Revocation reason", identity.revocation_reason or ""),
     )
-    items = "".join(
-        f"<dt>{escape(label)}</dt><dd>{escape(value)}</dd>" for label, value in values
+
+    def panel(title: str, selected: tuple[str, ...]) -> str:
+        items = "".join(
+            f"<dt>{escape(label)}</dt><dd>{escape(value)}</dd>"
+            for label, value in values
+            if label in selected
+        )
+        return (
+            f'<section class="panel"><div class="panel-heading"><h2>{title}</h2></div>'
+            f'<dl class="facts">{items}</dl></section>'
+        )
+
+    return document(
+        endpoint.display_name,
+        '<a class="back" href="/endpoints">← All endpoints</a>'
+        '<section class="page-heading"><div><div class="eyebrow">Device profile</div>'
+        f'<h1>{escape(endpoint.display_name)}</h1><p class="description">'
+        f"{escape(endpoint.platform.value)} · {escape(endpoint.architecture)}</p>"
+        f'<div class="status-strip">'
+        f"{_badge(status.health.value)}{_badge(status.lifecycle.value)}</div></div>"
+        f'<a class="button" href="/endpoints/{endpoint.endpoint_id}">↻ '
+        f"Refresh device</a></section>"
+        '<div class="detail-grid"><div>'
+        + panel(
+            "Device overview",
+            (
+                "Endpoint ID",
+                "Display name",
+                "Platform",
+                "Architecture",
+                "Lifecycle",
+                "Health",
+            ),
+        )
+        + panel(
+            "Identity &amp; trust",
+            ("Identity ID", "Fingerprint", "Revoked", "Revocation reason"),
+        )
+        + "</div><div>"
+        + panel("Activity", ("Enrolled", "Last receipt", "Last heartbeat"))
+        + (
+            '<section class="panel"><div class="panel-heading"><div>'
+            "<h2>Inspection and diagnostics</h2>"
+            "<p>View system data, run read-only checks and compare saved baselines.</p>"
+            f'<a class="button" href="/remote/{endpoint_id}/inspect">'
+            "Open inspection toolbox</a></div></div></section>"
+        )
+        + (
+            '<section class="panel"><div class="panel-heading"><div>'
+            "<h2>Remote access</h2><p>Open Remote Desktop or a browser terminal.</p>"
+            f'<a class="button" href="/remote/{endpoint_id}/desktop.rdp">'
+            "Open Remote Desktop</a> "
+            '<a class="button" href="#remote-workspace">Connect SSH Terminal</a>'
+            "</div></div></section>"
+            if status.lifecycle.value == "active" and status.health.value == "online"
+            else '<section class="panel"><p class="note">Remote access is unavailable '
+            "while this device is offline or its enrollment is inactive.</p></section>"
+        )
+        + '<section class="panel"><div class="panel-heading"><h2>About '
+        "device health</h2></div>"
+        '<p class="note">Health reflects the most recent agent heartbeat. '
+        "Lifecycle shows whether the device identity is active or "
+        "revoked.</p>"
+        "</section></div></div>"
+        + (
+            '<section class="panel remote-section" id="remote-workspace">'
+            '<div class="panel-heading"><div><h2>Remote workspace</h2>'
+            '<p>Terminal, saved credentials and file transfer for this device.</p>'
+            '</div></div>'
+            f'<iframe class="remote-workspace" title="Device remote workspace" '
+            f'loading="lazy" src="/remote/{endpoint_id}/workspace"></iframe></section>'
+            if status.lifecycle.value == "active" else ""
+        ),
+        updated=_time(now),
     )
+
+
+def _badge(value: str) -> str:
     return (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        f"<title>{escape(endpoint.display_name)} — NorthGate RMM</title>"
-        '</head><body><main><a href="/endpoints">Endpoints</a>'
-        f"<h1>{escape(endpoint.display_name)}</h1><dl>{items}</dl>"
-        "</main></body></html>"
+        f'<span class="badge {escape(value, quote=True)}"><span '
+        f'class="dot" aria-hidden="true"></span>{escape(value)}</span>'
+    )
+
+
+def _metric(label: str, total: int, note: str, state: str, icon: str) -> str:
+    return (
+        f'<div class="metric {state}"><div class="metric-top"><span>{label}</span>'
+        f'<span class="metric-icon" aria-hidden="true">{icon}</span></div>'
+        f"<strong>{total}</strong><small>{note}</small></div>"
     )
 
 
 def _time(value: datetime | None) -> str:
     if value is None:
         return "Never"
-    return value.isoformat()
+    return value.astimezone(UTC).strftime("%d %b %Y, %H:%M:%S UTC")
+
+
+def _heartbeat(value: datetime | None, now: datetime) -> str:
+    if value is None:
+        return "Never received"
+    seconds = max(0, int((now - value).total_seconds()))
+    if seconds < 60:
+        age = f"{seconds}s ago"
+    elif seconds < 3600:
+        age = f"{seconds // 60}m ago"
+    elif seconds < 86400:
+        age = f"{seconds // 3600}h ago"
+    else:
+        age = f"{seconds // 86400}d ago"
+    return (
+        f'<time datetime="{value.isoformat()}">{age}</time>'
+        f'<small class="heartbeat-time">{_time(value)}</small>'
+    )

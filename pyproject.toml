@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "northgate-rmm"
 version = "0.1.0.dev0"
-description = "Security-first cross-platform RMM domain simulator"
+description = "Private Linux and Windows endpoint monitoring"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -17,6 +17,16 @@ dependencies = [
 ]
 
 [project.scripts]
+northgate-rmm-issuer-service = "northgate_rmm.issuer_service:main"
+northgate-rmm-oidc-service = "northgate_rmm.oidc_bridge:main"
+northgate-rmm-audit-service = "northgate_rmm.audit_sink:main"
+northgate-rmm-audit-export = "northgate_rmm.audit_exporter:main"
+northgate-rmm-audit-reconcile = "northgate_rmm.audit_reconcile:main"
+northgate-rmm-certificate-status = "northgate_rmm.certificate_status:main"
+northgate-rmm-pki-admin = "northgate_rmm.pki_admin:main"
+northgate-rmm-recovery = "northgate_rmm.recovery:main"
+northgate-rmm-retention = "northgate_rmm.retention:main"
+northgate-rmm-admin = "northgate_rmm.admin:main"
 northgate-rmm-agent-service = "northgate_rmm.agent_service:main"
 northgate-rmm-enrollment-service = "northgate_rmm.enrollment_service:main"
 northgate-rmm-operator-service = "northgate_rmm.operator_service:main"
@@ -25,7 +35,7 @@ northgate-rmm-operator-service = "northgate_rmm.operator_service:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-northgate_rmm = ["migrations/*.sql"]
+northgate_rmm = ["migrations/*.sql", "*.ps1"]
 
 [tool.ruff]
 target-version = "py311"

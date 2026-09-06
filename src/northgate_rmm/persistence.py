@@ -163,7 +163,7 @@ class PostgresControlPlane:
             connect_timeout=math.ceil(self._operation_timeout_seconds),
             options=(
                 f"-c statement_timeout={timeout_milliseconds} "
-                f"-c lock_timeout={timeout_milliseconds}"
+                f"-c lock_timeout={timeout_milliseconds} -c timezone=UTC"
             ),
         )
         registered = False

@@ -10,9 +10,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from northgate_rmm.codec import MAX_ENCODED_MESSAGE_BYTES, decode_message
@@ -86,8 +87,14 @@ class AgentMessageStore(Protocol):
 class AgentMessageApplication:
     """Translate the narrow agent HTTP contract into control-plane calls."""
 
-    def __init__(self, store: AgentMessageStore) -> None:
+    def __init__(
+        self,
+        store: AgentMessageStore,
+        renewal: Callable[[bytes, VerifiedClientCertificate, datetime], dict[str, Any]]
+        | None = None,
+    ) -> None:
         self._store = store
+        self._renewal = renewal
 
     def handle(
         self,
@@ -96,7 +103,8 @@ class AgentMessageApplication:
         peer: VerifiedClientCertificate,
         received_at: datetime,
     ) -> AgentMessageResponse:
-        if request.path != AGENT_MESSAGE_PATH:
+        is_renewal = request.path == "/v1/agent/renew" and self._renewal is not None
+        if request.path != AGENT_MESSAGE_PATH and not is_renewal:
             return _error_response(404, "not_found")
         if request.method != "POST":
             return _error_response(405, "method_not_allowed", allow="POST")
@@ -111,6 +119,10 @@ class AgentMessageApplication:
             return _error_response(413, "request_too_large")
 
         try:
+            if is_renewal and self._renewal is not None:
+                return _json_response(
+                    200, self._renewal(request.body, peer, received_at)
+                )
             message = decode_message(request.body)
             encoded_digest = hashlib.sha256(request.body).hexdigest()
             identity = self._store.authenticate_endpoint_certificate(

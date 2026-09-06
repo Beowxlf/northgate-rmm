@@ -142,8 +142,8 @@ class EnrollmentGrant:
             raise ValidationError("token_sha256 must be a lowercase SHA-256 value")
         if not self.display_name or len(self.display_name) > MAX_DISPLAY_NAME_LENGTH:
             raise ValidationError("display_name is empty or too long")
-        if self.platform is not Platform.LINUX:
-            raise ValidationError("v1 enrollment grants support Linux only")
+        if self.platform not in (Platform.LINUX, Platform.WINDOWS):
+            raise ValidationError("v1 enrollment grants support Linux and Windows")
         if self.architecture != "amd64":
             raise ValidationError("v1 enrollment grants support amd64 only")
         if not self.created_by or len(self.created_by) > 256:

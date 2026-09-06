@@ -63,14 +63,14 @@ var linux = map[string][]string{
 }
 var windows = map[string]string{
 	"processes": `Get-Process | ForEach-Object { @{id=[string]$_.Id;name=$_.ProcessName;session=[string]$_.SessionId} }`,
-	"services":  `Get-CimInstance Win32_Service | ForEach-Object { @{id=$_.Name;name=$_.DisplayName;state=$_.State;start_mode=$_.StartMode;account=$_.StartName} }`,
-	"network":   `$r=@(Get-NetTCPConnection | ForEach-Object { @{id=('TCP/'+$_.LocalAddress+'/'+$_.LocalPort+'/'+$_.RemoteAddress+'/'+$_.RemotePort);protocol='TCP';local=($_.LocalAddress+':'+$_.LocalPort);remote=($_.RemoteAddress+':'+$_.RemotePort);state=[string]$_.State;pid=[string]$_.OwningProcess} }); $r+=@(Get-NetUDPEndpoint | ForEach-Object { @{id=('UDP/'+$_.LocalAddress+'/'+$_.LocalPort);protocol='UDP';local=($_.LocalAddress+':'+$_.LocalPort);remote='';state='';pid=[string]$_.OwningProcess} }); $r`,
+	"services":  `Get-Service | ForEach-Object { @{id=$_.Name;name=$_.DisplayName;state=[string]$_.Status;start_mode=[string]$_.StartType} }`,
+	"network":   `$lines=& $env:SystemRoot\System32\netstat.exe -ano; if($LASTEXITCODE -ne 0){throw 'Network query failed'};foreach($line in $lines){$f=$line.Trim() -split '\s+';if($f[0] -eq 'TCP' -and $f.Count -ge 5){@{id=('TCP/'+$f[1]+'/'+$f[2]);protocol='TCP';local=$f[1];remote=$f[2];state=$f[3];pid=$f[4]}}elseif($f[0] -eq 'UDP' -and $f.Count -ge 4){@{id=('UDP/'+$f[1]);protocol='UDP';local=$f[1];remote=$f[2];state='';pid=$f[3]}}}`,
 	"users":     `Get-LocalUser | ForEach-Object { @{id=[string]$_.SID;name=$_.Name;enabled=[string]$_.Enabled;source=[string]$_.PrincipalSource} }`,
 	"software":  `Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object DisplayName | ForEach-Object { @{id=$_.PSPath;name=[string]$_.DisplayName;version=[string]$_.DisplayVersion;publisher=[string]$_.Publisher} }`,
-	"tasks":     `Get-ScheduledTask | ForEach-Object { @{id=($_.TaskPath+$_.TaskName);name=$_.TaskName;state=[string]$_.State;account=[string]$_.Principal.UserId} }`,
+	"tasks":     `$lines=& $env:SystemRoot\System32\schtasks.exe /query /fo CSV; if($LASTEXITCODE -ne 0){throw 'Task query unavailable for this account'};$rows=@($lines | ConvertFrom-Csv);foreach($r in $rows){$v=@($r.PSObject.Properties.Value);if($v.Count -ge 3){@{id=[string]$v[0];next_run=[string]$v[1];state=[string]$v[2]}}}`,
 	"startup":   `$r=@();foreach($p in @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Run','HKCU:\Software\Microsoft\Windows\CurrentVersion\Run')) { if(Test-Path $p) { foreach($n in (Get-Item $p).GetValueNames()) { $r+=@{id=($p+'/'+$n);name=$n;location=$p} } } }; $r`,
-	"storage":   `Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { @{id=$_.DeviceID;name=$_.VolumeName;size_bytes=[string]$_.Size;free_bytes=[string]$_.FreeSpace;filesystem=$_.FileSystem} }`,
-	"health":    `Get-CimInstance Win32_OperatingSystem | ForEach-Object { @{id='os';name=$_.Caption;version=$_.Version;last_boot=[string]$_.LastBootUpTime.ToUniversalTime().ToString('o');free_memory_kb=[string]$_.FreePhysicalMemory;total_memory_kb=[string]$_.TotalVisibleMemorySize} }`,
+	"storage":   `[IO.DriveInfo]::GetDrives() | Where-Object {$_.DriveType -eq 'Fixed' -and $_.IsReady} | ForEach-Object { @{id=$_.Name;name=$_.VolumeLabel;size_bytes=[string]$_.TotalSize;free_bytes=[string]$_.AvailableFreeSpace;filesystem=$_.DriveFormat} }`,
+	"health":    `$os=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion';@{id='os';name=[string]$os.ProductName;build=[string]$os.CurrentBuildNumber;revision=[string]$os.UBR;architecture=$env:PROCESSOR_ARCHITECTURE;processor_count=[string][Environment]::ProcessorCount}`,
 }
 
 func Collect(ctx context.Context, category, version string) (Result, error) {

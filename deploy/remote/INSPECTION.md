@@ -8,7 +8,7 @@ exit code, status and records. Download JSON for the full bounded result.
 Categories: processes, services, TCP/UDP connections, local accounts, installed
 software, scheduled tasks, startup configuration, storage and system diagnostics.
 Linux coverage uses ps, systemd, ss, getent, dpkg-query and df. Windows coverage
-uses fixed PowerShell/CIM queries. Process command lines and password fields are
+uses fixed PowerShell and native read-only queries. Process command lines and password fields are
 not collected. Linux tasks cover systemd timers, not cron; Windows startup covers
 Run-entry names, not every persistence location. Software is Debian packages or
 Windows machine-wide uninstall entries. The UI identifies these scope limits.
@@ -40,7 +40,7 @@ remote service is stopped. Existing PostgreSQL-only backups do not cover it.
 Keep this data private; it can contain host/account/software information.
 
 Install the updated server wheel and unit with StateDirectory enabled; upgrade
-both agents to 1.0.0-lab.6 using the existing signed Windows/deb Linux process.
+both agents to 1.0.0-lab.7 using the existing signed Windows/deb Linux process.
 Preserve monitoring credentials/enrollment. Rollback restores the previous server
 venv/unit and agent package. Retain the inspection database for recovery.
 
@@ -48,3 +48,8 @@ Owner authorization: the owner requested implementation of the recommended next
 increment: detailed inspection, baseline comparisons and diagnostic tools while
 retaining the current RDP/browser SSH engine. This does not implement exercise
 orchestration, SIEM ingestion, destructive response actions or unrestricted jobs.
+
+Windows deployment also runs Enable-WindowsInspectionAccess.ps1 after each agent
+upgrade to allow the dedicated account to execute the signed binary. Agent state
+remains private. Enable-WindowsServiceInspection.ps1 grants only SCM CONNECT and
+ENUMERATE_SERVICE (mask 0x5), preserving the original descriptor for rollback.

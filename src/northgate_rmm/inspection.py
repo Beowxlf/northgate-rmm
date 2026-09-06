@@ -549,7 +549,7 @@ class InspectionUI:
             content += (
                 (
                     f"<h3>Collected records ({len(rows)})</h3><div "
-                    f'class="table-wrap"><table><thead><tr>'
+                    f'class="table-scroll"><table><thead><tr>'
                 )
                 + "".join("<th>" + escape(k) + "</th>" for k in columns)
                 + "</tr></thead><tbody>"

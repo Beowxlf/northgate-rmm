@@ -7,6 +7,8 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 
 class CaptureStore:
@@ -72,7 +74,9 @@ class CaptureStore:
                 (json.dumps(job), time.time(), job["id"]),
             )
 
-    def get(self, endpoint, identity, subject, job_id):
+    def get(
+        self, endpoint: UUID | str, identity: UUID | str, subject: str, job_id: str
+    ) -> dict[str, Any] | None:
         with self.connect() as db:
             row = db.execute(
                 "SELECT * FROM jobs WHERE id=? AND endpoint=? "
@@ -81,7 +85,9 @@ class CaptureStore:
             ).fetchone()
             return dict(row) if row else None
 
-    def history(self, endpoint, identity, subject):
+    def history(
+        self, endpoint: UUID | str, identity: UUID | str, subject: str
+    ) -> list[dict[str, Any]]:
         self.prune()
         with self.connect() as db:
             return [

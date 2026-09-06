@@ -10,9 +10,11 @@ from uuid import UUID
 from aiohttp import web
 
 from northgate_rmm.agent_service import _require_unprivileged_process, load_database_dsn
-from northgate_rmm.capture_ui import CaptureUI
 from northgate_rmm.capture_store import CaptureStore
+from northgate_rmm.capture_ui import CaptureUI
 from northgate_rmm.inspection import InspectionStore, InspectionUI
+from northgate_rmm.management import Management
+from northgate_rmm.management_store import ManagementStore
 from northgate_rmm.operator_api import OperatorApplication
 from northgate_rmm.operator_service import load_operator_service_configuration
 from northgate_rmm.operator_verifier import MTLSOperatorSessionVerifier
@@ -30,6 +32,7 @@ def main() -> None:
     parser.add_argument("--key", type=Path, required=True)
     parser.add_argument("--origin", required=True)
     parser.add_argument("--credentials", type=Path)
+    parser.add_argument("--management-listener-config", type=Path)
     args = parser.parse_args()
     _require_unprivileged_process()
     config = load_operator_service_configuration(args.operator_config)
@@ -89,7 +92,53 @@ def main() -> None:
         ) as path:
             credentials = open_credentials(key, path.read_bytes())
     RemoteWorkspace(gateway, credentials).register(app)
-    CaptureUI(gateway, CaptureStore(Path("/var/lib/northgate-rmm-remote/captures"))).register(app)
+    CaptureUI(
+        gateway, CaptureStore(Path("/var/lib/northgate-rmm-remote/captures"))
+    ).register(app)
+    management = Management(
+        gateway, ManagementStore(Path("/var/lib/northgate-rmm-remote/management"), key)
+    )
+    management.register(app)
+    if args.management_listener_config:
+        from northgate_rmm.listener import (
+            AgentListenerConfiguration,
+            build_server_ssl_context,
+        )
+
+        with regular_file_reference(
+            args.management_listener_config,
+            label="management listener configuration",
+            maximum_bytes=16384,
+            private=True,
+        ) as path:
+            settings = json.loads(path.read_text())
+        listener = AgentListenerConfiguration(
+            bind_address=settings["bind_address"],
+            port=settings["port"],
+            authority=settings["authority"],
+            server_certificate=Path(settings["server_certificate"]),
+            server_private_key=Path(settings["server_private_key"]),
+            endpoint_ca_certificate=Path(settings["endpoint_ca_certificate"]),
+        )
+        ssl_context = build_server_ssl_context(listener)
+
+        async def management_lifecycle(application):
+            runner = web.AppRunner(management.worker_application(), access_log=None)
+            await runner.setup()
+            site = web.TCPSite(
+                runner,
+                host=listener.bind_address,
+                port=listener.port,
+                ssl_context=ssl_context,
+                shutdown_timeout=10,
+            )
+            try:
+                await site.start()
+                yield
+            finally:
+                await runner.cleanup()
+
+        app.cleanup_ctx.append(management_lifecycle)
     InspectionUI(
         gateway,
         InspectionStore(Path("/var/lib/northgate-rmm-remote/inspection.sqlite3")),

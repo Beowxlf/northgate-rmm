@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily NorthGate management recovery archive
+[Timer]
+OnCalendar=*-*-* 02:45:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+[Install]
+WantedBy=timers.target

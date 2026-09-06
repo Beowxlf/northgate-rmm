@@ -221,10 +221,18 @@ def render_endpoint_detail(
             else '<section class="panel"><p class="note">Remote access is unavailable '
             "while this device is offline or its enrollment is inactive.</p></section>"
         )
-        + '<section class="panel"><div class="panel-heading"><div><h2>Network capture</h2>'
-        '<p>Start or stop Wxlfgar and view network evidence.</p>'
-        f'<a class="button" href="/remote/{endpoint_id}/capture">Open network capture</a>'
-        '</div></div></section>'
+        + '<section class="panel"><div class="panel-heading"><div>'
+        "<h2>Network capture</h2>"
+        "<p>Start or stop Wxlfgar and view network evidence.</p>"
+        f'<a class="button" href="/remote/{endpoint_id}/capture">'
+        "Open network capture</a>"
+        "</div></div></section>"
+        + '<section class="panel"><div class="panel-heading"><div>'
+        "<h2>System management</h2>"
+        "<p>Privileged terminal, recovery, maintenance and device tools.</p>"
+        f'<a class="button" href="/remote/{endpoint_id}/manage">'
+        "Open system management</a>"
+        "</div></div></section>"
         + '<section class="panel"><div class="panel-heading"><h2>About '
         "device health</h2></div>"
         '<p class="note">Health reflects the most recent agent heartbeat. '
@@ -234,11 +242,12 @@ def render_endpoint_detail(
         + (
             '<section class="panel remote-section" id="remote-workspace">'
             '<div class="panel-heading"><div><h2>Remote workspace</h2>'
-            '<p>Terminal, saved credentials and file transfer for this device.</p>'
-            '</div></div>'
+            "<p>Terminal, saved credentials and file transfer for this device.</p>"
+            "</div></div>"
             f'<iframe class="remote-workspace" title="Device remote workspace" '
             f'loading="lazy" src="/remote/{endpoint_id}/workspace"></iframe></section>'
-            if status.lifecycle.value == "active" else ""
+            if status.lifecycle.value == "active"
+            else ""
         ),
         updated=_time(now),
     )

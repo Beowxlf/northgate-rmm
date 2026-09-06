@@ -35,7 +35,7 @@ northgate-rmm-operator-service = "northgate_rmm.operator_service:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-northgate_rmm = ["migrations/*.sql", "*.ps1", "*.js"]
+northgate_rmm = ["migrations/*.sql", "*.ps1", "*.js", "management*.css", "management*.LICENSE", "management*.json"]
 
 [tool.ruff]
 target-version = "py311"

@@ -1,6 +1,7 @@
 """Private capture history. Tokens and endpoint keys are never persisted here."""
 
 from __future__ import annotations
+
 import json
 import sqlite3
 import time
@@ -14,13 +15,20 @@ class CaptureStore:
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
         if root.is_symlink():
             raise ValueError("Capture state must not be a symlink")
+        root.chmod(0o700)
         self.path = root / "capture.sqlite3"
+        if self.path.is_symlink():
+            raise ValueError("Capture database must not be a symlink")
         with self.connect() as db:
             db.execute(
-                "CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, identity TEXT NOT NULL, subject TEXT NOT NULL, session TEXT NOT NULL, created REAL NOT NULL, updated REAL NOT NULL, payload TEXT NOT NULL)"
+                "CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, "
+                "endpoint TEXT NOT NULL, identity TEXT NOT NULL, "
+                "subject TEXT NOT NULL, session TEXT NOT NULL, "
+                "created REAL NOT NULL, updated REAL NOT NULL, payload TEXT NOT NULL)"
             )
             db.execute(
-                "CREATE INDEX IF NOT EXISTS capture_endpoint ON jobs(endpoint, created DESC)"
+                "CREATE INDEX IF NOT EXISTS capture_endpoint "
+                "ON jobs(endpoint, created DESC)"
             )
         self.path.chmod(0o600)
 
@@ -67,7 +75,8 @@ class CaptureStore:
     def get(self, endpoint, identity, subject, job_id):
         with self.connect() as db:
             row = db.execute(
-                "SELECT * FROM jobs WHERE id=? AND endpoint=? AND identity=? AND subject=?",
+                "SELECT * FROM jobs WHERE id=? AND endpoint=? "
+                "AND identity=? AND subject=?",
                 (job_id, str(endpoint), str(identity), subject),
             ).fetchone()
             return dict(row) if row else None
@@ -78,7 +87,8 @@ class CaptureStore:
             return [
                 dict(row)
                 for row in db.execute(
-                    "SELECT * FROM jobs WHERE endpoint=? AND identity=? AND subject=? ORDER BY created DESC LIMIT 50",
+                    "SELECT * FROM jobs WHERE endpoint=? AND identity=? "
+                    "AND subject=? ORDER BY created DESC LIMIT 50",
                     (str(endpoint), str(identity), subject),
                 )
             ]

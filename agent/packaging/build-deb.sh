@@ -36,6 +36,10 @@ install -d -m 0755 "$stage/usr/libexec/northgate-rmm"
 install -d -m 0755 "$stage/usr/lib/systemd/system"
 install -d -m 0755 "$stage/etc/northgate-rmm"
 install -m 0755 "$binary" "$stage/usr/libexec/northgate-rmm/northgate-rmm-agent"
+install -d -m 0755 "$stage/usr/share/northgate-rmm/debian" "$stage/usr/share/northgate-rmm/tools"
+install -m 0755 "$script_directory/debian/enroll-with-tools.sh" "$stage/usr/share/northgate-rmm/debian/enroll-with-tools.sh"
+install -m 0755 "$script_directory/tools/install-linux.sh" "$stage/usr/share/northgate-rmm/tools/install-linux.sh"
+install -m 0644 "$script_directory/tools/northgate-wxlfgar.service" "$stage/usr/share/northgate-rmm/tools/northgate-wxlfgar.service"
 install -m 0644 "$script_directory/debian/northgate-rmm-agent.service" \
   "$stage/usr/lib/systemd/system/northgate-rmm-agent.service"
 install -m 0644 "$script_directory/debian/agent.json.example" \

@@ -1,6 +1,7 @@
 """Signed Wxlfgar RPC over the existing pinned endpoint SSH connection."""
 
 from __future__ import annotations
+
 import asyncio
 import base64
 import hashlib
@@ -33,7 +34,10 @@ async def request_tool(
     }:
         raise ValueError("Capture SSH host pin unavailable")
     if platform == "windows":
-        script = "& 'C:\\Program Files\\NorthGate RMM\\northgate-rmm-agent.exe' --capture-request; exit $LASTEXITCODE"
+        script = (
+            "& 'C:\\Program Files\\NorthGate RMM\\northgate-rmm-agent.exe' "
+            "--capture-request; exit $LASTEXITCODE"
+        )
         command = (
             "powershell.exe -NoProfile -NonInteractive -EncodedCommand "
             + base64.b64encode(script.encode("utf-16-le")).decode()
@@ -85,7 +89,8 @@ async def request_tool(
                 if destination:
                     artifact = result.get("artifact", {})
                     if (
-                        artifact.get("name") not in ARTIFACTS
+                        not isinstance(artifact, dict)
+                        or artifact.get("name") not in ARTIFACTS
                         or type(artifact.get("size")) is not int
                         or not 0 <= artifact["size"] <= MAX_ARTIFACT
                         or not re.fullmatch(r"[a-f0-9]{64}", artifact.get("sha256", ""))
@@ -100,11 +105,15 @@ async def request_tool(
                             if not chunk or len(chunk) > 65536:
                                 raise ValueError("Incomplete artifact stream")
                             item = json.loads(chunk)
+                            if not isinstance(item, dict):
+                                raise ValueError("Invalid artifact chunk")
                             if item.get("done") is True:
                                 if item.get("size") != total:
                                     raise ValueError("Artifact trailer mismatch")
                                 break
                             data = base64.b64decode(item["data"], validate=True)
+                            if not data or len(data) > 32768:
+                                raise ValueError("Invalid artifact chunk size")
                             total += len(data)
                             if total > artifact["size"]:
                                 raise ValueError("Artifact size exceeded")
@@ -120,7 +129,13 @@ async def request_tool(
                 if extra.strip() or await proc.wait() != 0:
                     raise ValueError("Capture tool failed")
                 return result
-        except (KeyError, TypeError, UnicodeError, json.JSONDecodeError) as error:
+        except (
+            KeyError,
+            TypeError,
+            UnicodeError,
+            RecursionError,
+            json.JSONDecodeError,
+        ) as error:
             raise ValueError("Invalid capture response") from error
         finally:
             if proc.returncode is None:

@@ -31,6 +31,7 @@ func Capture(ctx context.Context, input io.Reader, output io.Writer) int {
 	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, Binary(), "--rmm")
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Stdin = io.LimitReader(input, 16385)
 	cmd.Stdout = output
 	cmd.Stderr = io.Discard

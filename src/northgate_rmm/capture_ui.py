@@ -1,20 +1,25 @@
 """RMM network capture: signed jobs, human-session leases and verified artifacts."""
 
 from __future__ import annotations
+
 import asyncio
 import base64
 import hashlib
 import hmac
 import ipaddress
 import json
+import re
 import secrets
 import time
+from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from uuid import UUID, uuid4
+
 from aiohttp import web
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
 from northgate_rmm.capture_store import CaptureStore
 from northgate_rmm.capture_transport import ARTIFACTS, request_tool
 from northgate_rmm.remote_workspace import frame_response
@@ -43,11 +48,58 @@ def validate_job(value, job_id, endpoint, identity):
         or value.get("id") != str(job_id)
         or value.get("endpoint_id") != str(endpoint)
         or value.get("identity_id") != str(identity)
+        or not isinstance(value.get("state"), str)
         or value.get("state") not in STATES
     ):
         raise ValueError("Invalid capture job response")
-    if len(json.dumps(value)) > 2 * 1024 * 1024:
+    if len(json.dumps(value, allow_nan=False)) > 2 * 1024 * 1024:
         raise ValueError("Capture response exceeds limit")
+    artifacts = value.get("artifacts", [])
+    if not isinstance(artifacts, list) or len(artifacts) > 4:
+        raise ValueError("Invalid capture artifacts")
+    names = set()
+    for artifact in artifacts:
+        if (
+            not isinstance(artifact, dict)
+            or not isinstance(artifact.get("name"), str)
+            or artifact["name"] not in ARTIFACTS
+            or artifact["name"] in names
+            or type(artifact.get("size")) is not int
+            or not 0 <= artifact["size"] <= 33 * 1024 * 1024
+            or not isinstance(artifact.get("sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", artifact["sha256"])
+        ):
+            raise ValueError("Invalid capture artifact manifest")
+        names.add(artifact["name"])
+    report = value.get("report")
+    if report is not None:
+        if not isinstance(report, dict):
+            raise ValueError("Invalid capture report")
+        for field, limit in (("flows", 512), ("findings", 256), ("assets", 256)):
+            rows = report.get(field, [])
+            if (
+                not isinstance(rows, list)
+                or len(rows) > limit
+                or any(not isinstance(row, dict) for row in rows)
+            ):
+                raise ValueError("Invalid capture report entries")
+        warnings = report.get("warnings", [])
+        if (
+            not isinstance(warnings, list)
+            or len(warnings) > 32
+            or any(not isinstance(w, str) for w in warnings)
+        ):
+            raise ValueError("Invalid capture warnings")
+        for asset in report.get("assets", []):
+            if any(
+                not isinstance(asset.get(field, []), list)
+                for field in ("roles", "macs", "vlans")
+            ):
+                raise ValueError("Invalid infrastructure asset")
+            if len(asset.get("roles", [])) > 17 or any(
+                not isinstance(role, dict) for role in asset.get("roles", [])
+            ):
+                raise ValueError("Invalid infrastructure roles")
     return value
 
 
@@ -117,10 +169,19 @@ class CaptureUI:
         action,
         job_id=None,
         destination=None,
+        request=None,
         **fields,
     ):
         async with asyncio.timeout(185):
             async with self.slots:
+                if request is None:
+                    raise ValueError("Authenticated request required")
+                current = await self.gateway.principal(request, target.endpoint_id)
+                if (current.subject, current.session_id) != (
+                    principal.subject,
+                    principal.session_id,
+                ):
+                    raise web.HTTPForbidden()
                 envelope = self.envelope(target, principal, action, job_id, **fields)
                 return await self.runner(
                     target, parameters, platform, envelope, destination
@@ -160,7 +221,7 @@ class CaptureUI:
         return row
 
     async def configuration(self, request):
-        endpoint, principal, target, params, platform = await self.context(request)
+        endpoint, principal, target, _params, platform = await self.context(request)
         value = {
             "endpoint_id": str(endpoint),
             "identity_id": str(target.identity_id),
@@ -243,6 +304,26 @@ class CaptureUI:
                 await self.gateway.audit(
                     principal, endpoint, "capture.start.requested", job_id
                 )
+                # Reserve history before dispatch: a lost reply must not orphan
+                # an accepted endpoint job or bypass the server storage limit.
+                self.store.add(
+                    endpoint,
+                    target.identity_id,
+                    principal,
+                    {
+                        "id": str(job_id),
+                        "endpoint_id": str(endpoint),
+                        "identity_id": str(target.identity_id),
+                        "state": "starting",
+                        "reason": (
+                            "Start pending; capture stops unless authorization renews."
+                        ),
+                        "started": datetime.now(UTC).isoformat(),
+                        "preset": preset,
+                        "max_bytes": size,
+                        "artifacts": [],
+                    },
+                )
                 job = await self.rpc(
                     target,
                     params,
@@ -254,12 +335,13 @@ class CaptureUI:
                     preset=preset,
                     seconds=seconds,
                     max_bytes=size,
+                    request=request,
                     snaplen=snaplen,
                     host=host,
                     port=port,
                 )
                 validate_job(job, job_id, endpoint, target.identity_id)
-                self.store.add(endpoint, target.identity_id, principal, job)
+                self.store.update(job)
             elif action in {"stop", "delete"}:
                 row = self.row(endpoint, target, principal, fields.get("job", ""))
                 job_id = UUID(row["id"])
@@ -267,7 +349,7 @@ class CaptureUI:
                     principal, endpoint, "capture." + action + ".requested", job_id
                 )
                 job = await self.rpc(
-                    target, params, platform, principal, action, job_id
+                    target, params, platform, principal, action, job_id, request=request
                 )
                 if action == "delete":
                     if job.get("deleted") is not True:
@@ -288,7 +370,7 @@ class CaptureUI:
             raise web.HTTPSeeOther(location=location)
         except (ValueError, OSError, TimeoutError):
             raise web.HTTPBadGateway(
-                text="Capture operation could not be confirmed. Refresh history before retrying; unrenewed captures stop automatically."
+                text="Capture operation could not be confirmed. Refresh history before retrying; unrenewed captures stop automatically."  # noqa: E501 - HTML and user-facing literals
             ) from None
         finally:
             self.busy.discard(endpoint)
@@ -300,7 +382,13 @@ class CaptureUI:
         row = self.row(endpoint, target, principal, request.query.get("job", ""))
         try:
             value = await self.rpc(
-                target, params, platform, principal, "status", row["id"]
+                target,
+                params,
+                platform,
+                principal,
+                "status",
+                row["id"],
+                request=request,
             )
             self.store.update(
                 validate_job(value, row["id"], endpoint, target.identity_id)
@@ -329,7 +417,13 @@ class CaptureUI:
             raise web.HTTPForbidden()
         try:
             result = await self.rpc(
-                target, params, platform, principal, "keepalive", value[3]
+                target,
+                params,
+                platform,
+                principal,
+                "keepalive",
+                value[3],
+                request=request,
             )
             self.store.update(
                 validate_job(result, value[3], endpoint, target.identity_id)
@@ -371,6 +465,7 @@ class CaptureUI:
                     "artifact",
                     row["id"],
                     destination=path,
+                    request=request,
                     artifact=name,
                 )
                 if actual != expected:
@@ -383,7 +478,9 @@ class CaptureUI:
                 response = web.StreamResponse(
                     headers={
                         "Content-Type": "application/octet-stream",
-                        "Content-Disposition": f'attachment; filename="{row["id"]}-{name}"',
+                        "Content-Disposition": (
+                            f'attachment; filename="{row["id"]}-{name}"'
+                        ),
                         "Cache-Control": "no-store",
                         "X-Content-Type-Options": "nosniff",
                         "Content-Length": str(actual["size"]),
@@ -410,30 +507,39 @@ class CaptureUI:
         try:
             await self.gateway.principal(request, endpoint)
             capability = await self.rpc(
-                target, params, platform, principal, "capabilities"
+                target, params, platform, principal, "capabilities", request=request
             )
+            if not isinstance(capability, dict):
+                raise ValueError("Invalid capability response")
+            interfaces = capability.get("interfaces", [])
+            if (
+                not isinstance(interfaces, list)
+                or len(interfaces) > 256
+                or any(not isinstance(item, dict) for item in interfaces)
+            ):
+                raise ValueError("Invalid interface response")
         except (web.HTTPException, ValueError, OSError, TimeoutError):
-            pass
+            capability = None
         ready = isinstance(capability, dict) and capability.get("state") == "ready"
         interface_options = ""
         if ready:
             for item in capability.get("interfaces", [])[:256]:
                 capture_name = str(item.get("CaptureName", ""))
                 if capture_name.isdigit() and 1 <= int(capture_name) <= 256:
-                    interface_options += f'<option value="{capture_name}">{escape(str(item.get("Name", capture_name)))}</option>'
-        content = f'<a href="/endpoints/{endpoint}">← Device profile</a><h1>Network capture</h1><p>Wxlfgar · {escape(platform)} · Capture is off until you start a job.</p>'
+                    interface_options += f'<option value="{capture_name}">{escape(str(item.get("Name", capture_name)))}</option>'  # noqa: E501 - HTML and user-facing literals
+        content = f'<a href="/endpoints/{endpoint}">← Device profile</a><h1>Network capture</h1><p>Wxlfgar · {escape(platform)} · Capture is off until you start a job.</p>'  # noqa: E501 - HTML and user-facing literals
         content += (
             f'<p><a href="{base}/config">Download enrollment tool configuration</a></p>'
         )
         if ready and interface_options:
-            content += f'<form method="post"><input type="hidden" name="nonce" value="{token}"><input type="hidden" name="action" value="start"><label>Interface <select name="interface">{interface_options}</select></label> <label>Preset <select name="preset">'
+            content += f'<form method="post"><input type="hidden" name="nonce" value="{token}"><input type="hidden" name="action" value="start"><label>Interface <select name="interface">{interface_options}</select></label> <label>Preset <select name="preset">'  # noqa: E501 - HTML and user-facing literals
             content += "".join(
                 f'<option value="{k}">{v}</option>' for k, v in PRESETS.items()
             )
-            content += '</select></label> <label>Seconds <input name="seconds" type="number" value="60" min="5" max="300" required></label> <label>Maximum MiB <input name="size" type="number" value="16" min="1" max="32" required></label> <label>Packet bytes <select name="snaplen"><option value="256">256 (reduced payload)</option><option value="65535">Full packet</option></select></label> <label>Host IP (optional) <input name="host" maxlength="45"></label> <label>Port (optional) <input name="port" type="number" min="1" max="65535"></label> <button>Start capture</button></form>'
+            content += '</select></label> <label>Seconds <input name="seconds" type="number" value="60" min="5" max="300" required></label> <label>Maximum MiB <input name="size" type="number" value="16" min="1" max="32" required></label> <label>Packet bytes <select name="snaplen"><option value="1536">1536 (standard packets)</option><option value="256">256 (reduced analysis)</option><option value="65535">Full packet</option></select></label> <label>Host IP (optional) <input name="host" maxlength="45"></label> <label>Port (optional) <input name="port" type="number" min="1" max="65535"></label> <button>Start capture</button></form>'  # noqa: E501 - HTML and user-facing literals
         else:
-            content += "<p>Capture is unavailable. Install the approved Wxlfgar package and capture dependency, verify permissions and confirm the endpoint is online.</p>"
-        content += "<p>Keep this page open to renew capture authorization. Stop, session expiry or a lost connection ends capture after at most 45 seconds without renewal. Maximum duration is five minutes. Files expire on the endpoint after seven days.</p>"
+            content += "<p>Capture is unavailable. Install the approved Wxlfgar package and capture dependency, verify permissions and confirm the endpoint is online.</p>"  # noqa: E501 - HTML and user-facing literals
+        content += "<p>Keep this page open to renew capture authorization. Stop, session expiry or a lost connection ends capture after at most 45 seconds without renewal. Maximum duration is five minutes. Files expire on the endpoint after seven days.</p>"  # noqa: E501 - HTML and user-facing literals
         history = self.store.history(endpoint, target.identity_id, principal.subject)
         current = None
         if request.query.get("job"):
@@ -444,9 +550,9 @@ class CaptureUI:
         if current:
             job = json.loads(current["payload"])
             job_id = current["id"]
-            content += f'<h2>Capture {escape(job_id)}</h2><p id="capture-status">{escape(str(job.get("state", "unknown")))}</p><p id="capture-counters"></p><p id="capture-message"></p><div id="capture-results"></div><div id="capture-files"></div>'
+            content += f'<h2>Capture {escape(job_id)}</h2><p id="capture-status">{escape(str(job.get("state", "unknown")))}</p><p id="capture-counters"></p><p id="capture-message"></p><div id="capture-results"></div><div id="capture-files"></div>'  # noqa: E501 - HTML and user-facing literals
             action_token = self.nonce(principal, endpoint)
-            content += f'<form method="post"><input type="hidden" name="nonce" value="{action_token}"><input type="hidden" name="job" value="{job_id}"><button name="action" value="stop">Stop capture</button> <button name="action" value="delete">Delete capture and artifacts</button></form>'
+            content += f'<form method="post"><input type="hidden" name="nonce" value="{action_token}"><input type="hidden" name="job" value="{job_id}"><button name="action" value="stop">Stop capture</button> <button name="action" value="delete">Delete capture and artifacts</button></form>'  # noqa: E501 - HTML and user-facing literals
             if (
                 current["session"] == principal.session_id
                 and job.get("state") not in TERMINAL
@@ -459,18 +565,18 @@ class CaptureUI:
                     job_id,
                     time.time() + 600,
                 )
-        content += "<h2>History</h2><table><thead><tr><th>Capture</th><th>State</th><th>Preset</th><th>Bytes</th></tr></thead><tbody>"
+        content += "<h2>History</h2><table><thead><tr><th>Capture</th><th>State</th><th>Preset</th><th>Bytes</th></tr></thead><tbody>"  # noqa: E501 - HTML and user-facing literals
         for row in history:
             value = json.loads(row["payload"])
-            content += f'<tr><td><a href="{base}?job={row["id"]}">{row["id"][:8]}</a></td><td>{escape(str(value.get("state", "unknown")))}</td><td>{escape(str(value.get("preset", "")))}</td><td>{escape(str(value.get("bytes", 0)))}</td></tr>'
-        content += "</tbody></table><p>Traffic shown belongs to the selected interface. Encrypted payloads are not decrypted.</p>"
+            content += f'<tr><td><a href="{base}?job={row["id"]}">{row["id"][:8]}</a></td><td>{escape(str(value.get("state", "unknown")))}</td><td>{escape(str(value.get("preset", "")))}</td><td>{escape(str(value.get("bytes", 0)))}</td></tr>'  # noqa: E501 - HTML and user-facing literals
+        content += "</tbody></table><p>Traffic shown belongs to the selected interface. Encrypted payloads are not decrypted.</p>"  # noqa: E501 - HTML and user-facing literals
         response = frame_response(content)
         if current:
             script = (
                 SCRIPT.replace("__BASE__", json.dumps(base))
                 .replace("__JOB__", json.dumps(current["id"]))
                 .replace("__TOKEN__", json.dumps(lease_token))
-                .replace("__INITIAL__", current["payload"].replace("<", r"<"))
+                .replace("__INITIAL__", script_json(json.loads(current["payload"])))
             )
             response.text = response.text.replace(
                 "</body>", f"<script>{script}</script></body>"
@@ -482,28 +588,9 @@ class CaptureUI:
         return response
 
 
-SCRIPT = r"""(() => {
-const base=__BASE__,job=__JOB__,token=__TOKEN__;
-const finished=new Set(['completed','stopped','expired','failed','interrupted']);
-let done=false,busy=false;
-const el=id=>document.getElementById(id);
-function text(parent,tag,value){const n=document.createElement(tag);n.textContent=String(value);parent.append(n);return n;}
-function render(value){
- el('capture-status').textContent=value.state;
- el('capture-counters').textContent=`Saved bytes: ${value.bytes || 0} / ${value.max_bytes || 0}; packets: ${value.packets || 0}; dropped: ${value.dropped_packets ?? "unavailable"}; elapsed: ${Math.max(0,Math.round((Date.now()-Date.parse(value.started))/1000))}s`;
- el('capture-message').textContent=value.reason || '';
- const results=el('capture-results');results.replaceChildren();
- if(value.report){const r=value.report;text(results,'p',`Packets: ${r.packets}; conversations: ${(r.flows||[]).length}; findings: ${(r.findings||[]).length}`);
- const table=text(results,'table','');const head=text(table,'tr','');for(const s of ['Source','Destination','Protocol','Packets','Bytes'])text(head,'th',s);
- for(const flow of (r.flows||[])){const row=text(table,'tr','');for(const k of ['source','destination','protocol','packets','bytes'])text(row,'td',flow[k]);}
- for(const f of (r.findings||[]))text(results,'p',`${f.time} · ${f.kind} · ${f.source} → ${f.destination}: ${f.description}`);
- for(const w of (r.warnings||[]))text(results,'p',w);}
- const files=el('capture-files');files.replaceChildren();for(const a of (value.artifacts||[])){if(!['capture.pcap','report.json','summary.txt','manifest.json'].includes(a.name))continue;const link=text(files,'a',`Download ${a.name} (${a.size} bytes)`);link.href=`${base}/file/${job}/${a.name}`;text(files,'p',`SHA-256: ${a.sha256}`);}
- done=finished.has(value.state);
-}
-async function tick(){if(done||busy)return;busy=true;try{
- if(token){const form=new URLSearchParams({token});const renewal=await fetch(base+'/lease',{method:'POST',body:form,credentials:'same-origin'});if(!renewal.ok&&renewal.status!==409)throw new Error('Session authorization unavailable; capture will stop.');}
- const reply=await fetch(base+'/state?job='+job,{credentials:'same-origin',cache:'no-store'});if(!reply.ok)throw new Error('Status unavailable. Capture stops if authorization cannot renew.');render(await reply.json());
- }catch(error){el('capture-message').textContent=error.message;}finally{busy=false;}}
-render(__INITIAL__);if(!done){tick();setInterval(tick,10000);}
-})();"""
+def script_json(value):
+    # HTML parses script end tags before JavaScript parses JSON string literals.
+    return json.dumps(value, ensure_ascii=True, allow_nan=False).replace("<", r"\u003c")
+
+
+SCRIPT = Path(__file__).with_name("capture.js").read_text(encoding="utf-8")

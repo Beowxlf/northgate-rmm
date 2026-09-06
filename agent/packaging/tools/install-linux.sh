@@ -8,12 +8,19 @@ expected=$2
 configuration=$3
 case "$expected" in *[!a-fA-F0-9]*|'') exit 2;; esac
 [ "${#expected}" = 64 ] || exit 2
+expected=$(printf '%s' "$expected" | tr 'A-F' 'a-f')
 [ "$(sha256sum "$binary" | cut -d ' ' -f 1)" = "$expected" ] || { echo 'Tool checksum mismatch' >&2; exit 1; }
 [ ! -e /etc/northgate-wxlfgar ] && [ ! -e /usr/local/libexec/northgate-wxlfgar ] && [ ! -e /var/lib/northgate-wxlfgar ] || { echo 'Existing tool requires controlled upgrade/reconciliation' >&2; exit 1; }
 getent passwd northgate-wxlfgar >/dev/null || useradd --system --user-group --home-dir /var/lib/northgate-wxlfgar --shell /usr/sbin/nologin northgate-wxlfgar
+tool_uid=$(id -u northgate-wxlfgar)
+tool_gid=$(id -g northgate-wxlfgar)
+[ "$tool_uid" -ge 100 ] && [ "$tool_uid" -lt 1000 ] && [ "$tool_gid" -gt 0 ] || { echo 'Unsafe tool account identity' >&2; exit 1; }
+[ "$(id -G northgate-wxlfgar)" = "$tool_gid" ] || { echo 'Tool account has unexpected supplementary groups' >&2; exit 1; }
+[ "$(getent passwd northgate-wxlfgar | cut -d: -f6-7)" = '/var/lib/northgate-wxlfgar:/usr/sbin/nologin' ] || { echo 'Tool account is not the dedicated service identity' >&2; exit 1; }
 install -d -o root -g northgate-wxlfgar -m 0750 /etc/northgate-wxlfgar
 install -d -o root -g root -m 0755 /usr/local/libexec/northgate-wxlfgar
 install -o root -g root -m 0755 "$binary" /usr/local/libexec/northgate-wxlfgar/wulfgar
+[ "$(sha256sum /usr/local/libexec/northgate-wxlfgar/wulfgar | cut -d ' ' -f 1)" = "$expected" ] || { echo 'Installed checksum mismatch' >&2; exit 1; }
 python3 - "$configuration" <<'PY'
 import base64,json,os,sys,uuid
 from pathlib import Path

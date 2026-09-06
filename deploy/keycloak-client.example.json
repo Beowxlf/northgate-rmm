@@ -7,12 +7,8 @@
   "directAccessGrantsEnabled": false,
   "serviceAccountsEnabled": false,
   "implicitFlowEnabled": false,
-  "redirectUris": [
-    "https://rmm.internal/oauth2/callback"
-  ],
-  "webOrigins": [
-    "https://rmm.internal"
-  ],
+  "redirectUris": ["https://rmm.internal/oauth2/callback"],
+  "webOrigins": ["https://rmm.internal"],
   "attributes": {
     "pkce.code.challenge.method": "S256"
   },
@@ -20,7 +16,7 @@
     {
       "name": "amr",
       "protocol": "openid-connect",
-      "protocolMapper": "oidc-amr-mapper",
+      "protocolMapper": "northgate-amr-introspection",
       "consentRequired": false,
       "config": {
         "access.token.claim": "true",

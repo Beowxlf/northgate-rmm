@@ -77,7 +77,16 @@ Keep trust-authority registry backups outside ordinary application restores.
 Use the disabled Keycloak client template, the oauth2-proxy configuration and
 the nginx operator configuration. Configure the private realm's browser flow to
 require password and OTP, set the OTP execution's authentication-method reference
-to `otp`, and configure the achieved ACR to match `required_acr`. Assign the
+to `otp`, and configure the achieved ACR to match `required_acr`. Set
+`default.reference.maxAge` on the password and OTP execution configurations to
+the enforced session limit (for example, `28800` seconds for eight hours).
+Keycloak 26.7.3 defaults an omitted reference validity to zero; the AMR can then
+disappear immediately after authentication or during introspection. Keep the
+bridge's required OTP method enabled and verify the claim after login and token
+refresh. Keycloak 26.7.3 also requires the
+[AMR introspection adapter](../../deploy/keycloak-amr/README.md) before importing
+the client template: its built-in AMR mapper does not implement the introspection
+interface. Assign the
 client's `viewer` role only to the intended owner and pin that user's immutable
 subject in both the bridge and operator service. Enable the client only after
 the flow is configured. Store its secret in the separate login and bridge

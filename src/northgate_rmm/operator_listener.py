@@ -472,7 +472,7 @@ async def _write_raw(
         "content-type": "application/json",
         "cache-control": "no-store",
         "content-security-policy": (
-            "default-src 'none'; frame-ancestors 'none'; "
+            "default-src 'none'; frame-src 'self'; frame-ancestors 'none'; "
             f"base-uri 'none'; form-action 'none'; style-src {STYLE_SOURCE}"
         ),
         "referrer-policy": "no-referrer",

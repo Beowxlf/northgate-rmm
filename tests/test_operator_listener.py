@@ -387,6 +387,8 @@ def test_stylesheet_is_allowed_by_actual_tls_response(tmp_path: Path) -> None:
             assert b"style-src 'sha256-" + digest + b"'" in headers
             assert headers.count(b"content-security-policy:") == 1
             assert b"default-src 'none'" in headers
+            assert b"frame-src 'self'" in headers
+            assert b"frame-ancestors 'none'" in headers
             assert b"unsafe-inline" not in headers
         finally:
             await listener.close()

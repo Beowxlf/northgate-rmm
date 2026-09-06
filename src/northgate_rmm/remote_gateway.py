@@ -73,6 +73,9 @@ class RemoteGateway:
         self.leases: dict[str, LeaseState] = {}
         self.forms: dict[str, tuple[str, str, UUID, datetime]] = {}
         self.client: ClientSession | None = None
+        # The verifier admits four connections per workload identity. Leave room
+        # for the operator service while browser assets arrive concurrently.
+        self._verification_slots = asyncio.Semaphore(2)
 
     async def principal(
         self,
@@ -107,7 +110,20 @@ class RemoteGateway:
             return principal
 
         try:
-            return await asyncio.to_thread(verify)
+            async with asyncio.timeout(10):
+                await self._verification_slots.acquire()
+            task = asyncio.create_task(asyncio.to_thread(verify))
+
+            def completed(result) -> None:
+                self._verification_slots.release()
+                if not result.cancelled():
+                    result.exception()
+
+            task.add_done_callback(completed)
+            # A cancelled HTTP request must not free a still-running TLS slot.
+            return await asyncio.shield(task)
+        except TimeoutError:
+            raise web.HTTPServiceUnavailable(text="Remote verification busy") from None
         except Exception:
             raise web.HTTPForbidden(
                 text="Remote access unavailable or unauthorized"
@@ -367,16 +383,31 @@ class RemoteGateway:
             not state.auth_token or not hmac.compare_digest(token, state.auth_token)
         ):
             raise web.HTTPForbidden()
+        forwarded_body = None
         if request.path.endswith("/api/tokens") and request.method == "POST":
             fields = await request.post()
-            data = str(fields.get("data", ""))
-            if (
-                not data
-                or not state.auth_data
-                or not hmac.compare_digest(data, state.auth_data)
-            ):
+            if any(len(fields.getall(name)) != 1 for name in fields):
                 raise web.HTTPForbidden()
-            state.auth_data = ""
+            data = str(fields.get("data", ""))
+            body_token = str(fields.get("token", ""))
+            if state.auth_token:
+                # Guacamole revalidates its token when Angular changes routes.
+                # Forward only this lease's token, never replay the JSON ticket.
+                if not body_token or not hmac.compare_digest(
+                    body_token, state.auth_token
+                ):
+                    raise web.HTTPForbidden()
+                forwarded_body = urlencode({"token": body_token}).encode()
+            else:
+                if (
+                    not data
+                    or not state.auth_data
+                    or not hmac.compare_digest(data, state.auth_data)
+                ):
+                    raise web.HTTPForbidden()
+                state.auth_data = ""
+                # Ignore a stale token retained by Guacamole from an older lease.
+                forwarded_body = urlencode({"data": data}).encode()
         if request.headers.get("Upgrade", "").lower() == "websocket":
             if (
                 request.headers.get("Origin") != self.origin
@@ -388,10 +419,16 @@ class RemoteGateway:
         async with self.client.request(
             request.method,
             UPSTREAM + request.raw_path,
-            data=await request.read(),
+            data=(
+                forwarded_body
+                if forwarded_body is not None
+                else (await request.read() or None)
+            ),
             headers={
-                "Content-Type": request.headers.get(
-                    "Content-Type", "application/octet-stream"
+                **(
+                    {"Content-Type": request.headers["Content-Type"]}
+                    if "Content-Type" in request.headers
+                    else {}
                 ),
                 **({"Guacamole-Token": token} if token else {}),
             },

@@ -234,3 +234,134 @@ def test_connect_requires_csrf_and_issues_only_the_exact_target():
             assert response.status == 403
 
     asyncio.run(scenario())
+
+
+def test_browser_asset_burst_keeps_verifier_connections_bounded():
+    import threading
+    import time
+
+    class Operation:
+        _policy = POLICY
+        _store = SimpleNamespace(
+            get_endpoint=lambda endpoint: SimpleNamespace(
+                identity_id=TARGET.identity_id
+            ),
+            endpoint_status=lambda endpoint, now: STATUS,
+        )
+        lock = threading.Lock()
+        active = 0
+        peak = 0
+        calls = 0
+
+        def _authenticate(self, authorization, **kwargs):
+            with self.lock:
+                self.active += 1
+                self.calls += 1
+                self.peak = max(self.peak, self.active)
+            try:
+                time.sleep(0.02)
+                return PRINCIPAL
+            finally:
+                with self.lock:
+                    self.active -= 1
+
+    async def scenario():
+        operation = Operation()
+        gateway = RemoteGateway(
+            operation,
+            {TARGET.endpoint_id: (TARGET, {})},
+            bytes(16),
+            "https://operator.test",
+        )
+        request = SimpleNamespace(remote="127.0.0.1", headers={})
+        results = await asyncio.gather(
+            *(gateway.principal(request, TARGET.endpoint_id) for _ in range(12))
+        )
+        assert results == [PRINCIPAL] * 12
+        assert operation.calls == 12
+        assert operation.peak == 2
+
+    asyncio.run(scenario())
+
+
+def test_guacamole_route_change_revalidates_only_its_lease_token(monkeypatch):
+    from aiohttp import web
+
+    from northgate_rmm import remote_gateway
+    from northgate_rmm.remote_gateway import LeaseState
+
+    async def scenario():
+        received = []
+
+        async def authenticate(request):
+            received.append(dict(await request.post()))
+            return web.json_response({"authToken": "synthetic-bound-token"})
+
+        async def tree(request):
+            assert "Content-Type" not in request.headers
+            assert await request.read() == b""
+            assert request.headers["Guacamole-Token"] == "synthetic-bound-token"
+            return web.json_response({"childConnections": []})
+
+        upstream = web.Application()
+        upstream.router.add_post("/guacamole/api/tokens", authenticate)
+        upstream.router.add_get("/guacamole/api/tree", tree)
+        async with TestServer(upstream) as server:
+            monkeypatch.setattr(remote_gateway, "UPSTREAM", str(server.make_url("")))
+            gateway = RemoteGateway(
+                None,
+                {TARGET.endpoint_id: (TARGET, {})},
+                bytes(16),
+                "https://operator.test",
+            )
+
+            async def principal(*args, **kwargs):
+                return PRINCIPAL
+
+            gateway.principal = principal
+            gateway.leases["synthetic-cookie"] = LeaseState(
+                RemoteLease(
+                    uuid4(),
+                    TARGET.endpoint_id,
+                    TARGET.identity_id,
+                    PRINCIPAL.subject,
+                    PRINCIPAL.session_id,
+                    NOW,
+                    NOW + timedelta(minutes=10),
+                ),
+                auth_data="synthetic-ticket",
+            )
+            headers = {
+                "Origin": "https://operator.test",
+                "Cookie": COOKIE + "=synthetic-cookie",
+            }
+            async with TestClient(TestServer(gateway.application())) as client:
+                path = "/guacamole/api/tokens"
+                first = await client.post(
+                    path,
+                    headers=headers,
+                    data={"data": "synthetic-ticket", "token": "old-browser-token"},
+                )
+                assert first.status == 200
+                assert received == [{"data": "synthetic-ticket"}]
+                refresh = await client.post(
+                    path,
+                    headers=headers,
+                    data={"token": "synthetic-bound-token", "data": "synthetic-ticket"},
+                )
+                assert refresh.status == 200
+                assert received[-1] == {"token": "synthetic-bound-token"}
+                connection_tree = await client.get(
+                    "/guacamole/api/tree",
+                    headers={**headers, "Guacamole-Token": "synthetic-bound-token"},
+                )
+                assert connection_tree.status == 200
+                for fields in [
+                    {"token": "another-lease-token"},
+                    {"data": "synthetic-ticket"},
+                ]:
+                    rejected = await client.post(path, headers=headers, data=fields)
+                    assert rejected.status == 403
+                assert len(received) == 2
+
+    asyncio.run(scenario())

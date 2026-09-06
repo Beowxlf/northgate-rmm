@@ -205,9 +205,16 @@ def render_endpoint_detail(
         + panel("Activity", ("Enrolled", "Last receipt", "Last heartbeat"))
         + (
             '<section class="panel"><div class="panel-heading"><div>'
+            "<h2>Inspection and diagnostics</h2>"
+            "<p>View system data, run read-only checks and compare saved baselines.</p>"
+            f'<a class="button" href="/remote/{endpoint_id}/inspect">'
+            "Open inspection toolbox</a></div></div></section>"
+        )
+        + (
+            '<section class="panel"><div class="panel-heading"><div>'
             "<h2>Remote access</h2><p>Open Remote Desktop or a browser terminal.</p>"
             f'<a class="button" href="/remote/{endpoint_id}/desktop.rdp">'
-            'Open Remote Desktop</a> '
+            "Open Remote Desktop</a> "
             f'<a class="button" href="/remote/{endpoint_id}">Connect SSH Terminal</a>'
             "</div></div></section>"
             if status.lifecycle.value == "active" and status.health.value == "online"

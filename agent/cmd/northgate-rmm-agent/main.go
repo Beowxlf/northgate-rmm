@@ -17,6 +17,7 @@ import (
 	"github.com/Beowxlf/northgate-rmm/agent/config"
 	"github.com/Beowxlf/northgate-rmm/agent/eventlog"
 	"github.com/Beowxlf/northgate-rmm/agent/identity"
+	"github.com/Beowxlf/northgate-rmm/agent/inspection"
 	"github.com/Beowxlf/northgate-rmm/agent/remote"
 	agentruntime "github.com/Beowxlf/northgate-rmm/agent/runtime"
 	"github.com/Beowxlf/northgate-rmm/agent/sequence"
@@ -44,6 +45,7 @@ func execute(ctx context.Context, args []string, output io.Writer) int {
 	recoverRenewal := flags.Bool("recover-renewal", false, "")
 	showVersion := flags.Bool("version", false, "")
 	remoteCheck := flags.Bool("remote-check", false, "")
+	inspect := flags.String("inspect", "", "")
 	enrollOrigin := flags.String("enroll", "", "")
 	grantFile := flags.String("grant-file", "", "")
 	serverRoots := flags.String("server-roots", "", "")
@@ -59,6 +61,12 @@ func execute(ctx context.Context, args []string, output io.Writer) int {
 			return 1
 		}
 		return 0
+	}
+	if *inspect != "" {
+		if len(args) != 2 || args[0] != "--inspect" {
+			return 2
+		}
+		return inspection.Write(ctx, *inspect, version, output)
 	}
 	if *remoteCheck {
 		if len(args) != 1 {

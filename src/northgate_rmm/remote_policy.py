@@ -48,6 +48,7 @@ def authorize_remote(
     current_identity_id: UUID,
     *,
     now: datetime,
+    require_online: bool = True,
 ) -> None:
     """Recheck current human, MFA, remote role and enrolled identity together."""
     require_aware(now, "remote authorization time")
@@ -66,7 +67,7 @@ def authorize_remote(
         current_identity_id != target.identity_id
         or status.endpoint_id != target.endpoint_id
         or status.lifecycle.value != "active"
-        or status.health.value != "online"
+        or (require_online and status.health.value != "online")
     ):
         raise AuthorizationError("remote endpoint authorization denied")
 

@@ -10,6 +10,7 @@ from uuid import UUID
 from aiohttp import web
 
 from northgate_rmm.agent_service import _require_unprivileged_process, load_database_dsn
+from northgate_rmm.inspection import InspectionStore, InspectionUI
 from northgate_rmm.operator_api import OperatorApplication
 from northgate_rmm.operator_service import load_operator_service_configuration
 from northgate_rmm.operator_verifier import MTLSOperatorSessionVerifier
@@ -73,9 +74,12 @@ def main() -> None:
             raise ValueError("invalid remote parameter value")
         targets[target.endpoint_id] = (target, parameters)
     gateway = RemoteGateway(operation, targets, key, args.origin)
-    web.run_app(
-        gateway.application(), host="127.0.0.1", port=8451, access_log=None, print=None
-    )
+    app = gateway.application()
+    InspectionUI(
+        gateway,
+        InspectionStore(Path("/var/lib/northgate-rmm-remote/inspection.sqlite3")),
+    ).register(app)
+    web.run_app(app, host="127.0.0.1", port=8451, access_log=None, print=None)
 
 
 if __name__ == "__main__":

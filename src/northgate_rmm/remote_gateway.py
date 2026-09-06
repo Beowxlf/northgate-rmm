@@ -75,7 +75,12 @@ class RemoteGateway:
         self.client: ClientSession | None = None
 
     async def principal(
-        self, request: web.Request, endpoint_id: UUID, authorization: str | None = None
+        self,
+        request: web.Request,
+        endpoint_id: UUID,
+        authorization: str | None = None,
+        *,
+        require_online: bool = True,
     ) -> OperatorPrincipal:
         if request.remote not in {"127.0.0.1", "::1"}:
             raise web.HTTPForbidden()
@@ -97,6 +102,7 @@ class RemoteGateway:
                 status,
                 endpoint.identity_id,
                 now=now,
+                require_online=require_online,
             )
             return principal
 
@@ -204,7 +210,7 @@ class RemoteGateway:
                 f'<form method="post" action="/remote/{endpoint_id}">'
                 f'<input type="hidden" name="nonce" value="{nonce}">'
                 '<button class="button" type="submit">Connect SSH Terminal'
-                '</button></form>'
+                "</button></form>"
                 '<form method="post" action="/remote/end">'
                 '<button class="button" type="submit">End current session</button>'
                 "</form>"

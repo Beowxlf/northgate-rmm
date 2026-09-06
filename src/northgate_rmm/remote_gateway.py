@@ -10,6 +10,7 @@ import asyncio
 import base64
 import hmac
 import json
+import re
 import secrets
 from contextlib import suppress
 from dataclasses import dataclass
@@ -52,6 +53,7 @@ class LeaseState:
     websocket: web.WebSocketResponse | None = None
     auth_data: str = ""
     auth_token: str = ""
+    authorization: str = ""
 
 
 class RemoteGateway:
@@ -73,13 +75,13 @@ class RemoteGateway:
         self.client: ClientSession | None = None
 
     async def principal(
-        self, request: web.Request, endpoint_id: UUID
+        self, request: web.Request, endpoint_id: UUID, authorization: str | None = None
     ) -> OperatorPrincipal:
         if request.remote not in {"127.0.0.1", "::1"}:
             raise web.HTTPForbidden()
         if endpoint_id not in self.targets:
             raise web.HTTPNotFound()
-        authorization = request.headers.get("Authorization")
+        authorization = authorization or request.headers.get("Authorization")
 
         def verify() -> OperatorPrincipal:
             now = datetime.now(UTC)
@@ -118,7 +120,7 @@ class RemoteGateway:
             subject=f"endpoint:{endpoint_id}",
             action=action,
             decision="accepted",
-            reason="authorized lab remote desktop",
+            reason="authorized lab remote access",
             correlation_id=correlation,
             now=datetime.now(UTC),
         )
@@ -131,6 +133,45 @@ class RemoteGateway:
             for k, v in self.leases.items()
             if v.lease.expires_at > now or v.websocket is not None
         }
+
+    async def desktop_file(self, request: web.Request) -> web.Response:
+        try:
+            endpoint_id = UUID(request.match_info["endpoint"])
+        except ValueError:
+            raise web.HTTPNotFound() from None
+        principal = await self.principal(request, endpoint_id)
+        target, parameters = self.targets[endpoint_id]
+        username = parameters.get("username", "")
+        domain = parameters.get("domain", "")
+        if domain:
+            username = domain + "\\" + username
+        if not re.fullmatch(r"[A-Za-z0-9_.\\@-]{1,128}", username):
+            raise web.HTTPServiceUnavailable()
+        await self.audit(
+            principal, endpoint_id, "remote.native_rdp.file_issued", uuid4()
+        )
+        content = "\r\n".join(
+            [
+                f"full address:s:{target.address}:3389",
+                f"username:s:{username}",
+                "prompt for credentials:i:1",
+                "authentication level:i:2",
+                "enablecredsspsupport:i:1",
+                "redirectclipboard:i:0",
+                "redirectprinters:i:0",
+                "drivestoredirect:s:",
+                "",
+            ]
+        )
+        return web.Response(
+            body=content.encode("utf-16"),
+            headers={
+                "Content-Type": "application/x-rdp",
+                "Content-Disposition": f'attachment; filename="rmm-{endpoint_id}.rdp"',
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     async def landing(self, request: web.Request) -> web.Response:
         try:
@@ -156,20 +197,21 @@ class RemoteGateway:
                 f'<a href="/endpoints/{endpoint_id}">← Device profile</a>'
                 f"<h1>Connect to {escape(endpoint.display_name)}</h1>"
                 '<section class="panel"><div class="panel-heading"><div>'
-                "<h2>Remote desktop</h2><p>Start a private desktop login session. "
-                "Windows may lock its local console. Sessions end after one hour; "
+                "<h2>SSH terminal</h2><p>Start a terminal in your browser. "
+                "Sessions end after one hour; "
                 "device and sign-in access are checked throughout.</p>"
                 "<p>Clipboard and file transfer are disabled.</p>"
                 f'<form method="post" action="/remote/{endpoint_id}">'
                 f'<input type="hidden" name="nonce" value="{nonce}">'
-                '<button class="button" type="submit">Connect</button></form>'
+                '<button class="button" type="submit">Connect SSH Terminal'
+                '</button></form>'
                 '<form method="post" action="/remote/end">'
                 '<button class="button" type="submit">End current session</button>'
-                '</form>'
+                "</form>"
                 "</div></div></section>"
             )
             return web.Response(
-                text=document("Remote desktop", content, updated=""),
+                text=document("SSH terminal", content, updated=""),
                 content_type="text/html",
                 headers={
                     "Cache-Control": "no-store",
@@ -207,7 +249,7 @@ class RemoteGateway:
             principal.subject,
             principal.session_id,
             now,
-            min(now + timedelta(hours=1), principal.expires_at),
+            now + timedelta(hours=1),
         )
         await self.audit(
             principal, endpoint_id, "remote.session.authorized", lease.session_id
@@ -231,12 +273,16 @@ class RemoteGateway:
                 "username": str(lease.session_id),
                 "expires": int((now + timedelta(seconds=60)).timestamp() * 1000),
                 "connections": {
-                    "Desktop": {"protocol": target.protocol, "parameters": options}
+                    "SSH Terminal": {"protocol": target.protocol, "parameters": options}
                 },
             },
         )
         cookie = secrets.token_urlsafe(32)
-        self.leases[cookie] = LeaseState(lease, auth_data=data)
+        self.leases[cookie] = LeaseState(
+            lease,
+            auth_data=data,
+            authorization=request.headers.get("Authorization", ""),
+        )
         response = web.HTTPFound("/guacamole/?" + urlencode({"data": data}))
         response.set_cookie(
             COOKIE,
@@ -252,13 +298,15 @@ class RemoteGateway:
         return response
 
     async def checked_lease(
-        self, request: web.Request
+        self, request: web.Request, *, authorization: str | None = None
     ) -> tuple[LeaseState, OperatorPrincipal]:
         self.purge()
         state = self.leases.get(request.cookies.get(COOKIE, ""))
         if state is None:
             raise web.HTTPForbidden(text="Start remote access from the device profile")
-        principal = await self.principal(request, state.lease.endpoint_id)
+        principal = await self.principal(
+            request, state.lease.endpoint_id, authorization
+        )
         try:
             state.lease.check(
                 principal,
@@ -267,7 +315,26 @@ class RemoteGateway:
             )
         except AuthorizationError:
             raise web.HTTPForbidden() from None
+        state.authorization = authorization or request.headers.get("Authorization", "")
         return state, principal
+
+    async def keepalive(self, request: web.Request) -> web.Response:
+        await self.checked_lease(request)
+        return web.Response(status=204, headers={"Cache-Control": "no-store"})
+
+    async def session_script(self, request: web.Request) -> web.Response:
+        await self.checked_lease(request)
+        script = (
+            "setInterval(async()=>{try{const r=await fetch('/remote/keepalive',"
+            "{credentials:'same-origin',cache:'no-store'});"
+            "if(!r.ok)location.assign('/endpoints');}"
+            "catch(e){location.assign('/endpoints');}},20000);"
+        )
+        return web.Response(
+            text=script,
+            content_type="application/javascript",
+            headers={"Cache-Control": "no-store"},
+        )
 
     async def proxy(self, request: web.Request) -> web.StreamResponse:
         state, principal = await self.checked_lease(request)
@@ -330,6 +397,10 @@ class RemoteGateway:
                 if len(chunks) > 8 * 1024 * 1024:
                     raise web.HTTPBadGateway()
             data = bytes(chunks)
+            if request.path == "/guacamole/" and upstream.status == 200:
+                data = data.replace(
+                    b"</body>", b'<script src="/remote/session.js"></script></body>'
+                )
             if (
                 request.path.endswith("/api/tokens")
                 and request.method == "POST"
@@ -401,7 +472,9 @@ class RemoteGateway:
                 async def guard() -> None:
                     while True:
                         await asyncio.sleep(RECHECK_SECONDS)
-                        await self.checked_lease(request)
+                        await self.checked_lease(
+                            request, authorization=state.authorization
+                        )
 
                 tasks = [
                     asyncio.create_task(forward(browser, upstream)),
@@ -428,6 +501,9 @@ class RemoteGateway:
     def application(self) -> web.Application:
         app = web.Application(client_max_size=MAX_BODY)
         app.router.add_post("/remote/end", self.end)
+        app.router.add_get("/remote/keepalive", self.keepalive)
+        app.router.add_get("/remote/session.js", self.session_script)
+        app.router.add_get("/remote/{endpoint}/desktop.rdp", self.desktop_file)
         app.router.add_get("/remote/{endpoint}", self.landing)
         app.router.add_post("/remote/{endpoint}", self.landing)
         app.router.add_route("*", "/guacamole/{tail:.*}", self.proxy)

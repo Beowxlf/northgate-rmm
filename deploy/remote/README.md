@@ -1,53 +1,69 @@
-# Private lab remote desktop
+# Private lab remote access
 
-This owner-authorized lab increment uses unmodified Apache Guacamole 1.6.0
-images (`guacamole/guacd` and `guacamole/guacamole`), Windows RDP and Linux
-Xfce/xrdp. No custom image or custom desktop protocol implementation is needed.
-The Python adapter adds RMM identity, endpoint authorization and expiring leases.
+Open an online endpoint's detail page and select:
 
-Open an online device profile, choose **Connect**, then confirm the connection.
-Guacamole opens the configured desktop. This is a dedicated login session,
-not console screen sharing. Windows may lock the local console. The dedicated
-desktop accounts are not administrators. File transfer and clipboard are disabled.
+- **Open Remote Desktop**: download and open a standard `.rdp` file in the native
+  Remote Desktop client. Sign in with the dedicated workstation account. The file
+  contains no password. Windows can lock its local console; Linux uses Xfce/xrdp.
+- **Connect SSH Terminal**: confirm to open an SSH terminal in the browser through
+  unmodified Apache Guacamole 1.6.0. Each endpoint has a separate SSH key kept on
+  the RMM server and a pinned SSH host key. No additional client is needed.
 
-The IdP client role `remote_operator` is required in addition to existing viewer
-and MFA checks. Assign it only to the approved owner. Existing tokens may require
-a fresh sign-in to include the role. Targets must match both endpoint ID and
-current enrollment identity, be active and online, and use configured private IPs.
-The browser cannot select arbitrary destinations. Leases last at most one hour.
-WebSocket access is rechecked every 30 seconds, and closes on denial or failure.
+The dedicated `rmmremote` accounts are nonadministrators. Browser terminal access
+requires the existing MFA identity and the `remote_operator` client role, plus an
+active, online endpoint with the exact configured enrollment identity. The owner
+may need a fresh sign-in to receive the new role. Browser leases last one hour,
+are revalidated every 30 seconds, and close on authorization failure. The browser
+refreshes its authenticated gateway request every 20 seconds; the existing login
+proxy refreshes its identity-provider token every minute.
 
-The adapter listens only on loopback port 8451. Guacamole's web service is mapped
-only to loopback 8088; guacd has no published host port. Add the supplied nginx
-location to the existing authenticated operator listener. RDP endpoint firewall
-rules admit only the RMM server. RDP certificates are pinned by SHA-256; TLS
-validation is not disabled.
+Native RDP uses operating-system authentication and the lab firewall. Issuing a
+connection file is audited, but an actual native login is recorded by the endpoint.
+Native sessions do not inherit the browser lease, logout, or enrollment-revocation
+termination behavior. Disable the OS account or its RDP rule to revoke that path.
+Clipboard, drive redirection and printing are disabled in the supplied RDP file;
+a user-controlled native client can change its own settings.
 
-Copy the existing operator JSON configuration to `remote-operator-service.json`,
-replacing its systemd credential directory with `northgate-rmm-remote.service`.
-Install the supplied unit. Its credentials contain a random 128-bit Guacamole
-JSON key and an exact target list, including dedicated OS connection credentials.
-They remain protected on the server, outside the application database. Guacamole
-receives its matching key via a root-only environment file. No passwords should
-appear in access logs, source control, or evidence notes.
+## Deployment
 
-The target-list JSON is an array of objects with `endpoint_id`, `identity_id`,
-`address`, `protocol`, `port`, and `parameters`. Supported parameters are username,
-password, domain, security, cert-fingerprints, server-layout, resize-method and
-color-depth. See Apache's [connection documentation](https://guacamole.apache.org/doc/gug/configuring-guacamole.html)
-and [encrypted authentication format](https://guacamole.apache.org/doc/gug/json-auth.html).
+Guacamole and guacd use official unmodified images. Guacamole binds only loopback
+8088, guacd has no published host port, and the Python adapter binds loopback8451.
+The existing authenticated HTTPS operator listener proxies both through the
+supplied nginx location. No custom image is required.
 
-The agent's `--remote-check` command performs a fixed-local RDP negotiation without
-credentials or opening a desktop. It returns a JSON readiness result. A successful
-probe is not proof of desktop sign-in; qualify both backend login and owner UI.
+The systemd unit loads root-protected target configuration and a random 128-bit
+Guacamole JSON key. Each target contains `endpoint_id`, `identity_id`, `address`,
+`protocol: ssh`, `port: 22`, and `parameters` with `username`, `private-key`, and
+`host-key`. The latter is a complete existing pinned OpenSSH known_hosts entry.
+An optional domain is used for the native RDP username. Never put private keys,
+passwords or complete target configurations in Git, access logs or evidence.
 
-Rollback: stop/disable the remote unit, restore the previous nginx config and
-server venv, restore previous signed agent binaries, stop the two gateway
-containers, disable the dedicated RDP firewall rules/listeners, and disable the
-dedicated remote accounts. Retain backups and enrollment state. Do not reinstall
-or revoke monitoring agents as part of a presentation/gateway rollback.
+Use the included Windows/Linux desktop installers first. The lab terminal
+scripts extend the existing bootstrap SSH allowlist with only
+`rmmremote@10.10.150.22`; they preserve password-authentication denial and install
+an authorized public key with `from`, `restrict`, and explicit PTY permission.
+They assume the documented existing NorthGate bootstrap configuration and the
+public key staging locations shown in the scripts. They allow native RDP from
+owner workstation10.10.100.20 and RMM server10.10.150.22. Private keys are generated
+on the server; only public keys are transferred to the endpoints.
 
-This simple lab implementation deliberately uses private server-to-endpoint RDP
-and dedicated stored OS accounts. It does not claim the future architecture's
-reverse tunnels, JIT credential authority, independent emergency gateway, session
-recording or production remote-access qualification are implemented.
+The agent's `--remote-check` performs a fixed-local RDP negotiation without
+credentials. It does not test SSH or prove an authenticated desktop session.
+Qualify SSH authentication/PTY, RDP login, endpoint freshness and both owner UI
+paths after deployment. This increment updates both agents to1.0.0-lab.5.
+
+## Recovery and limits
+
+Retain the previous server venv, signed Windows binary, Linux package/config,
+SSH configuration, firewall exports and dedicated account recovery credentials.
+To roll back, stop the remote adapter and gateway containers, restore nginx and
+server code, remove the added SSH public keys/allowlist entries, restore firewall
+rules and disable the dedicated accounts. Preserve monitoring enrollment state.
+
+This private-lab implementation uses direct private-network SSH/RDP. It does not
+implement reverse tunnels, console screen sharing, session recording or a JIT
+credential authority. Browser copy/paste and SFTP are disabled. SSH commands have
+the dedicated account's normal OS permissions.
+
+References: [Guacamole connections](https://guacamole.apache.org/doc/gug/configuring-guacamole.html)
+and [encrypted JSON authentication](https://guacamole.apache.org/doc/gug/json-auth.html).

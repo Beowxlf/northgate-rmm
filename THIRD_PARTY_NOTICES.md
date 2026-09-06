@@ -29,3 +29,11 @@ The repository does not modify these components or relicense them. Release
 packaging must regenerate the software bill of materials and include any license
 texts, notices, and source-access mechanism required by the exact artifacts it
 distributes.
+
+The private lab remote desktop deployment additionally uses the unmodified
+Apache Guacamole web application and guacd 1.6.0 (Apache-2.0), delivered through
+their official container images. Their bundled component notices remain inside
+those images. Source: https://guacamole.apache.org/releases/1.6.0/ . Windows uses
+its installed OS RDP service; Debian uses distribution-provided Xfce and xrdp
+packages with their installed copyright/license records. These runtime images
+and OS packages are not vendored into this source repository.

@@ -64,10 +64,12 @@ def main() -> None:
             "server-layout",
             "resize-method",
             "color-depth",
+            "private-key",
+            "host-key",
         }
         if not isinstance(parameters, dict) or not set(parameters) <= allowed:
             raise ValueError("invalid remote connection parameters")
-        if any(type(v) is not str or len(v) > 1024 for v in parameters.values()):
+        if any(type(v) is not str or len(v) > 8192 for v in parameters.values()):
             raise ValueError("invalid remote parameter value")
         targets[target.endpoint_id] = (target, parameters)
     gateway = RemoteGateway(operation, targets, key, args.origin)

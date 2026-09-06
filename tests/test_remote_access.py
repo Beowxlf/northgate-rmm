@@ -170,6 +170,14 @@ def test_connect_requires_csrf_and_issues_only_the_exact_target():
                 "Authorization": "Bearer synthetic",
                 "Origin": "https://operator.test",
             }
+            response = await client.get(path + "/desktop.rdp")
+            assert response.status == 403
+            response = await client.get(path + "/desktop.rdp", headers=headers)
+            assert response.status == 200
+            rdp = (await response.read()).decode("utf-16")
+            assert f"full address:s:{TARGET.address}:3389" in rdp
+            assert "synthetic-password" not in rdp
+            assert "prompt for credentials:i:1" in rdp
             response = await client.get(path, headers=headers)
             assert response.status == 200
             nonce = next(iter(gateway.forms))
@@ -188,13 +196,29 @@ def test_connect_requires_csrf_and_issues_only_the_exact_target():
                 0
             ]
             value = decrypt(bytes(range(16)), ciphertext)
-            parameters = value["connections"]["Desktop"]["parameters"]
+            parameters = value["connections"]["SSH Terminal"]["parameters"]
             assert parameters["hostname"] == TARGET.address
             assert parameters["disable-copy"] == "true"
             assert parameters["enable-drive"] == "false"
             assert "synthetic-password" not in response.headers["Location"]
             assert response.cookies[COOKIE]["httponly"]
             assert response.cookies[COOKIE]["secure"]
+            cookie = response.cookies[COOKIE].value
+            state = gateway.leases[cookie]
+            assert state.lease.expires_at > PRINCIPAL.expires_at
+            response = await client.get(
+                "/remote/keepalive",
+                headers={**headers, "Cookie": COOKIE + "=" + cookie},
+            )
+            assert response.status == 204
+            assert state.authorization == "Bearer synthetic"
+            response = await client.post(
+                "/remote/end",
+                headers={**headers, "Cookie": COOKIE + "=" + cookie},
+                allow_redirects=False,
+            )
+            assert response.status == 302
+            assert not gateway.leases
             response = await client.post(
                 path, headers=headers, data={"nonce": nonce}, allow_redirects=False
             )

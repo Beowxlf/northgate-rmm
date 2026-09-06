@@ -15,3 +15,10 @@ Before-state: CRM presentation is visually confirmed by the owner's screenshot.
 Both enrolled agents are online. Windows has Remote Desktop services available;
 Linux has no installed desktop or xrdp service. The control plane has no remote
 desktop gateway installed. Discovery was read-only.
+
+The owner subsequently selected both native Remote Desktop and a browser SSH
+terminal, explicitly asking for a "connect SSH Terminal" action after opening
+an endpoint. The implementation follows that choice. Native RDP is permitted
+from the owner's existing lab workstation; browser SSH originates on the RMM
+server. The dedicated native credentials are delivered only to the owner in a
+protected local file. This authorizes neither public exposure nor unrelated hosts.

@@ -221,7 +221,7 @@ class RemoteGateway:
                 content_type="text/html",
                 headers={
                     "Cache-Control": "no-store",
-                    "Referrer-Policy": "no-referrer",
+                    "Referrer-Policy": "strict-origin",
                     "Content-Security-Policy": (
                         "default-src 'none'; frame-ancestors 'none'; "
                         f"base-uri 'none'; form-action 'self'; style-src {STYLE_SOURCE}"
@@ -300,7 +300,7 @@ class RemoteGateway:
             path="/",
         )
         response.headers["Cache-Control"] = "no-store"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Referrer-Policy"] = "strict-origin"
         return response
 
     async def checked_lease(
@@ -415,7 +415,7 @@ class RemoteGateway:
                 state.auth_token = json.loads(data)["authToken"]
             headers = {
                 "Cache-Control": "no-store",
-                "Referrer-Policy": "no-referrer",
+                "Referrer-Policy": "strict-origin",
                 "X-Content-Type-Options": "nosniff",
                 "X-Frame-Options": "DENY",
             }

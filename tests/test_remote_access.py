@@ -180,7 +180,16 @@ def test_connect_requires_csrf_and_issues_only_the_exact_target():
             assert "prompt for credentials:i:1" in rdp
             response = await client.get(path, headers=headers)
             assert response.status == 200
+            assert response.headers["Referrer-Policy"] == "strict-origin"
             nonce = next(iter(gateway.forms))
+            # Null origins remain forbidden; fix the browser policy, not CSRF.
+            response = await client.post(
+                path,
+                headers={**headers, "Origin": "null"},
+                data={"nonce": nonce},
+                allow_redirects=False,
+            )
+            assert response.status == 403
             response = await client.post(
                 path,
                 headers={**headers, "Origin": "https://evil.test"},

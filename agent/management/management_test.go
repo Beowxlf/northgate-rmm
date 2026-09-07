@@ -233,6 +233,38 @@ func TestMaximumFileReceiptFitsTransport(t *testing.T) {
 	}
 }
 
+// This qualification runs only on the explicitly authorized Windows canary.
+func TestAuthorizedWindowsCanaryOperations(t *testing.T) {
+	host, _ := os.Hostname()
+	if runtime.GOOS != "windows" || os.Getenv("NORTHGATE_CANARY_QUALIFICATION") != "NG-RMM-WIN01" || strings.ToUpper(host) != "NG-RMM-WIN01" {
+		t.Skip("explicit Windows canary qualification only")
+	}
+	if err := requirePrivileged(); err != nil {
+		t.Fatal(err)
+	}
+	c := configForTest(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	for _, action := range []string{"posture", "services.list", "processes.list", "reboot.status", "packages.list", "encryption.status"} {
+		t.Run(action, func(t *testing.T) {
+			r := executeJob(ctx, jobForTest(action, nil), c)
+			if r.State != "completed" || r.Exit != 0 || r.Identity != `NT AUTHORITY\SYSTEM` {
+				t.Fatalf("%s did not complete under SYSTEM: state=%s error=%s output=%.1000s", action, r.State, r.Error, r.Output)
+			}
+		})
+	}
+	r := executeJob(ctx, jobForTest("logs.read", map[string]any{"channel": "System", "since": 1440, "limit": 5}), c)
+	if r.State != "completed" || r.Exit != 0 {
+		t.Fatalf("System event query failed: %s", r.Error)
+	}
+	content := "[Security.Principal.WindowsIdentity]::GetCurrent().Name"
+	digest := sha256.Sum256([]byte(content))
+	r = executeJob(ctx, jobForTest("script.run", map[string]any{"script_id": "11111111-1111-4111-8111-111111111111", "version": hex.EncodeToString(digest[:]), "content": content, "inputs": map[string]string{}}), c)
+	if r.State != "completed" || !strings.Contains(strings.ToUpper(r.Output), `NT AUTHORITY\SYSTEM`) {
+		t.Fatal("versioned PowerShell script did not execute under SYSTEM")
+	}
+}
+
 // This qualification runs only on the explicitly authorized Linux canary.
 func TestAuthorizedLinuxCanaryOperations(t *testing.T) {
 	host, _ := os.Hostname()

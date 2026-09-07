@@ -70,12 +70,10 @@ the dedicated account's normal OS permissions.
 References: [Guacamole connections](https://guacamole.apache.org/doc/gug/configuring-guacamole.html)
 and [encrypted JSON authentication](https://guacamole.apache.org/doc/gug/json-auth.html).
 
-
 ## Embedded workspace
 
 See [Remote workspace](REMOTE-WORKSPACE.md) for saved credentials, the embedded
 terminal, designated upload folders, installation and recovery.
-
 
 ## Network capture candidate
 

@@ -7,6 +7,18 @@ let shell=null,after=0,inputSequence=0,stopped=false,busy=false,inputBusy=false,
 let inputQueue=[];
 const terminal=new Terminal({cols:100,rows:30,scrollback:2000,convertEol:false,allowProposedApi:false,theme:{background:"#101828"}});
 terminal.open($("terminal-output"));
+$("connect-terminal").textContent=settings.platform==="windows"?"Connect SYSTEM PowerShell":"Connect root terminal";
+function terminalControls(){
+ $("connect-terminal").disabled=busy||!workerReady||!!shell;
+ $("terminal-input").disabled=!shell;
+ $("terminal-form").querySelector("button").disabled=!shell;
+ $("interrupt").disabled=!shell;$("disconnect").disabled=!shell;
+}
+terminalControls();
+$("connect-terminal").addEventListener("click",async()=>{
+ if(shell){terminal.focus();return;}
+ $("operation").value="shell.start";form();await run();terminalControls();
+});
 // Remote output cannot write the operator's clipboard.
 terminal.parser.registerOscHandler(52,()=>true);
 function queueInput(input){if(!shell)return;if(inputQueue.length>=64){message("Terminal input queue full; wait for the worker");return;}inputQueue.push({input,sequence:++inputSequence});}
@@ -22,20 +34,20 @@ function b64(bytes){let value="";for(let i=0;i<bytes.length;i+=8192)value+=Strin
 function bytes(value){return Uint8Array.from(atob(value),c=>c.charCodeAt(0));}
 async function run(){if(busy||!workerReady){message("Wait for the privileged worker to become ready");return;}busy=true;$("run").disabled=true;try{const action=$("operation").value,params={};for(const input of $("parameters").elements){if(!input.name||input.name==="upload")continue;params[input.name]=input.type==="checkbox"?input.checked:numbers.has(input.name)?Number(input.value):input.name==="inputs"?JSON.parse(input.value):input.value;}if(action==="files.write"){const file=$("parameters").elements.upload.files[0];if(!file||file.size>15*1024*1024)throw new Error("Choose a file up to 15 MiB");const data=new Uint8Array(await file.arrayBuffer());params.data=b64(data);params.sha256=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",data)),n=>n.toString(16).padStart(2,"0")).join("");}
  const result=await call("/action",{action,params,exercise:$("exercise").value});message("Job queued: "+result.job);if(action==="shell.start"){shell=result.job;after=0;inputSequence=0;inputQueue=[];terminal.reset();resizeTerminal();terminal.focus();$("terminal-state").textContent="Connecting privileged terminal…";await terminalPoll();}await refresh();
-}catch(error){message(error.message);}finally{busy=false;$("run").disabled=!workerReady;}}
+}catch(error){message(error.message);}finally{busy=false;$("run").disabled=!workerReady;terminalControls();}}
 $("run").addEventListener("click",run);
 async function cancel(job){await call("/action",{action:"cancel",job});if(job===shell){shell=null;$("terminal-state").textContent="Disconnect requested";}await refresh();}
 function download(name,data){const url=URL.createObjectURL(new Blob([data],{type:"application/octet-stream"}));const a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function downloadFile(job,file){const response=await fetch(settings.base+"/download",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job,csrf:settings.csrf}),cache:"no-store",redirect:"error"});if(!response.ok)throw new Error("Download authorization or integrity failed");const raw=new Uint8Array(await response.arrayBuffer());const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",raw)),v=>v.toString(16).padStart(2,"0")).join("");if(hash!==file.sha256||hash!==response.headers.get("X-Content-SHA256")||raw.length!==file.size)throw new Error("Download integrity failed");download(file.name,raw);}
 function button(text,action){const b=document.createElement("button");b.type="button";b.textContent=text;b.addEventListener("click",()=>action().catch(e=>message(e.message)));return b;}
-async function refresh(){const data=await call("/state");workerReady=!!data.worker.ready;$("run").disabled=busy||!workerReady;$("capabilities").textContent=JSON.stringify(data.worker.capabilities||{},null,2);const expanded=new Set(Array.from($("jobs").querySelectorAll("details[open]"),n=>n.dataset.job));$("readiness").textContent=data.worker.ready?"Worker ready · "+data.worker.capabilities.execution_identity+" · "+data.worker.capabilities.version:data.worker.reason||"Privileged worker is offline";const nodes=[];
+async function refresh(){const data=await call("/state");workerReady=!!data.worker.ready;$("run").disabled=busy||!workerReady;terminalControls();$("capabilities").textContent=JSON.stringify(data.worker.capabilities||{},null,2);const expanded=new Set(Array.from($("jobs").querySelectorAll("details[open]"),n=>n.dataset.job));$("readiness").textContent=data.worker.ready?"Worker ready · "+data.worker.capabilities.execution_identity+" · "+data.worker.capabilities.version:data.worker.reason||"Privileged worker is offline";const nodes=[];
  for(const job of data.jobs){const row=document.createElement("details"),summary=document.createElement("summary");summary.textContent=(names[job.action]||job.action)+" · "+job.state+" · "+new Date(job.created*1000).toLocaleString();row.dataset.job=job.id;row.open=expanded.has(job.id);row.append(summary);const meta=document.createElement("p");meta.textContent="Job "+job.id+(job.exercise?" · Exercise "+job.exercise:"");row.append(meta);if(job.restart_verification){const status=document.createElement("p");status.textContent=job.restart_verification;row.append(status);}if(!["completed","failed","cancelled","expired","result_unknown"].includes(job.state))row.append(button("Cancel",()=>cancel(job.id)));
   if(job.secret_result){if(job.state==="completed"&&settings.recovery)row.append(button("Reveal recovery result",async()=>{const result=await call("/reveal",{job:job.id});const text=document.createElement("pre");text.textContent=result.output;row.append(text);setTimeout(()=>text.remove(),30000);}));}
   else if(job.receipt){const pre=document.createElement("pre");pre.textContent=job.receipt.error||job.receipt.output;row.append(pre);if(job.action==="files.read"&&job.state==="completed"){try{const file=JSON.parse(job.receipt.output);pre.textContent=file.name+" · "+file.size+" bytes · SHA-256 "+file.sha256;row.append(button("Download",()=>downloadFile(job.id,file)));}catch{pre.textContent="Invalid file result";}}}
   nodes.push(row);
  }$("jobs").replaceChildren(...nodes);
 }
-async function terminalRequest(){if(!shell)return;const job=shell,pending=inputQueue[0];const result=await call("/io",{job,after,...pending});if(shell!==job)return;if(pending)inputQueue.shift();for(const frame of result.frames){if(frame.sequence<=after)continue;terminal.write(bytes(frame.value.data));after=frame.sequence;}$("terminal-state").textContent=result.state;if(["completed","failed","cancelled","expired","result_unknown"].includes(result.state)&&result.frames.length<32){shell=null;inputQueue=[];}}
+async function terminalRequest(){if(!shell)return;const job=shell,pending=inputQueue[0];const result=await call("/io",{job,after,...pending});if(shell!==job)return;if(pending)inputQueue.shift();for(const frame of result.frames){if(frame.sequence<=after)continue;terminal.write(bytes(frame.value.data));after=frame.sequence;}$("terminal-state").textContent=result.state;if(["completed","failed","cancelled","expired","result_unknown"].includes(result.state)&&result.frames.length<32){shell=null;inputQueue=[];}terminalControls();}
 async function terminalPoll(){if(!shell||inputBusy)return;inputBusy=true;try{await terminalRequest();}catch(error){message(error.message);}finally{inputBusy=false;}}
 $("terminal-form").addEventListener("submit",event=>{event.preventDefault();queueInput({data:b64(new TextEncoder().encode($("terminal-input").value+"\r"))});$("terminal-input").value="";});
 $("interrupt").addEventListener("click",()=>queueInput({data:btoa("\x03")}));

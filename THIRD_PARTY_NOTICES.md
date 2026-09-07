@@ -33,7 +33,7 @@ distributes.
 The private lab remote desktop deployment additionally uses the unmodified
 Apache Guacamole web application and guacd 1.6.0 (Apache-2.0), delivered through
 their official container images. Their bundled component notices remain inside
-those images. Source: https://guacamole.apache.org/releases/1.6.0/ . Windows uses
+those images. Source: [Guacamole 1.6.0](https://guacamole.apache.org/releases/1.6.0/). Windows uses
 its installed OS RDP service; Debian uses distribution-provided Xfce and xrdp
 packages with their installed copyright/license records. These runtime images
 and OS packages are not vendored into this source repository.

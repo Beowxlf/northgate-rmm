@@ -32,7 +32,9 @@ function Invoke-Operation {
    return @(Get-WinEvent -FilterHashtable @{LogName=$channels[$p.channel];StartTime=(Get-Date).AddMinutes(-[int]$p.since)} -MaxEvents $p.limit|Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message)
   }
   'reboot.status' {
-   return @{last_boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime;pending_reboot=((Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'));sessions=(& "$env:WINDIR\System32\quser.exe" 2>&1|Out-String)}
+   $old=$ErrorActionPreference;$ErrorActionPreference='Continue'
+   try{$sessions=& "$env:WINDIR\System32\quser.exe" 2>&1|Out-String;$sessionExit=$LASTEXITCODE}finally{$ErrorActionPreference=$old}
+   return @{last_boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime;pending_reboot=((Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'));sessions=$sessions;session_query_exit_code=$sessionExit}
   }
   'reboot' {
    $boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime

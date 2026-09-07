@@ -536,7 +536,9 @@ class RemoteGateway:
         return browser
 
     def application(self) -> web.Application:
-        app = web.Application(client_max_size=max(UPLOAD_REQUEST_LIMIT, 32*1024*1024))
+        app = web.Application(
+            client_max_size=max(UPLOAD_REQUEST_LIMIT, 32 * 1024 * 1024)
+        )
         app.router.add_post("/remote/end", self.end)
         app.router.add_get("/remote/keepalive", self.keepalive)
         app.router.add_get("/remote/session.js", self.session_script)

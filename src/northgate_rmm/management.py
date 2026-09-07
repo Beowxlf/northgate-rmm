@@ -655,7 +655,9 @@ class Management:
                 'id="operation"></select></label><form '
                 'id="parameters"></form><button id="run" '
                 'type="button">Run operation</button></section><section '
-                'class="card"><h3>Terminal</h3><p id="terminal-state">No '
+                'class="card"><h3>Terminal</h3><button id="connect-terminal" '
+                'type="button" disabled>Connect terminal</button>'
+                '<p id="terminal-state">No '
                 "privileged session open.</p><div "
                 'id="terminal-output"></div><form '
                 'id="terminal-form"><label>Command <input '

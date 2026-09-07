@@ -101,7 +101,9 @@ func configureProcess(cmd *exec.Cmd) {
 	}
 }
 func scriptCommand(ctx context.Context, path string) *exec.Cmd {
-	return exec.CommandContext(ctx, `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", path)
+	// The signed job and pinned script digest authorize this private script file.
+	// Limit execution-policy handling to this child; never change machine policy.
+	return exec.CommandContext(ctx, `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
 }
 func platformAction(ctx context.Context, j Job, c Config) Result {
 	binary, _ := os.Executable()

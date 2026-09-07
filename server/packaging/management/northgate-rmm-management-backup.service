@@ -1,0 +1,18 @@
+[Unit]
+Description=NorthGate RMM encrypted management recovery archive
+[Service]
+Type=oneshot
+User=northgate-rmm-operator
+Group=northgate-rmm-operator
+LoadCredential=remote-key:/etc/northgate-rmm/secrets/remote-json-key
+LoadCredential=remote-credentials:/etc/northgate-rmm/secrets/remote-credentials.aes
+ExecStart=/opt/northgate-rmm/venv/bin/python /usr/local/libexec/northgate-rmm-management-backup.py
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/northgate-rmm-remote/backups
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=768M
+TimeoutStartSec=120

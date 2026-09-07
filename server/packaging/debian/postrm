@@ -73,7 +73,7 @@ if [ "$action" = "purge" ]; then
   rmdir -- /etc/northgate-rmm/tls 2>/dev/null || true
   rmdir -- /etc/northgate-rmm 2>/dev/null || true
   test ! -e /var/lib/northgate-rmm-server
-  for service in operator enrollment agent; do
+  for service in audit oidc issuer operator enrollment agent; do
     identity="northgate-rmm-$service"
     if getent passwd "$identity" >/dev/null; then
       deluser --quiet "$identity"

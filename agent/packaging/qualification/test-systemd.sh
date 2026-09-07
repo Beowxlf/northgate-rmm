@@ -43,6 +43,8 @@ cat >"$config_temp" <<EOF
 {
   "endpoint_id": "$endpoint_id",
   "control_plane_url": "https://127.0.0.1:8443/",
+  "server_status_url": "https://127.0.0.1:8444/",
+  "server_status_public_key": "-----BEGIN PUBLIC KEY-----\\nMCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=\\n-----END PUBLIC KEY-----\\n",
   "state_directory": "/var/lib/northgate-rmm",
   "collection_interval": "5m",
   "request_timeout": "2s",

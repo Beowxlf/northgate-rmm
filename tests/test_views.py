@@ -12,6 +12,33 @@ from northgate_rmm.views import (
 NOW = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
 
 
+def test_history_is_retained_but_excluded_from_active_health_totals() -> None:
+    plane = ControlPlane()
+    for name in ("Current workstation", "Previous enrollment"):
+        agent = SyntheticAgent.enroll(
+            plane,
+            display_name=name,
+            platform=Platform.WINDOWS,
+            architecture="amd64",
+            now=NOW,
+        )
+    plane.revoke_identity(
+        agent.identity_id,
+        reason="Re-enrolled",
+        actor_id="admin",
+        now=NOW,
+    )
+    rendered = render_endpoint_list(plane, now=NOW)
+    active, history = rendered.split('<details class="panel history">', 1)
+    assert "Current workstation" in active
+    assert "Previous enrollment" not in active
+    assert "Previous enrollment" in history
+    assert 'history" open' not in rendered
+    assert "<strong>1</strong><small>No recent heartbeat" in active
+    assert "1 active · 1 historical" in active
+    assert "Never received" in active
+
+
 def test_list_view_escapes_endpoint_controlled_values() -> None:
     plane = ControlPlane()
     agent = SyntheticAgent.enroll(

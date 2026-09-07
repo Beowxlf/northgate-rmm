@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import os
+import re
 import ssl
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -24,6 +27,7 @@ from northgate_rmm.operator_listener import (
     _read_request,
     _RequestError,
 )
+from northgate_rmm.presentation import document
 
 AUTHORIZATION = "Bearer synthetic.session-token"  # gitleaks:allow
 
@@ -321,6 +325,7 @@ def test_operator_listener_owns_transport_security_headers(tmp_path: Path) -> No
                 ("connection", "keep-alive"),
                 ("strict-transport-security", "max-age=0"),
                 ("server", "unexpected"),
+                ("content-security-policy", "default-src *; style-src 'unsafe-inline'"),
             ),
             body=b"ok",
         )
@@ -343,6 +348,48 @@ def test_operator_listener_owns_transport_security_headers(tmp_path: Path) -> No
             assert b"strict-transport-security: max-age=31536000\r\n" in normalized
             assert b"max-age=0" not in normalized
             assert b"server:" not in normalized
+            assert b"unsafe-inline" not in normalized
+        finally:
+            await listener.close()
+
+    asyncio.run(scenario())
+
+
+def test_stylesheet_is_allowed_by_actual_tls_response(tmp_path: Path) -> None:
+    root_path, certificate_path, key_path = _write_server_identity(tmp_path)
+    config = configuration(
+        tmp_path,
+        port=0,
+        authority="operator.test",
+        server_certificate=certificate_path,
+        server_private_key=key_path,
+    )
+    operation = RecordingOperation(
+        response=OperatorResponse(
+            status=200,
+            headers=(("content-type", "text/html; charset=utf-8"),),
+            body=document("Endpoints", "<h1>Inventory</h1>", updated="Now").encode(),
+        )
+    )
+
+    async def scenario() -> None:
+        listener = OperatorTLSListener(config, operation)
+        await listener.start()
+        try:
+            host, port = listener.addresses[0]
+            response = await _send_operator(
+                host, port, ssl.create_default_context(cafile=str(root_path))
+            )
+            headers, body = response.split(b"\r\n\r\n", 1)
+            css = re.search(b"<style>(.*?)</style>", body, re.S)
+            assert css is not None
+            digest = base64.b64encode(hashlib.sha256(css.group(1)).digest())
+            assert b"style-src 'sha256-" + digest + b"'" in headers
+            assert headers.count(b"content-security-policy:") == 1
+            assert b"default-src 'none'" in headers
+            assert b"frame-src 'self'" in headers
+            assert b"frame-ancestors 'none'" in headers
+            assert b"unsafe-inline" not in headers
         finally:
             await listener.close()
 

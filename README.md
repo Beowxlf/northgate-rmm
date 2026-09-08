@@ -1,5 +1,13 @@
 # NorthGate RMM
 
+The **2026-09-08 modern workspace candidate** adds fleet inventory, scoped
+technician access, monitoring alerts, policies, session-bound automation,
+canary rollouts, update workflows, recovery coverage and a responsive CRM-style
+interface. See [the implementation and qualification guide](docs/modern-workspace.md).
+This is a source candidate: deployment and product testing are separate, pending
+stages. The historical Version 1.0 scope below describes the original milestone;
+it does not describe all capabilities now present in this branch.
+
 This workspace begins a security-first, cross-platform remote monitoring and
 management (RMM) software project.
 

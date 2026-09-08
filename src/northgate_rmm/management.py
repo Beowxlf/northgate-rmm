@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 from aiohttp import web
 
 from northgate_rmm.domain import EndpointLifecycle
+from northgate_rmm.fleet_access import action_permission
 from northgate_rmm.listener import extract_verified_client_certificate
 from northgate_rmm.management_protocol import (
     ACTIONS,
@@ -68,7 +69,9 @@ class Management:
             endpoint = UUID(request.match_info["endpoint"])
         except ValueError:
             raise web.HTTPNotFound() from None
-        p = await self.gateway.principal(request, endpoint, require_online=online)
+        p = await self.gateway.principal(
+            request, endpoint, require_online=online, permission="manage"
+        )
         e = await asyncio.to_thread(
             self.gateway.operation._store.get_endpoint, endpoint
         )
@@ -156,6 +159,12 @@ class Management:
                 return web.json_response({"job": j["id"]}, headers=self.headers())
             params = value.get("params", {})
             validate_action(operation, params, e.platform.value)
+            if not self.gateway.operation._policy.permits(
+                p.subject, endpoint, action_permission(operation)
+            ):
+                raise web.HTTPForbidden(
+                    text="Operation is outside your assigned permissions"
+                )
             if operation in SECRET_ACTIONS and RECOVERY_ROLE not in p.roles:
                 raise web.HTTPForbidden(text="Recovery operator role required")
             exercise = value.get("exercise", "")
@@ -289,6 +298,10 @@ class Management:
         self.csrf(request, p, endpoint, v.get("csrf"))
         if RECOVERY_ROLE not in p.roles:
             raise web.HTTPForbidden(text="Recovery operator role required")
+        if not self.gateway.operation._policy.permits(p.subject, endpoint, "recovery"):
+            raise web.HTTPForbidden(
+                text="Recovery access is outside your assigned permissions"
+            )
         try:
             j = self.store.job(str(UUID(v["job"])), private=True)
         except (ValueError, KeyError):
@@ -436,6 +449,7 @@ class Management:
                 e.identity_id,
                 now=now,
                 require_online=False,
+                permission=action_permission(j["action"]),
             )
             if j["action"] in SECRET_ACTIONS and RECOVERY_ROLE not in p.roles:
                 raise ValueError("Recovery role revoked")

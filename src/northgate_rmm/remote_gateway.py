@@ -84,6 +84,7 @@ class RemoteGateway:
         authorization: str | None = None,
         *,
         require_online: bool = True,
+        permission: str = "remote",
     ) -> OperatorPrincipal:
         if request.remote not in {"127.0.0.1", "::1"}:
             raise web.HTTPForbidden()
@@ -106,6 +107,7 @@ class RemoteGateway:
                 endpoint.identity_id,
                 now=now,
                 require_online=require_online,
+                permission=permission,
             )
             return principal
 

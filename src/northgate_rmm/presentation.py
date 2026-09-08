@@ -508,6 +508,10 @@ def document(title: str, content: str, *, updated: str) -> str:
         '<span class="brand-mark">NG</span><span>NorthGate<small>'
         "OPERATIONS</small></span></a>"
         '<div><p class="nav-label">WORKSPACE</p><nav aria-label="Main navigation">'
+        '<a class="nav-link" href="/remote/fleet/ui#overview">Overview</a>'
+        '<a class="nav-link" href="/remote/fleet/ui#alerts">Alerts</a>'
+        '<a class="nav-link" href="/remote/fleet/ui#policies">Policies</a>'
+        '<a class="nav-link" href="/remote/fleet/ui#jobs">Activity</a>'
         '<a class="nav-link" href="/endpoints" aria-current="page">'
         '<span aria-hidden="true">▦</span> Endpoints</a></nav></div>'
         '<div class="side-bottom"><strong>NorthGate RMM</strong>Endpoint '
@@ -515,7 +519,7 @@ def document(title: str, content: str, *, updated: str) -> str:
         '<div class="workspace"><header class="topbar"><div class="breadcrumb">'
         'Workspace<span>/</span>Endpoints</div><div class="account">'
         '<span class="avatar" aria-hidden="true">OP</span>'
-        "<div><strong>Operator</strong><small>Viewer access</small></div>"
+        "<div><strong>Operator</strong><small>Authenticated workspace</small></div>"
         '<a class="signout" href="/oauth2/sign_out">Sign out</a></div></header>'
         f'<main id="main">{content}<footer class="page-footer">'
         f"<span>NorthGate · Endpoint workspace</span><span>Updated "

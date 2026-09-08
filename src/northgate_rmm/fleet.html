@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Operations workspace · NorthGate</title>
+    <link rel="stylesheet" href="/remote/fleet/assets/fleet.css" />
+    <script src="/remote/fleet/assets/fleet.js" defer></script>
+  </head>
+  <body>
+    <a href="#content" class="skip">Skip to workspace</a>
+    <aside class="rail" aria-label="Workspace navigation">
+      <a href="#overview" class="brand"
+        ><span class="brandmark">NG</span
+        ><span>NorthGate<small>OPERATIONS</small></span></a
+      >
+      <div class="workspace-label">
+        <span class="workspace-dot"></span> Endpoint operations
+      </div>
+      <nav id="navigation">
+        <a href="#overview" data-page="overview"
+          ><span aria-hidden="true">◫</span> Overview</a
+        >
+        <a href="#devices" data-page="devices"
+          ><span aria-hidden="true">▣</span> Devices
+          <span id="nav-devices" class="nav-count">—</span></a
+        >
+        <a href="#alerts" data-page="alerts"
+          ><span aria-hidden="true">◇</span> Alerts
+          <span id="nav-alerts" class="nav-count">—</span></a
+        >
+        <div class="nav-caption">MANAGE</div>
+        <a href="#groups" data-page="groups"
+          ><span aria-hidden="true">▦</span> Device groups</a
+        >
+        <a href="#policies" data-page="policies"
+          ><span aria-hidden="true">≡</span> Policies</a
+        >
+        <a href="#automations" data-page="automations"
+          ><span aria-hidden="true">↻</span> Automations</a
+        >
+        <a href="#patches" data-page="patches"
+          ><span aria-hidden="true">⊕</span> Updates & software</a
+        >
+        <a href="#jobs" data-page="jobs"
+          ><span aria-hidden="true">▤</span> Activity</a
+        >
+        <div class="nav-caption">ASSURANCE</div>
+        <a href="#recovery" data-page="recovery"
+          ><span aria-hidden="true">◈</span> Recovery</a
+        >
+        <a href="#exercises" data-page="exercises"
+          ><span aria-hidden="true">◎</span> Exercises</a
+        >
+        <a href="#settings" data-page="settings"
+          ><span aria-hidden="true">⚙</span> Workspace health</a
+        >
+      </nav>
+      <div class="rail-footer">
+        <span class="workspace-dot"></span
+        ><span>Authenticated operations<small>Windows & Linux</small></span>
+      </div>
+    </aside>
+    <div class="app">
+      <header class="topbar">
+        <button
+          id="menu-toggle"
+          class="icon-button"
+          aria-label="Toggle navigation"
+          aria-expanded="false"
+        >
+          ☰
+        </button>
+        <div class="breadcrumbs">
+          Workspace <span>/</span> <strong id="crumb">Overview</strong>
+        </div>
+        <div class="top-actions">
+          <span id="refresh-state" class="subtle">Connecting…</span
+          ><button
+            id="refresh"
+            class="icon-button"
+            title="Refresh workspace"
+            aria-label="Refresh workspace"
+          >
+            ↻</button
+          ><button
+            id="theme"
+            class="icon-button"
+            aria-label="Change color theme"
+            title="Change color theme"
+          >
+            ◐</button
+          ><span class="account-avatar" aria-hidden="true">OP</span
+          ><a href="/oauth2/sign_out">Sign out</a>
+        </div>
+      </header>
+      <main id="content" tabindex="-1">
+        <div id="connection-banner" class="banner" role="status" hidden></div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow" id="eyebrow">YOUR WORKSPACE</p>
+            <h1 id="page-title">Overview</h1>
+            <p id="page-description" class="subtle">
+              A clear view of your devices, outstanding work and operational
+              health.
+            </p>
+          </div>
+          <div id="page-actions" class="actions"></div>
+        </div>
+        <section
+          id="metrics"
+          class="metrics"
+          aria-label="Fleet summary"
+        ></section>
+        <section id="page-content" aria-live="polite">
+          <div class="loading">
+            <span class="spinner"></span>Loading authenticated fleet data…
+          </div>
+        </section>
+      </main>
+      <footer class="app-footer">
+        <span>NorthGate · Operations workspace</span
+        ><span id="session-status">Verifying session</span>
+      </footer>
+    </div>
+    <dialog id="editor">
+      <form id="editor-form">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">WORKSPACE</p>
+            <h2 id="editor-title">Edit record</h2>
+          </div>
+          <button
+            type="button"
+            class="icon-button close-dialog"
+            aria-label="Close dialog"
+          >
+            ×
+          </button>
+        </div>
+        <div id="editor-fields" class="form-grid"></div>
+        <p id="editor-error" class="field-error" role="alert"></p>
+        <div class="dialog-footer">
+          <button type="button" class="button close-dialog">Cancel</button
+          ><button type="submit" class="button primary">Save changes</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="preview">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">REVIEW TARGETS</p>
+          <h2>Preview deployment</h2>
+        </div>
+        <button
+          type="button"
+          class="icon-button close-dialog"
+          aria-label="Close preview"
+        >
+          ×
+        </button>
+      </div>
+      <div id="preview-content"></div>
+      <div class="dialog-footer">
+        <button type="button" class="button close-dialog">Cancel</button
+        ><button id="approve-run" class="button primary">
+          Approve and start
+        </button>
+      </div>
+    </dialog>
+    <dialog id="device-dialog" class="device-dialog">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">DEVICE WORKSPACE</p>
+          <h2 id="device-title">Device</h2>
+          <p id="device-subtitle" class="subtle"></p>
+        </div>
+        <button
+          type="button"
+          class="icon-button close-dialog"
+          aria-label="Close device workspace"
+        >
+          ×
+        </button>
+      </div>
+      <div id="device-tabs" class="tabs" role="tablist"></div>
+      <div id="device-body"></div>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

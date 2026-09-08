@@ -1034,6 +1034,51 @@ class PostgresControlPlane:
             raise AuthorizationError("endpoint certificate is unauthorized")
         return identity
 
+    def fleet_snapshot(
+        self, *, now: datetime
+    ) -> tuple[tuple[Endpoint, EndpointStatus], ...]:
+        """Read-only fleet join; dispatch separately rechecks current identity."""
+        require_aware(now, "now")
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT e.endpoint_id,e.display_name,e.platform,e.architecture,
+                       e.identity_id,e.enrolled_at,e.last_receipt_at,e.last_heartbeat_at,
+                       i.identity_status
+                FROM endpoints e
+                JOIN endpoint_identities i ON i.identity_id=e.identity_id
+                ORDER BY e.endpoint_id LIMIT 10001
+            """)
+            rows = cursor.fetchall()
+        if len(rows) > 10000:
+            raise ValidationError(
+                "Fleet workspace currently supports 10000 inventory records"
+            )
+        freshness = FreshnessPolicy()
+        result = []
+        for row in rows:
+            endpoint = self._endpoint_from_row(row)
+            last = endpoint.last_heartbeat_at
+            age = max(now - last, timedelta(0)) if last else None
+            health = (
+                EndpointHealth.OFFLINE
+                if age is None or age > freshness.stale_for
+                else EndpointHealth.ONLINE
+                if age <= freshness.online_for
+                else EndpointHealth.STALE
+            )
+            result.append(
+                (
+                    endpoint,
+                    EndpointStatus(
+                        endpoint.endpoint_id,
+                        EndpointLifecycle(cast(str, row["identity_status"])),
+                        health,
+                        last,
+                    ),
+                )
+            )
+        return tuple(result)
+
     def endpoint_status(
         self,
         endpoint_id: UUID,

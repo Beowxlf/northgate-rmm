@@ -26,6 +26,20 @@ from northgate_rmm.workload_service import (
 class OIDCBridge:
     def __init__(self, configuration: dict[str, Any]) -> None:
         self.config = configuration
+        subjects = configuration.get("allowed_subjects", [])
+        if (
+            not isinstance(subjects, list)
+            or len(subjects) > 64
+            or any(
+                type(subject) is not str
+                or not subject
+                or len(subject) > 256
+                or not subject.isprintable()
+                for subject in subjects
+            )
+        ):
+            raise ValidationError("Invalid additional operator subjects")
+        self.subjects = frozenset([configuration["subject"], *subjects])
         self.url = urlsplit(configuration["introspection_url"])
         if (
             self.url.scheme != "https"
@@ -104,7 +118,7 @@ class OIDCBridge:
         if (
             value.get("active") is not True
             or value.get("iss") != self.config["issuer"]
-            or value.get("sub") != self.config["subject"]
+            or value.get("sub") not in self.subjects
             or type(audience) is not list
             or self.config["client_id"] not in audience
             or value.get("client_id", value.get("azp")) != self.config["client_id"]

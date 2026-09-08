@@ -12,6 +12,7 @@ from aiohttp import web
 from northgate_rmm.agent_service import _require_unprivileged_process, load_database_dsn
 from northgate_rmm.capture_store import CaptureStore
 from northgate_rmm.capture_ui import CaptureUI
+from northgate_rmm.fleet import Fleet
 from northgate_rmm.inspection import InspectionStore, InspectionUI
 from northgate_rmm.management import Management
 from northgate_rmm.management_store import ManagementStore
@@ -42,14 +43,17 @@ def main() -> None:
         store, MTLSOperatorSessionVerifier(config.verifier), config.policy
     )
     with regular_file_reference(
-        args.targets, label="remote targets", maximum_bytes=16384, private=True
+        args.targets,
+        label="remote targets",
+        maximum_bytes=4 * 1024 * 1024,
+        private=True,
     ) as path:
         value = json.loads(path.read_text())
     with regular_file_reference(
         args.key, label="remote gateway key", maximum_bytes=64, private=True
     ) as path:
         key = bytes.fromhex(path.read_text().strip())
-    if not isinstance(value, list) or not 1 <= len(value) <= 8 or len(key) != 16:
+    if not isinstance(value, list) or not 1 <= len(value) <= 4096 or len(key) != 16:
         raise ValueError("invalid remote configuration")
     targets = {}
     for item in value:
@@ -99,6 +103,7 @@ def main() -> None:
         gateway, ManagementStore(Path("/var/lib/northgate-rmm-remote/management"), key)
     )
     management.register(app)
+    Fleet(management).register(app)
     if args.management_listener_config:
         from northgate_rmm.listener import (
             AgentListenerConfiguration,

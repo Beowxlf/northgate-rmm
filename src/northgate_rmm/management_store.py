@@ -18,6 +18,10 @@ from northgate_rmm.operator_api import OperatorPrincipal
 Rows = list[dict[str, Any]]
 
 
+class QueueFull(ValueError):
+    """Temporary dispatch pressure; callers may retry without changing targets."""
+
+
 class ManagementStore:
     def __init__(self, root: Path, key: bytes) -> None:
         self.root, self.key = root, key
@@ -58,6 +62,19 @@ class ManagementStore:
                 "endpoint TEXT NOT NULL, action TEXT NOT NULL, created "
                 "REAL NOT NULL, payload BLOB NOT NULL);\n            "
             )
+            db.executescript("""
+                CREATE TABLE IF NOT EXISTS fleet_event_sequence (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event TEXT NOT NULL UNIQUE);
+                INSERT OR IGNORE INTO fleet_event_sequence(event)
+                    SELECT id FROM evidence WHERE action LIKE 'fleet.%'
+                    ORDER BY created,id;
+                CREATE TRIGGER IF NOT EXISTS fleet_event_insert AFTER INSERT ON evidence
+                    WHEN NEW.action LIKE 'fleet.%'
+                    BEGIN INSERT INTO fleet_event_sequence(event) VALUES (NEW.id); END;
+                CREATE TRIGGER IF NOT EXISTS fleet_event_delete AFTER DELETE ON evidence
+                    BEGIN DELETE FROM fleet_event_sequence WHERE event=OLD.id; END;
+            """)
         self.path.chmod(0o600)
 
     @contextmanager
@@ -80,9 +97,10 @@ class ManagementStore:
         authorization: str,
         exercise: str = "",
         seconds: int = 300,
+        identifier: str | None = None,
     ) -> str:
         now = time.time()
-        identifier = str(uuid4())
+        identifier = str(UUID(identifier)) if identifier is not None else str(uuid4())
         expires = min(now + seconds, principal.expires_at.timestamp())
         if expires <= now:
             raise ValueError("Expired operator session")
@@ -94,6 +112,28 @@ class ManagementStore:
             "boot_id": self.worker(endpoint).get("capabilities", {}).get("boot_id"),
         }
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute(
+                "SELECT endpoint,identity,subject,session,action,exercise,payload "
+                "FROM jobs WHERE id=?",
+                (identifier,),
+            ).fetchone()
+            if existing is not None:
+                if (
+                    tuple(existing)[:6]
+                    != (
+                        str(endpoint),
+                        str(identity),
+                        principal.subject,
+                        principal.session_id,
+                        action,
+                        exercise,
+                    )
+                    or unseal(self.key, existing["payload"], identifier)["params"]
+                    != params
+                ):
+                    raise ValueError("Idempotent job identity conflict")
+                return identifier
             if (
                 db.execute(
                     "SELECT count(*) FROM jobs WHERE state NOT IN "
@@ -102,7 +142,7 @@ class ManagementStore:
                 ).fetchone()[0]
                 >= 64
             ):
-                raise ValueError("Management queue full")
+                raise QueueFull("Management queue full")
             db.execute(
                 "INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,NULL)",
                 (

@@ -49,13 +49,14 @@ def authorize_remote(
     *,
     now: datetime,
     require_online: bool = True,
+    permission: str = "remote",
 ) -> None:
     """Recheck current human, MFA, remote role and enrolled identity together."""
     require_aware(now, "remote authorization time")
     if (
         principal.issuer != policy.issuer
         or principal.tenant != policy.tenant
-        or principal.subject != policy.subject
+        or not policy.permits(principal.subject, target.endpoint_id, permission)
         or principal.client_id != policy.client_id
         or not principal.mfa
         or "remote_operator" not in principal.roles

@@ -32,6 +32,7 @@ from northgate_rmm.management_protocol import (
     validate_action,
 )
 from northgate_rmm.management_store import ManagementStore
+from northgate_rmm.operator_api import OperatorAuthorizationPolicy
 
 KEY = bytes(range(16))
 
@@ -244,7 +245,10 @@ def test_management_routes_bind_session_role_csrf_and_dispatch(tmp_path):
             principal=authenticate,
             audit=audit,
             operation=SimpleNamespace(
-                _store=SimpleNamespace(get_endpoint=lambda eid: device)
+                _policy=OperatorAuthorizationPolicy(
+                    "https://idp.test", "lab", "owner", "rmm"
+                ),
+                _store=SimpleNamespace(get_endpoint=lambda eid: device),
             ),
             targets={},
         )

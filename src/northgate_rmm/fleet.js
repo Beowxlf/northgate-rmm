@@ -655,6 +655,7 @@
       state.offset = 0;
       clearTimeout(bindPage.timer);
       bindPage.timer = setTimeout(() => {
+        if (state.page !== "devices" || !$("search")) return;
         const start = $("search")?.selectionStart;
         render();
         $("search").focus();
@@ -1316,12 +1317,15 @@
           let count = 0;
           for (const id of state.selected) {
             const d = devices().find((r) => r.id === id);
-            await api("save", {
+            const saved = await api("save", {
               kind: "asset",
               id,
               revision: d.metadata_revision || 0,
               value: { ...d.metadata, group: form.elements.group.value },
             });
+            d.metadata = saved.value;
+            d.metadata_revision = saved.revision;
+            state.selected.delete(id);
             count++;
           }
           notify(`${count} devices assigned`);
@@ -1499,6 +1503,7 @@
     } catch {}
   });
   function navigate() {
+    clearTimeout(bindPage.timer);
     const page = location.hash.slice(1) || "overview";
     state.page = pages[page] ? page : "overview";
     document.querySelector(".rail").classList.remove("open");

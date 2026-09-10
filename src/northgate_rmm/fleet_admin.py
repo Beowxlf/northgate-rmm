@@ -59,9 +59,31 @@ def export_events(store: ManagementStore, output: Path, checkpoint: Path) -> int
             or any(p.is_symlink() for p in path.parents)
         ):
             raise ValueError("Use absolute, non-symlink export paths")
+        if path.resolve().is_relative_to(store.root.resolve()):
+            raise ValueError("Export paths must be outside management state")
+        if path.exists() and path.samefile(store.path):
+            raise ValueError("Export destination aliases management state")
+    if output.resolve() == checkpoint.resolve() or (
+        output.exists() and checkpoint.exists() and output.samefile(checkpoint)
+    ):
+        raise ValueError("Output and checkpoint must be different files")
     after = 0
     if checkpoint.exists():
-        after = int(read_json(checkpoint)["sequence"])
+        cursor = read_json(checkpoint)
+        after = cursor["sequence"]
+        if (
+            type(after) is not int
+            or after < 0
+            or (
+                cursor.get("output") != str(output.resolve())
+                or not output.is_file()
+                or type(cursor.get("offset")) is not int
+                or output.stat().st_size < cursor["offset"]
+            )
+        ):
+            raise ValueError(
+                "Export output/cursor changed; use a fresh output and cursor"
+            )
     with store.connect() as db:
         rows = db.execute(
             "SELECT s.sequence AS position,e.* FROM fleet_event_sequence s "
@@ -114,10 +136,18 @@ def export_events(store: ManagementStore, output: Path, checkpoint: Path) -> int
             stream.write(json.dumps(event, separators=(",", ":")) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
+        offset = os.fstat(stream.fileno()).st_size
     temporary = checkpoint.with_name(checkpoint.name + "." + uuid4().hex + ".pending")
     descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-        json.dump({"sequence": rows[-1]["position"]}, stream)
+        json.dump(
+            {
+                "sequence": rows[-1]["position"],
+                "output": str(output.resolve()),
+                "offset": offset,
+            },
+            stream,
+        )
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, checkpoint)
@@ -137,6 +167,11 @@ def main() -> None:
     if args.command == "validate-access":
         print(json.dumps(validate_access(args.operator, args.bridge)))
     else:
+        for destination in (args.output, args.checkpoint):
+            if destination.resolve() == args.key.resolve() or (
+                destination.exists() and destination.samefile(args.key)
+            ):
+                raise ValueError("Export paths must not overwrite the encryption key")
         with regular_file_reference(
             args.key, label="management storage key", maximum_bytes=64, private=True
         ) as ref:

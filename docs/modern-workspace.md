@@ -1,6 +1,7 @@
 # Modern workspace source candidate â€” 2026-09-08
 
-Status: implemented source, awaiting product qualification and deployment.
+Status: reviewed source; local regression/browser fixture review completed on
+2026-09-09. PostgreSQL/Linux integration and live deployment remain unqualified.
 The owner requested code completion first and testing afterward. This candidate
 does not change the running lab, identity-provider settings or endpoint software.
 
@@ -144,12 +145,16 @@ northgate-rmm-fleet-admin export-events \
   --checkpoint /absolute/private/path/fleet-export-cursor.json
 ```
 
-Use one exporter process per output/checkpoint pair. Each invocation exports up
+Use distinct output/checkpoint files outside the management state directory.
+Neither may alias the database or encryption key. Use one exporter process per
+output/checkpoint pair. Each invocation exports up
 to 1,000 new fleet events; repeat until `exported` is zero. Stable event IDs allow
 collector deduplication. The file is flushed before checkpoint advancement, so
 a crash may duplicate events rather than silently skip them. Output must be a
 private regular file. Checkpoints and state are bound operationally: after a
 database restore use a fresh cursor/output pair, deduplicating by event ID.
+Deleted, truncated or mismatched output is rejected instead of silently advancing
+past missing evidence. The cursor now records its output path and committed size.
 
 The export contains allowlisted identity references, operation/alert state and
 counts. It excludes passwords, recovery keys, bearer tokens, arbitrary script
@@ -162,8 +167,9 @@ trusted reference; it is not a digital signature or proof of independent custody
 Source limits are 10,000 inventory rows, 4,096 pinned remote targets, 64 additional
 operators with 4,096 aggregate endpoint-scope entries, 500 devices per preview,
 16 simultaneous dispatches per run and the existing 64-job global queue. These
-are bounds, not demonstrated performance claims. The workspace displays the most
-recent 500 records per category; older audit evidence has its separate export path.
+are bounds, not demonstrated performance claims. Fleet record reads cover the
+10,000-record storage ceiling, so older active runs and scope dependencies are
+not silently dropped by a smaller read limit. Large-fleet performance is unqualified.
 
 This is a private single-organization workspace with technician scopes, not
 tenant-isolated SaaS. High availability, capacity/SLA guarantees, off-site backups,
@@ -174,10 +180,11 @@ The new UI and existing embedded tools must still be reviewed in a real browser.
 
 ## Next testing phase
 
-The new `tests/test_fleet.py` definitions cover scope denial, overnight windows,
+The `tests/test_fleet.py` and `tests/test_fleet_review.py` regressions cover scope denial, overnight windows,
 unsupported bulk actions, encrypted revision conflicts, dispatch idempotency,
-changed-payload conflicts and event-export retention/resumption. They were written
-for the next phase and were not executed during source delivery.
+changed-payload conflicts, cancellation/restart recovery, alert persistence,
+canary promotion and event-export retention/resumption. They were executed during
+the 2026-09-09 local review; that does not qualify actual endpoint or PostgreSQL behavior.
 
 Qualification order:
 

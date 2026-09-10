@@ -309,7 +309,7 @@ class RemoteGateway:
         )
         response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "strict-origin"
-        return response
+        raise response
 
     async def checked_lease(
         self, request: web.Request, *, authorization: str | None = None
@@ -472,7 +472,7 @@ class RemoteGateway:
             await state.websocket.close()
         response = web.HTTPFound(f"/remote/{state.lease.endpoint_id}")
         response.del_cookie(COOKIE, path="/")
-        return response
+        raise response
 
     async def websocket(
         self, request: web.Request, state: LeaseState, principal: OperatorPrincipal

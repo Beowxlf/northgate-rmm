@@ -197,6 +197,11 @@ def validate_action(action: Any, params: Any, platform: str) -> dict[str, Any]:
             params["inputs"], dict
         ):
             raise ValueError("Invalid script reference")
+        if any(
+            not isinstance(name, str) or not isinstance(value, str) or len(value) > 4096
+            for name, value in params["inputs"].items()
+        ):
+            raise ValueError("Invalid script input")
     if action == "update.install":
         if params["component"] not in {
             "agent",

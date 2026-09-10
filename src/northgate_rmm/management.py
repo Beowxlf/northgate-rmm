@@ -434,6 +434,10 @@ class Management:
                 j["payload"]["authorization"], now=now, correlation_id=uuid4()
             )
             endpoint = UUID(j["endpoint"])
+            if not self.gateway.operation._policy.permits(
+                p.subject, endpoint, "manage"
+            ):
+                raise ValueError("Management permission revoked")
             e = self.gateway.operation._store.get_endpoint(endpoint)
             if (p.subject, p.session_id, str(e.identity_id)) != (
                 j["subject"],
@@ -632,9 +636,17 @@ class Management:
         settings = {
             "base": f"/remote/{endpoint}/manage",
             "csrf": token,
-            "actions": ACTIONS,
+            "actions": {
+                name: fields
+                for name, fields in ACTIONS.items()
+                if self.gateway.operation._policy.permits(
+                    p.subject, endpoint, action_permission(name)
+                )
+                and (name not in SECRET_ACTIONS or RECOVERY_ROLE in p.roles)
+            },
             "platform": e.platform.value,
-            "recovery": RECOVERY_ROLE in p.roles,
+            "recovery": RECOVERY_ROLE in p.roles
+            and self.gateway.operation._policy.permits(p.subject, endpoint, "recovery"),
         }
         script = (
             Path(__file__).with_name("management_xterm.js").read_text(encoding="utf-8")

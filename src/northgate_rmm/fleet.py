@@ -66,20 +66,18 @@ class Fleet:
         self.last_tick: float | None = None
         self.last_error: str | None = None
         self.alert_seen: dict[str, float] = {}
-        for condition, name, severity in DEFAULT_RULES:
-            key = str(uuid5(NAMESPACE_URL, "northgate/fleet/rule/" + condition))
-            try:
-                self.store.get("rule", key)
-            except KeyError:
-                self.store.put(
-                    "rule",
-                    key,
+        self.store.seed_rules(
+            [
+                (
+                    str(uuid5(NAMESPACE_URL, "northgate/fleet/rule/" + condition)),
                     validate_record(
                         "rule",
                         {"name": name, "condition": condition, "severity": severity},
                     ),
-                    "system",
                 )
+                for condition, name, severity in DEFAULT_RULES
+            ]
+        )
 
     def register(self, app: web.Application) -> None:
         app.router.add_get(BASE + "/ui", self.page)
@@ -350,7 +348,7 @@ class Fleet:
             "rollout",
             "alert",
         ):
-            entries = self.store.list(kind, 500)
+            entries = self.store.list(kind)
             if kind in {"policy", "automation", "rule", "exercise"} and not self.admin(
                 p
             ):
@@ -398,7 +396,9 @@ class Fleet:
                         k: v for k, v in value.get("jobs", {}).items() if k in visible
                     }
                     entry["value"]["errors"] = {
-                        k: v for k, v in value.get("errors", {}).items() if k in visible
+                        k: v
+                        for k, v in value.get("errors", {}).items()
+                        if k in visible or k == "authorization"
                     }
             if kind == "alert":
                 entries = [e for e in entries if e["value"]["endpoint"] in visible]
@@ -605,8 +605,31 @@ class Fleet:
             if policy_record
             else validate_record("policy", value.get("operation"))
         )
+        automation = None
+        if value.get("automation"):
+            if not self.admin(p):
+                raise web.HTTPForbidden()
+            automation = self.store.get("automation", identifier(value["automation"]))
+            if (
+                not automation["value"]["enabled"]
+                or not policy_record
+                or (automation["value"]["policy"] != policy_record["id"])
+            ):
+                raise ValueError("Automation changed or is disabled")
+            bound_group = automation["value"].get("group") or policy.get("group", "")
+            if value.get("group") and value["group"] != bound_group:
+                raise ValueError("Automation target group cannot be overridden")
+        exercise = identifier(value["exercise"]) if value.get("exercise") else ""
+        if exercise:
+            exercise_record = self.store.get("exercise", exercise)
+            if exercise_record["subject"] != p.subject and not self.admin(p):
+                raise web.HTTPForbidden()
         rows = await asyncio.to_thread(self.inventory)
-        group = value.get("group") or policy.get("group", "")
+        group = (
+            (automation["value"].get("group") or policy.get("group", ""))
+            if automation
+            else (value.get("group") or policy.get("group", ""))
+        )
         rows = self.members(group, rows)
         requested = value.get("endpoints", [])
         if not isinstance(requested, list) or len(requested) > 500:
@@ -666,7 +689,7 @@ class Fleet:
             "created": time.time(),
             "expires": time.time() + 600,
             "session": p.session_id,
-            "exercise": text(value.get("exercise", ""), 64, empty=True),
+            "exercise": exercise,
             "automation": identifier(value["automation"])
             if value.get("automation")
             else "",
@@ -773,11 +796,8 @@ class Fleet:
         if run["state"] in RUN_TERMINAL:
             raise ValueError("Run has finished; create a fresh preview")
         if action == "cancel":
-            run["state"] = "cancelled"
+            run["state"] = "cancelling"
             run.pop("authorization", None)
-            for job in run["jobs"].values():
-                with suppress(KeyError):
-                    self.m.store.cancel(job)
         elif action == "pause":
             run["state"] = "paused"
         elif action == "resume":
@@ -793,13 +813,17 @@ class Fleet:
         else:
             raise ValueError("Invalid run control")
         await self.audit(p, "rollout." + action, entry["id"])
-        self.store.put(
+        saved = self.store.put(
             "rollout",
             entry["id"],
             run,
             entry["subject"],
             integer(value["revision"], 1, 100000000),
         )
+        if action == "cancel":
+            # Persist intent before queue mutations; restart can finish cancellation.
+            await self.advance(saved)
+            run = self.store.get("rollout", entry["id"])["value"]
         return {"id": entry["id"], "state": run["state"]}
 
     async def export(
@@ -903,8 +927,10 @@ class Fleet:
     async def advance(self, entry: dict[str, Any]) -> None:
         run = entry["value"]
         now = time.time()
-        if run["expires"] <= now:
-            run["state"] = "expired"
+        if run["state"] != "cancelling" and run["expires"] > now:
+            self.m.store.maintain()
+        if run["state"] == "cancelling" or run["expires"] <= now:
+            run["state"] = "cancelled" if run["state"] == "cancelling" else "expired"
             for key in run["jobs"].values():
                 with suppress(KeyError):
                     self.m.store.cancel(key)
@@ -1052,6 +1078,8 @@ class Fleet:
                 now=datetime.now(UTC),
                 permission=action_permission(run["action"]),
             )
+            if not self.allowed(p, target["id"], "manage"):
+                raise ValueError("Management permission revoked")
             params = dict(policy["params"])
             validate_action(run["action"], params, e.platform.value)
             if run["action"] == "script.run":
@@ -1170,12 +1198,15 @@ class Fleet:
                 if (
                     alert.get("state") == "snoozed"
                     and alert.get("snooze_until", 0) > now
+                    and alert.get("fingerprint") == fingerprint
                 ):
                     continue
-                if alert.get("state") in {"resolved", "snoozed"}:
+                if alert.get("state") in {"resolved", "snoozed"} or (
+                    entry and alert.get("fingerprint") != fingerprint
+                ):
                     alert["state"] = "open"
                     alert["count"] += 1
-                    alert["first_seen"] = now
+                    alert["first_seen"] = first = now
                 alert.update(
                     name=config["name"],
                     device=row["name"],

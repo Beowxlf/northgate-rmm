@@ -6,7 +6,7 @@ import sqlite3
 import time
 from typing import Any
 
-from northgate_rmm.fleet_models import KINDS
+from northgate_rmm.fleet_models import EDITABLE, KINDS
 from northgate_rmm.management_protocol import canonical, seal, unseal
 from northgate_rmm.management_store import ManagementStore
 
@@ -25,7 +25,35 @@ class FleetStore:
                     created REAL NOT NULL, updated REAL NOT NULL, subject TEXT NOT NULL,
                     payload BLOB NOT NULL, PRIMARY KEY(kind,id));
                 CREATE INDEX IF NOT EXISTS fleet_recent ON fleet_records(kind,updated);
+                CREATE TABLE IF NOT EXISTS fleet_settings (
+                    name TEXT PRIMARY KEY, value TEXT NOT NULL);
             """)
+
+    def seed_rules(self, rules: list[tuple[str, dict[str, Any]]]) -> None:
+        """Seed atomically once; operator deletions survive subsequent restarts."""
+        now = time.time()
+        with self.management.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute(
+                "SELECT 1 FROM fleet_settings WHERE name='default_rules_v1'"
+            ).fetchone():
+                return
+            for key, value in rules:
+                db.execute(
+                    "INSERT OR IGNORE INTO fleet_records VALUES (?,?,?,?,?,?,?)",
+                    (
+                        "rule",
+                        key,
+                        1,
+                        now,
+                        now,
+                        "system",
+                        seal(self.management.key, value, "fleet/rule/" + key),
+                    ),
+                )
+            db.execute(
+                "INSERT INTO fleet_settings VALUES ('default_rules_v1','seeded')"
+            )
 
     def get(self, kind: str, key: str) -> dict[str, Any]:
         with self.management.connect() as db:
@@ -50,7 +78,7 @@ class FleetStore:
             ),
         }
 
-    def list(self, kind: str, limit: int = 5000) -> list[dict[str, Any]]:
+    def list(self, kind: str, limit: int = 10000) -> list[dict[str, Any]]:
         if kind not in KINDS or not 1 <= limit <= 10000:
             raise ValueError("Invalid record query")
         with self.management.connect() as db:
@@ -76,6 +104,9 @@ class FleetStore:
             or len(canonical(value)) > 2 * 1024 * 1024
         ):
             raise ValueError("Invalid record")
+        if kind in EDITABLE or kind in {"baseline", "preview"}:
+            # Do not block cancellation/status persistence when capacity is reached.
+            self.management.maintain()
         now = time.time()
         payload = seal(self.management.key, value, "fleet/" + kind + "/" + key)
         with self.management.connect() as db:

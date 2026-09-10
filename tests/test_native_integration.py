@@ -239,10 +239,43 @@ def test_native_capture_reservation_and_keepalive(tmp_path):
         await f.api.call(
             f.entry, "capture_status", dict(endpoint=str(f.endpoint), job=first["id"])
         )
-        assert f.capture_actions == ["start", "keepalive", "status"]
+        assert f.capture_actions == ["start", "status", "keepalive"]
         args["seconds"] = 10
         with pytest.raises(ValueError):
             await f.api.call(f.entry, "capture_start", args)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("race", [False, True])
+def test_native_capture_completion_does_not_renew_finished_job(tmp_path, race):
+    async def scenario():
+        import base64
+
+        f = fixture(tmp_path)
+        first = await f.api.call(
+            f.entry,
+            "capture_start",
+            dict(endpoint=str(f.endpoint), interface=1, request_id=str(uuid4())),
+        )
+        calls = []
+
+        async def runner(target, params, platform, envelope, destination):
+            action = json.loads(base64.b64decode(envelope["payload"]))["action"]
+            calls.append(action)
+            if action == "keepalive":
+                raise ValueError("Capture already completed")
+            return {
+                **first,
+                "state": "capturing" if race and len(calls) == 1 else "completed",
+            }
+
+        f.api.capture.runner = runner
+        result = await f.api.call(
+            f.entry, "capture_status", dict(endpoint=str(f.endpoint), job=first["id"])
+        )
+        assert result["state"] == "completed"
+        assert calls == (["status", "keepalive", "status"] if race else ["status"])
 
     asyncio.run(scenario())
 

@@ -99,10 +99,6 @@ async def call_capture(api, entry, endpoint, device, operation, args):
             fields = {}
             action = "status" if operation == "capture_status" else "stop"
             await api.audit(entry, endpoint, "capture." + action, UUID(identifier))
-            if action == "status" and old.get("state") not in TERMINAL:
-                # Continued explicitly authenticated polling renews at most 45 seconds.
-                lease = ui.envelope(target, principal, "keepalive", UUID(identifier))
-                await ui.runner(target, parameters, device.platform.value, lease, None)
         else:
             raise ValueError("Unknown capture operation")
         envelope = ui.envelope(target, principal, action, UUID(identifier), **fields)
@@ -111,6 +107,22 @@ async def call_capture(api, entry, endpoint, device, operation, args):
         )
         api.endpoint(entry, str(endpoint), "capture.control")
         validate_job(result, identifier, endpoint, device.identity_id)
+        if action == "status" and result["state"] not in TERMINAL:
+            # Check the actual state before renewing: the capture may have finished
+            # since the previous poll. Completion can also race the renewal itself.
+            lease = ui.envelope(target, principal, "keepalive", UUID(identifier))
+            try:
+                await ui.runner(target, parameters, device.platform.value, lease, None)
+            except ValueError:
+                result = await ui.runner(
+                    target, parameters, device.platform.value, envelope, None
+                )
+                validate_job(result, identifier, endpoint, device.identity_id)
+                if result["state"] not in TERMINAL:
+                    raise ValueError(
+                        "Active capture lease could not be renewed"
+                    ) from None
+            api.endpoint(entry, str(endpoint), "capture.control")
         result["native_request_digest"] = digest
         ui.store.update(result)
         return result

@@ -440,8 +440,9 @@ class InspectionUI:
             content_type="text/html",
             headers={
                 "Cache-Control": "no-store",
+                "X-Frame-Options": "SAMEORIGIN",
                 "Content-Security-Policy": (
-                    "default-src 'none'; frame-ancestors 'none'; base-uri "
+                    "default-src 'none'; frame-ancestors 'self'; base-uri "
                     "'none'; form-action 'self'; style-src "
                 )
                 + STYLE_SOURCE,

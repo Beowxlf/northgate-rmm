@@ -140,6 +140,13 @@ def test_inspection_http_authorization_csrf_baseline_and_offline_history(tmp_pat
             assert (await client.get(path)).status == 403
             response = await client.get(path, headers=headers)
             assert response.status == 200
+            # Fleet embeds this real handler in the same-origin device workspace.
+            assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+            policy = response.headers["Content-Security-Policy"]
+            assert "frame-ancestors 'self'" in policy
+            assert "frame-ancestors 'none'" not in policy
+            assert "default-src 'none'" in policy
+            assert "form-action 'self'" in policy
             nonce = re.search('name="nonce" value="([^"]+)"', await response.text())[1]
             response = await client.post(
                 path,

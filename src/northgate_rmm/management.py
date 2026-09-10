@@ -145,6 +145,10 @@ class Management:
         value = await self.body(request)
         self.csrf(request, p, endpoint, value.get("csrf"))
         operation = value.get("action")
+        if operation == "capture.install":
+            raise web.HTTPBadRequest(
+                text="Use Network capture to install its approved package"
+            )
         if not isinstance(operation, str):
             raise web.HTTPBadRequest(text="Invalid operation")
         try:
@@ -217,6 +221,7 @@ class Management:
                     "package.install",
                     "package.remove",
                     "prerequisites.install",
+                    "capture.install",
                     "shell.start",
                 }
                 else 300,
@@ -639,7 +644,8 @@ class Management:
             "actions": {
                 name: fields
                 for name, fields in ACTIONS.items()
-                if self.gateway.operation._policy.permits(
+                if name != "capture.install"
+                and self.gateway.operation._policy.permits(
                     p.subject, endpoint, action_permission(name)
                 )
                 and (name not in SECRET_ACTIONS or RECOVERY_ROLE in p.roles)

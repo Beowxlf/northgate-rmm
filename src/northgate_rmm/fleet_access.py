@@ -72,7 +72,7 @@ def action_permission(action: str) -> str:
         return "recovery"
     if (
         action.startswith(("patches.", "package.", "update."))
-        or action == "prerequisites.install"
+        or action in {"prerequisites.install", "capture.install"}
     ):
         return "patch"
     return "manage"

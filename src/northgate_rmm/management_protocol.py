@@ -22,6 +22,7 @@ MAX_FILE = 15 * 1024 * 1024
 MAX_OUTPUT = 512 * 1024
 TERMINAL = frozenset({"completed", "failed", "cancelled", "expired", "result_unknown"})
 ACTIONS = {
+    "capture.install": ("url", "sha256", "signature", "version", "public_key"),
     "capabilities": (),
     "prerequisites.install": (),
     "posture": (),
@@ -132,6 +133,13 @@ def validate_action(action: Any, params: Any, platform: str) -> dict[str, Any]:
         raise ValueError("BitLocker requires Windows")
     if len(canonical(params)) > MAX_RESULT:
         raise ValueError("Operation parameters too large")
+    if action == "capture.install":
+        if any(not isinstance(params[k], str) or len(params[k]) > 2048 for k in params):
+            raise ValueError("Invalid capture installation parameters")
+        if len(base64.b64decode(params["public_key"], validate=True)) != 32:
+            raise ValueError("Invalid capture signing key")
+        if not re.fullmatch(r"[a-f0-9]{64}", params["sha256"]):
+            raise ValueError("Invalid capture package digest")
 
     def integer(name: str, low: int, high: int) -> None:
         if type(params.get(name)) is not int or not low <= params[name] <= high:

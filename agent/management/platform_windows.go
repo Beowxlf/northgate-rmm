@@ -65,7 +65,7 @@ func platformCapabilities() map[string]any {
 	_, bitlocker := os.Stat(`C:\Windows\System32\WindowsPowerShell\v1.0\Modules\BitLocker`)
 	_, dumpcap := os.Stat(`C:\Program Files\Wireshark\dumpcap.exe`)
 	_, npcap := os.Stat(`C:\Windows\System32\drivers\npcap.sys`)
-	return map[string]any{"shell": true, "files": true, "services": true, "processes": true, "logs": true, "posture": true, "recovery": true, "bitlocker": bitlocker == nil, "isolation": true, "packages": winget == nil, "dumpcap": dumpcap == nil, "npcap_driver_installed": npcap == nil, "package_requirement": "WinGet must be installed and callable under SYSTEM"}
+	return map[string]any{"capture_installer": true, "shell": true, "files": true, "services": true, "processes": true, "logs": true, "posture": true, "recovery": true, "bitlocker": bitlocker == nil, "isolation": true, "packages": winget == nil, "dumpcap": dumpcap == nil, "npcap_driver_installed": npcap == nil, "package_requirement": "WinGet must be installed and callable under SYSTEM"}
 }
 func validateWorkerPaths(path string, c Config) error {
 	for _, p := range []string{path, c.Roots, filepath.Dir(path)} {

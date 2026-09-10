@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -41,7 +42,7 @@ async def main():
             "interfaces": [{"CaptureName": "1", "Name": "Ethernet · Lab network"}],
         }
 
-    output = Path("../../outputs/tool-ux-review")
+    output = Path(os.environ.get("RMM_REVIEW_OUTPUT", "../../outputs/tool-ux-review"))
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -115,7 +116,7 @@ async def main():
             artifacts=[],
         )
         store.add(endpoint, identity, principal, job)
-        CaptureUI(gateway, store, runner).register(app)
+        CaptureUI(gateway, store, runner, setup=True).register(app)
         async with TestClient(TestServer(app)) as client:
             fixtures = {"endpoint": str(endpoint), "job": job, "pages": {}}
             for name in ("manage", "tools", "capture"):

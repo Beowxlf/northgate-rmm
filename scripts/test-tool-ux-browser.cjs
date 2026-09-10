@@ -4,7 +4,7 @@ const output=process.env.RMM_REVIEW_OUTPUT||path.resolve(__dirname,'../../../out
 const fixtures=JSON.parse(fs.readFileSync(path.join(output,'fixtures.json'),'utf8'));
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
- const errors=[],actions=[],checks=[];let stateCalls=0;
+ const errors=[],actions=[],checks=[];let stateCalls=0,setupPosts=0,setupPolls=0;
  try{
   const page=await browser.newPage({viewport:{width:1300,height:950},colorScheme:'light'});
   page.on('pageerror',e=>errors.push(e.message));
@@ -14,7 +14,11 @@ const fixtures=JSON.parse(fs.readFileSync(path.join(output,'fixtures.json'),'utf
    if(url.pathname==='/review')return route.fulfill({contentType:'text/html',body:`<html style="color-scheme:light"><body style="margin:0"><iframe title="tool" style="width:100%;height:940px;border:0" src="/remote/${fixtures.endpoint}/${url.searchParams.get('tool')}"></iframe></body></html>`});
    if(fixtures.pages[name]){const f=fixtures.pages[name],headers={...f.headers};delete headers['Content-Length'];return route.fulfill({status:200,headers,body:f.body});}
    let data={};
-   if(name==='state'&&url.pathname.includes('/manage/'))data={worker:{ready:true,capabilities:{execution_identity:'NT AUTHORITY\\SYSTEM',version:'review'}},jobs:[]};
+   if(name==='setup'){
+    if(route.request().method()==='POST'){setupPosts++;data={job:'setup-job'};}
+    else{setupPolls++;data={csrf:'fixture-token',mode:'install',version:'0.2.0',available:setupPosts===0,reason:'Ready to install',job:setupPosts?{state:setupPolls>2?'completed':'running',receipt:{output:setupPolls>2?'ACTION REQUIRED: Npcap interactive installation. <img src=x>':''}}:null};}
+   }
+   else if(name==='state'&&url.pathname.includes('/manage/'))data={worker:{ready:true,capabilities:{execution_identity:'NT AUTHORITY\\SYSTEM',version:'review'}},jobs:[]};
    else if(name==='action'){actions.push(route.request().postDataJSON());data={job:'synthetic-shell'};}
    else if(name==='io')data={state:'dispatched',frames:[{sequence:1,value:{data:Buffer.from('PS C:\\> whoami\r\nnt authority\\system\r\n').toString('base64')}}]};
    else if(name==='state'){stateCalls++;data=fixtures.job;}
@@ -45,11 +49,19 @@ const fixtures=JSON.parse(fs.readFileSync(path.join(output,'fixtures.json'),'utf
   checks.push('Saved password stays hidden; upload destination and input visible');
   await page.goto('https://operator.test/review?tool=capture');
   await frame.locator('.capture-finding').waitFor();
+  await frame.locator('#install-capture:not([disabled])').waitFor();
+  assert.equal(setupPosts,0);
+  await frame.locator('#install-capture').click();
+  await frame.locator('#install-capture[disabled]').waitFor();
   assert.equal(await frame.locator('.capture-finding img').count(),0);
   assert.equal(await frame.locator('.metric').count(),4);
   await frame.locator('details[data-section="assets"] > summary').click();
   await page.waitForTimeout(10500);
   assert.ok(stateCalls>=2);
+  assert.equal(setupPosts,1);
+  assert.match(await frame.locator('#setup-output').textContent(),/ACTION REQUIRED/);
+  assert.equal(await frame.locator('#setup-output img').count(),0);
+  checks.push('Install is explicit; running job disables repeats; dependency outcome is visible and escaped');
   assert.notEqual(await frame.locator('details[data-section="assets"]').getAttribute('open'),null);
   checks.push('Capture metrics and escaped findings render; expanded infrastructure survives refresh');
   await page.screenshot({path:path.join(output,'capture-light.png'),fullPage:true});

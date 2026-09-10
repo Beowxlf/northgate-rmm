@@ -21,7 +21,8 @@ import (
 )
 
 var actions = map[string][]string{
-	"capabilities": {}, "prerequisites.install": {}, "posture": {}, "services.list": {}, "service.control": {"name", "operation"},
+	"capture.install": {"url", "sha256", "signature", "version", "public_key"},
+	"capabilities":    {}, "prerequisites.install": {}, "posture": {}, "services.list": {}, "service.control": {"name", "operation"},
 	"processes.list": {}, "process.stop": {"pid", "start_token"}, "files.list": {"path"}, "files.read": {"path"},
 	"files.write": {"path", "data", "sha256", "overwrite"}, "logs.read": {"channel", "since", "limit"},
 	"reboot.status": {}, "reboot": {"delay"}, "packages.list": {}, "package.install": {"name"}, "package.remove": {"name"},
@@ -187,6 +188,9 @@ func executeJob(ctx context.Context, j Job, c Config) Result {
 	}
 	if j.Action == "update.install" {
 		return installUpdate(ctx, j, c)
+	}
+	if j.Action == "capture.install" {
+		return installCapture(ctx, j, c)
 	}
 	if j.Action == "script.run" {
 		content := text(j, "content")

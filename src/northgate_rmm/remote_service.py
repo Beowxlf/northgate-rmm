@@ -97,12 +97,17 @@ def main() -> None:
             credentials = open_credentials(key, path.read_bytes())
     RemoteWorkspace(gateway, credentials).register(app)
     CaptureUI(
-        gateway, CaptureStore(Path("/var/lib/northgate-rmm-remote/captures"))
+        gateway,
+        CaptureStore(Path("/var/lib/northgate-rmm-remote/captures")),
+        setup=True,
     ).register(app)
     management = Management(
         gateway, ManagementStore(Path("/var/lib/northgate-rmm-remote/management"), key)
     )
     management.register(app)
+    from northgate_rmm.capture_setup import CaptureSetup
+
+    CaptureSetup(management).register(app)
     Fleet(management).register(app)
     if args.management_listener_config:
         from northgate_rmm.listener import (

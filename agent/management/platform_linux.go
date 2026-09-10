@@ -42,7 +42,7 @@ func platformRecoveryStatus() map[string]any {
 	return map[string]any{"managed_account": "ng-rmm-recovery", "status": "query recovery metadata"}
 }
 func platformCapabilities() map[string]any {
-	m := map[string]any{"shell": true, "files": true, "services": true, "processes": true, "logs": true, "posture": true, "recovery": true, "bitlocker": false}
+	m := map[string]any{"capture_installer": true, "shell": true, "files": true, "services": true, "processes": true, "logs": true, "posture": true, "recovery": true, "bitlocker": false}
 	for k, p := range map[string]string{"packages": "/usr/bin/apt-get", "isolation": "/usr/sbin/nft", "python": "/usr/bin/python3"} {
 		_, e := os.Stat(p)
 		m[k] = e == nil

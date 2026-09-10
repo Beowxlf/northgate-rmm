@@ -81,8 +81,8 @@ func verifyRelease(c Config, m ReleaseManifest, sig string) error {
 		return errors.New("invalid release component")
 	}
 	key, e := base64.StdEncoding.DecodeString(c.UpdateKey)
-	if e != nil {
-		return e
+	if e != nil || len(key) != ed25519.PublicKeySize {
+		return errors.New("invalid release authority key")
 	}
 	signature, e := base64.StdEncoding.DecodeString(sig)
 	if e != nil {

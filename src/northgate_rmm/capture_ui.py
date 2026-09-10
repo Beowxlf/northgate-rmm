@@ -104,8 +104,9 @@ def validate_job(value, job_id, endpoint, identity):
 
 
 class CaptureUI:
-    def __init__(self, gateway, store: CaptureStore, runner=request_tool):
+    def __init__(self, gateway, store: CaptureStore, runner=request_tool, setup=False):
         self.gateway, self.store, self.runner = gateway, store, runner
+        self.setup = setup
         self.key = signing_key(gateway.key)
         self.forms = {}
         self.leases = {}
@@ -528,6 +529,17 @@ class CaptureUI:
                 if capture_name.isdigit() and 1 <= int(capture_name) <= 256:
                     interface_options += f'<option value="{capture_name}">{escape(str(item.get("Name", capture_name)))}</option>'  # noqa: E501 - HTML and user-facing literals
         content = f'<header class="tool-heading"><div><p class="tool-eyebrow">Wxlfgar · {escape(platform)}</p><h1>Network capture</h1><p>Capture traffic, inspect conversations, and review infrastructure findings.</p></div><a class="button" target="_top" href="/endpoints/{endpoint}">Device profile</a></header>'  # noqa: E501 - HTML and user-facing literals
+        if self.setup:
+            content += (
+                '<section class="card"><h2>Install capture tools</h2>'
+                "<p>Install Wxlfgar and its capture dependencies on this device. "
+                "Existing capture data is preserved. Capturing stays off.</p>"
+                '<p id="setup-status" role="status">Checking installation support…</p>'
+                '<div class="actions"><button id="install-capture" class="primary" '
+                'type="button" disabled>Install / check dependencies</button>'
+                f'<a class="button" href="{base}">Refresh readiness</a></div>'
+                '<pre id="setup-output" hidden></pre></section>'
+            )
         content += (
             '<details class="card"><summary>Tool setup</summary><p>Use enrollment '
             "configuration when installing or repairing the endpoint capture tool.</p>"
@@ -580,6 +592,7 @@ class CaptureUI:
             )
         content += '</section><p class="section-note">Traffic belongs to the selected interface. Encrypted payloads are not decrypted.</p>'  # noqa: E501 - HTML and user-facing literals
         response = frame_response(content)
+        script = ""
         if current:
             script = (
                 SCRIPT.replace("__BASE__", json.dumps(base))
@@ -587,6 +600,11 @@ class CaptureUI:
                 .replace("__TOKEN__", json.dumps(lease_token))
                 .replace("__INITIAL__", script_json(json.loads(current["payload"])))
             )
+        if self.setup:
+            script += "\n" + Path(__file__).with_name("capture_setup.js").read_text(
+                encoding="utf-8"
+            ).replace("__SETUP__", json.dumps(base + "/setup"))
+        if script:
             response.text = response.text.replace(
                 "</body>", f"<script>{script}</script></body>"
             )

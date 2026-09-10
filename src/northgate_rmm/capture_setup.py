@@ -93,7 +93,7 @@ class CaptureSetup:
         ready = worker.get("ready", False) and worker.get("identity") == str(
             e.identity_id
         )
-        capable = (
+        capable = self.worker_release(e.platform.value, worker) is None and (
             worker.get("capabilities", {})
             .get("features", {})
             .get("capture_installer", False)
@@ -180,7 +180,7 @@ class CaptureSetup:
             for j in self.m.store.list(endpoint)
         ):
             raise web.HTTPConflict(text="Capture installation is already running")
-        capable = (
+        capable = self.worker_release(e.platform.value, worker) is None and (
             worker.get("capabilities", {}).get("features", {}).get("capture_installer")
         )
         installed = worker.get("capabilities", {}).get("versions", {}).get("wxlfgar")

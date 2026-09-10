@@ -24,6 +24,7 @@ from northgate_rmm.management_store import ManagementStore
         "offline",
         "old_worker",
         "upgrade_worker",
+        "refresh_worker",
         "enrollment",
         "catalog",
         "origin",
@@ -88,7 +89,7 @@ def test_capture_install_dispatch(tmp_path, failure):
             p = management.extended.catalog / "release.json"
             p.write_text(json.dumps(entry))
             p.chmod(0o600)
-            if failure == "upgrade_worker":
+            if failure in {"upgrade_worker", "refresh_worker"}:
                 entry["manifest"].update(component="worker", version="1.1.0-lab.4")
                 p.write_text(json.dumps(entry))
         app = web.Application()
@@ -110,7 +111,7 @@ def test_capture_install_dispatch(tmp_path, failure):
             }
             fields = {"csrf": "wrong" if failure == "token" else state["csrf"]}
             response = await client.post(url, json=fields, headers=headers)
-            if failure == "upgrade_worker":
+            if failure in {"upgrade_worker", "refresh_worker"}:
                 assert state["mode"] == "worker" and state["available"]
                 assert response.status == 202
                 job = store.job((await response.json())["job"], private=True)

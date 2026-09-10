@@ -401,6 +401,10 @@ class InspectionUI:
                 )
             finally:
                 self.busy.discard(endpoint)
+            if request.query.get("format") == "json":
+                return web.json_response(
+                    {"saved": True}, headers={"Cache-Control": "no-store"}
+                )
             raise web.HTTPSeeOther(f"/remote/{endpoint}/inspect?category={category}")
         history = await asyncio.to_thread(
             self.store.history, endpoint, target.identity_id, category
@@ -435,6 +439,44 @@ class InspectionUI:
             category,
             now + 300,
         )
+        if request.query.get("format") == "json":
+            value = json.loads(current["payload"]) if current else None
+            difference = None
+            if baseline and value and value["status"] == "ok":
+                difference = {
+                    kind: {"count": len(rows), "records": rows[:100]}
+                    for kind, rows in compare(
+                        json.loads(baseline["payload"])["records"], value["records"]
+                    ).items()
+                }
+            return web.json_response(
+                {
+                    "category": category,
+                    "categories": CATEGORIES,
+                    "nonce": nonce,
+                    "current": {
+                        "id": current["id"],
+                        "recorded": current["recorded"],
+                        "result": value,
+                    }
+                    if current
+                    else None,
+                    "history": [
+                        {
+                            "id": row["id"],
+                            "recorded": row["recorded"],
+                            "status": json.loads(row["payload"])["status"],
+                        }
+                        for row in history
+                    ],
+                    "baseline": {"saved": baseline["saved"]} if baseline else None,
+                    "comparison": difference,
+                },
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
         return web.Response(
             text=self.render(endpoint, category, nonce, history, current, baseline),
             content_type="text/html",
@@ -462,7 +504,7 @@ class InspectionUI:
             )
 
         content = (
-            f'<a href="/endpoints/{endpoint}">Back to '
+            f'<a target="_top" href="/endpoints/{endpoint}">Back to '
             f"endpoint</a><h1>Inspection and "
             f"diagnostics</h1><p>Read-only tools run as the "
             f"dedicated remote account. Saved results remain "

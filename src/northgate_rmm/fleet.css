@@ -836,6 +836,22 @@ dialog::backdrop {
 #device-body {
   padding: 22px;
 }
+.inspection-heading, .inspection-summary, .inspection-pagination {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+}
+.inspection-heading {justify-content: space-between; margin-bottom: 18px;}
+.inspection-heading h2 {margin: 0;}
+.inspection-controls {display: flex; flex-wrap: wrap; gap: 16px; margin: 18px 0;}
+.inspection-controls label {display: grid; gap: 6px; min-width: 200px; flex: 1;}
+.inspection-summary {color: var(--muted); margin-bottom: 16px; font-size: 12px;}
+.inspection-native .actions {margin: 12px 0;}
+.inspection-native .panel-header {flex-wrap: wrap; gap: 12px;}
+.inspection-native .panel-header label {display: grid; gap: 4px;}
+.inspection-native td {white-space: normal; overflow-wrap: anywhere; max-width: 420px;}
+.inspection-pagination {padding: 14px; font-size: 12px;}
+.inspection-pagination span {margin-right: auto;}
+.inspection-comparison {margin: 20px 0;}
+.inspection-comparison summary {cursor: pointer; padding: 8px 0; text-transform: capitalize;}
 #device-body iframe {
   width: 100%;
   height: 64vh;

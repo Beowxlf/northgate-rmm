@@ -1034,6 +1034,84 @@
     $("approve-run").disabled = !p.targets.length;
     if (show) $("preview").showModal();
   }
+  function mountInspection(pane, device) {
+    let data = null, category = "services", run = "", pending = false, error = "", query = "", offset = 0;
+    let categories = {services:"Services"};
+    const endpoint = `/remote/${encodeURIComponent(device.id)}/inspect`;
+    const displayTime = value => value ? new Date(value).toLocaleString() : "Not collected";
+    async function load(action = "") {
+      if (pending) return;
+      pending = true; error = ""; render();
+      const controller = new AbortController();
+      const close = () => controller.abort();
+      const dialog = $("device-dialog");
+      dialog.addEventListener("close", close, {once:true});
+      const timeout = setTimeout(close, action ? 125000 : 30000);
+      async function request(url, options = {}) {
+        const response = await fetch(url, {credentials:"same-origin",cache:"no-store",redirect:"error",signal:controller.signal,...options});
+        if (!response.ok) throw new Error(response.status === 403
+          ? "Your session or this form expired. Refresh results, or sign in again."
+          : `The request could not be completed (${response.status}). Refresh results before trying again.`);
+        if (!(response.headers.get("content-type") || "").includes("application/json"))
+          throw new Error("Sign in again, then reopen this device.");
+        return response.json();
+      }
+      try {
+        const params = new URLSearchParams({category,format:"json"});
+        if (action) {
+          await request(`${endpoint}?${params}`, {method:"POST",body:new URLSearchParams({action,nonce:data.nonce,run:data.current?.id || ""})});
+          if (action === "collect") run = "";
+        }
+        if (run) params.set("run", run);
+        data = await request(`${endpoint}?${params}`); categories = data.categories;
+        query = ""; offset = 0;
+      } catch (e) {
+        error = e.name === "AbortError"
+          ? "The request timed out or was interrupted. Refresh results to check whether collection finished."
+          : e.message;
+      } finally {
+        clearTimeout(timeout); dialog.removeEventListener("close", close);
+        pending = false; render();
+      }
+    }
+    function renderRows() {
+      const host = pane.querySelector("[data-inspection-records]");
+      if (!host) return;
+      const all = data?.current?.result.records || [];
+      const rows = all.filter(row => Object.values(row).some(value => String(value).toLowerCase().includes(query.toLowerCase())));
+      const columns = [...new Set(all.flatMap(row => Object.keys(row)))].sort();
+      if (offset >= rows.length) offset = 0;
+      host.innerHTML = rows.length
+        ? `<div class="table-scroll"><table><thead><tr>${columns.map(k=>`<th>${h(k.replaceAll("_"," "))}</th>`).join("")}</tr></thead><tbody>${rows.slice(offset,offset+50).map(row=>`<tr>${columns.map(k=>`<td>${h(row[k] ?? "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="inspection-pagination"><span>${offset+1}–${Math.min(offset+50,rows.length)} of ${rows.length} matching records</span><button class="button" data-record-prev ${offset ? "" : "disabled"}>Previous</button><button class="button" data-record-next ${offset+50 < rows.length ? "" : "disabled"}>Next</button></div>`
+        : `<p class="empty">${data?.current ? "No records match this view." : "No saved results for this category. Collect a snapshot to see this device’s data."}</p>`;
+      host.querySelector("[data-record-prev]")?.addEventListener("click",()=>{offset-=50;renderRows();});
+      host.querySelector("[data-record-next]")?.addEventListener("click",()=>{offset+=50;renderRows();});
+    }
+    function render() {
+      if (!pane.isConnected) return;
+      const current = data?.current, result = current?.result;
+
+      pane.innerHTML = `<div class="inspection-native">
+        <div class="inspection-heading"><div><h2>Inventory & diagnostics</h2><p class="subtle">Saved device snapshots and changes over time. Collection uses the existing remote account.</p></div><div class="actions"><button class="button" data-inspection-refresh ${pending?"disabled":""}>Refresh results</button><button class="button primary" data-inspection-collect ${pending || !data || device.health!=="online" ? "disabled":""}>${pending?"Working…":"Collect snapshot"}</button></div></div>
+        ${error?`<div class="banner" role="alert">${h(error)}</div>`:""}
+        ${device.health!=="online"?'<div class="banner info">Device was offline at the last fleet refresh. Saved results are still available; refresh the workspace before collecting.</div>':""}
+        <div class="inspection-controls"><label>Category<select data-inspection-category ${pending?"disabled":""}>${Object.entries(categories).map(([key,label])=>`<option value="${h(key)}" ${key===category?"selected":""}>${h(label)}</option>`).join("")}</select></label><label>Snapshot<select data-inspection-history ${pending?"disabled":""}><option value="">Latest result</option>${(data?.history || []).map(item=>`<option value="${h(item.id)}" ${item.id===run?"selected":""}>${h(displayTime(item.recorded))} · ${h(item.status)}</option>`).join("")}</select></label></div>
+        <div role="status" aria-live="polite">${pending?'<p class="subtle">Loading device records…</p>':""}</div>
+        ${result?`<div class="inspection-summary">${badge(result.status,tone(result.status))}<span>Collected ${h(displayTime(result.collected_at))}</span><span>${h(result.records.length)} records</span><span>Account: ${h(result.execution_identity || "Not reported")}</span><span>${h(result.duration_ms)} ms</span></div>${result.error?`<div class="banner">${h(result.error)}</div>`:""}<div class="actions"><button class="button" data-inspection-baseline ${pending || result.status!=="ok"?"disabled":""}>Save snapshot as baseline</button><a class="button" href="${endpoint}?${new URLSearchParams({category,run:current.id,download:"1"})}">Download JSON</a></div>`:""}
+        ${data?.baseline?`<section class="inspection-comparison"><h3>Changes since baseline</h3><p class="subtle">Baseline saved ${h(displayTime(data.baseline.saved))}. Saving again replaces this category’s baseline. Changes can be normal system activity.</p>${data.comparison?Object.entries(data.comparison).map(([kind,change])=>`<details><summary>${h(kind)}: ${h(change.count)}</summary><pre class="code">${h(JSON.stringify(change.records,null,2))}</pre></details>`).join(""):'<p>Comparison requires a complete, successful snapshot.</p>'}</section>`:""}
+        <section class="panel"><div class="panel-header"><h3>${h(categories[category] || category)}</h3><label>Search records<input type="search" data-inspection-search placeholder="Find a name, state or value" value="${h(query)}"></label></div><div data-inspection-records></div></section>
+        <p class="section-note">Results reflect what the remote account can read. Saved snapshots remain available offline; they are not continuous monitoring or a complete persistence audit.</p>
+      </div>`;
+      pane.querySelector("[data-inspection-category]").onchange=e=>{category=e.target.value;run="";data=null;load();};
+      pane.querySelector("[data-inspection-history]").onchange=e=>{run=e.target.value;load();};
+      pane.querySelector("[data-inspection-refresh]").onclick=()=>load();
+      pane.querySelector("[data-inspection-collect]").onclick=()=>load("collect");
+      pane.querySelector("[data-inspection-baseline]")?.addEventListener("click",()=>load("baseline"));
+      pane.querySelector("[data-inspection-search]").oninput=e=>{query=e.target.value;offset=0;renderRows();};
+      renderRows();
+    }
+    load();
+  }
   function openDevice(id, tab = "overview") {
     const d = devices().find((r) => r.id === id);
     if (!d) return;
@@ -1048,7 +1126,7 @@
         ? [
             ["workspace", "SSH & files"],
             ["capture", "Network capture"],
-            ["inspect", "Inspection"],
+            ["inspect", "Inventory & diagnostics"],
           ]
         : []),
     ];
@@ -1090,7 +1168,11 @@
         pane.hidden = !selected;
         $("tab-" + name).setAttribute("aria-selected", String(selected));
         $("tab-" + name).tabIndex = selected ? 0 : -1;
-        if (selected && name !== "overview" && !pane.querySelector("iframe")) {
+        if (selected && name === "inspect" && !pane.dataset.nativeInspection) {
+          pane.dataset.nativeInspection = "true";
+          mountInspection(pane, d);
+        }
+        if (selected && !["overview", "inspect"].includes(name) && !pane.querySelector("iframe")) {
           const iframe = document.createElement("iframe");
           iframe.title = label + " — " + d.name;
           iframe.src = `/remote/${d.id}/${name}`;

@@ -189,8 +189,41 @@ def test_inspection_http_authorization_csrf_baseline_and_offline_history(tmp_pat
                 )["status"]
                 == "ok"
             )
+            native = path + "&format=json"
+            assert (await client.get(native)).status == 403
+            response = await client.get(native, headers=headers)
+            assert response.headers["Cache-Control"] == "no-store"
+            data = await response.json()
+            assert data["category"] == "services"
+            assert data["current"]["id"] == id
+            assert "<script>" in data["current"]["result"]["records"][0]["id"]
+            assert "payload" not in data["history"][0]
+            assert data["baseline"]["saved"]
+            assert data["comparison"]["changed"]["count"] == 0
+            form = {"nonce": data["nonce"], "action": "baseline", "run": id}
+            assert (
+                await client.post(
+                    native,
+                    headers={**headers, "Origin": "https://evil.test"},
+                    data=form,
+                )
+            ).status == 403
+            response = await client.post(native, headers=headers, data=form)
+            assert response.status == 200 and await response.json() == {"saved": True}
+            assert (await client.post(native, headers=headers, data=form)).status == 403
+            data = await (await client.get(native, headers=headers)).json()
+            response = await client.post(
+                native,
+                headers=headers,
+                data={
+                    "nonce": data["nonce"],
+                    "action": "collect",
+                },
+            )
+            assert response.status == 200 and await response.json() == {"saved": True}
             op.health = replace(STATUS, health=EndpointHealth.OFFLINE)
             assert (await client.get(path, headers=headers)).status == 200
+            assert (await client.get(native, headers=headers)).status == 200
             assert (
                 await client.post(path, headers=headers, data={"action": "collect"})
             ).status == 403

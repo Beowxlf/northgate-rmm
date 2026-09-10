@@ -71,11 +71,32 @@ const state = {
     page.on("pageerror", (error) => errors.push(error.message));
     let failSecondAsset = false,
       assetSaves = 0;
+    const inspectionCollected = new Set(["services"]), inspectionBaselines = new Set();
+    let inspectionFailure = false;
     await page.route("https://operator.test/**", async (route) => {
       const request = route.request(),
         url = new URL(request.url());
       if (url.pathname === "/remote/fleet/api/state")
         return route.fulfill({ json: state });
+      if (/^\/remote\/[^/]+\/inspect$/.test(url.pathname)) {
+        const category = url.searchParams.get("category") || "services";
+        if (inspectionFailure) {inspectionFailure = false;return route.fulfill({status:403,body:"Forbidden"});}
+        if (request.method() === "POST") {
+          const form = new URLSearchParams(request.postData());
+          if (form.get("action") === "collect") inspectionCollected.add(category);
+          if (form.get("action") === "baseline") inspectionBaselines.add(category);
+          return route.fulfill({json:{saved:true}});
+        }
+        const current = inspectionCollected.has(category) ? {
+          id:url.searchParams.get("run") || "current",recorded:new Date().toISOString(),
+          result:{status:"ok",collected_at:new Date().toISOString(),execution_identity:"fixture account",duration_ms:10,error:"",
+            records:Array.from({length:60},(_,i)=>({id:`service-${i}`,state:i ? "running" : '<img src=x onerror="alert(1)">'}))}
+        } : null;
+        return route.fulfill({json:{category,categories:{services:"Services",software:"Installed software"},nonce:"fixture nonce",current,
+          history:current?[{id:"older",recorded:new Date().toISOString(),status:"ok"}]:[],
+          baseline:inspectionBaselines.has(category)?{saved:new Date().toISOString()}:null,
+          comparison:inspectionBaselines.has(category)?Object.fromEntries(["added","removed","changed"].map(k=>[k,{count:0,records:[]}])):null}});
+      }
       if (url.pathname === "/remote/fleet/api/save") {
         const value = request.postDataJSON();
         if (value.kind === "asset") {
@@ -188,6 +209,32 @@ const state = {
     await page.getByRole("tab", { name: "System tools", exact: true }).click();
     if ((await page.locator("#device-body iframe").count()) !== 1)
       errors.push("Tool iframe duplicated");
+    await page.getByRole("tab", {name:"Inventory & diagnostics",exact:true}).click();
+    await page.locator("#pane-inspect tbody tr").first().waitFor();
+    if (await page.locator("#pane-inspect iframe, #pane-inspect img").count()) throw Error("Nested frame or unescaped inspection content");
+    if (await page.locator("#pane-inspect tbody tr").count() !== 50) throw Error("Native inventory page size");
+    await page.locator("[data-record-next]").click();
+    if (await page.locator("#pane-inspect tbody tr").count() !== 10) throw Error("Native inventory pagination");
+    await page.locator("[data-inspection-search]").fill("service-59");
+    if (await page.locator("#pane-inspect tbody tr").count() !== 1) throw Error("Native inventory search");
+    await page.locator("[data-inspection-category]").selectOption("software");
+    await page.getByText("No saved results for this category.",{exact:false}).waitFor();
+    await page.locator("[data-inspection-collect]").click();
+    await page.locator("#pane-inspect tbody tr").first().waitFor();
+    await page.locator("[data-inspection-baseline]").click();
+    await page.getByRole("heading",{name:"Changes since baseline"}).waitFor();
+    await page.locator("[data-inspection-history]").selectOption("older");
+    await page.waitForFunction(()=>!document.querySelector("[data-inspection-refresh]").disabled);
+    inspectionFailure = true;
+    await page.locator("[data-inspection-refresh]").click();
+    await page.locator("#pane-inspect [role=alert]").waitFor();
+    await page.locator("[data-inspection-refresh]").click();
+    await page.waitForFunction(()=>!document.querySelector("[data-inspection-refresh]").disabled && !document.querySelector("#pane-inspect [role=alert]"));
+    await page.screenshot({path:path.join(output,"RMM-native-inventory-desktop.png")});
+    await page.setViewportSize({width:390,height:844});
+    await page.screenshot({path:path.join(output,"RMM-native-inventory-mobile.png")});
+    if (await page.locator("#device-dialog").evaluate(e=>e.scrollWidth>e.clientWidth+1)) throw Error("Native device workspace horizontal overflow");
+    await page.setViewportSize({width:1440,height:1000});
     await page.locator("#device-dialog .close-dialog").click();
     await page.locator("#theme").click();
     await page.screenshot({

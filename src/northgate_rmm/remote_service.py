@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from uuid import UUID
 
@@ -34,6 +35,11 @@ def main() -> None:
     parser.add_argument("--origin", required=True)
     parser.add_argument("--credentials", type=Path)
     parser.add_argument("--management-listener-config", type=Path)
+    parser.add_argument(
+        "--integration-registry",
+        type=Path,
+        default=os.environ.get("NORTHGATE_RMM_INTEGRATION_REGISTRY"),
+    )
     args = parser.parse_args()
     _require_unprivileged_process()
     config = load_operator_service_configuration(args.operator_config)
@@ -96,11 +102,12 @@ def main() -> None:
         ) as path:
             credentials = open_credentials(key, path.read_bytes())
     RemoteWorkspace(gateway, credentials).register(app)
-    CaptureUI(
+    capture = CaptureUI(
         gateway,
         CaptureStore(Path("/var/lib/northgate-rmm-remote/captures")),
         setup=True,
-    ).register(app)
+    )
+    capture.register(app)
     management = Management(
         gateway, ManagementStore(Path("/var/lib/northgate-rmm-remote/management"), key)
     )
@@ -108,7 +115,8 @@ def main() -> None:
     from northgate_rmm.capture_setup import CaptureSetup
 
     CaptureSetup(management).register(app)
-    Fleet(management).register(app)
+    fleet = Fleet(management)
+    fleet.register(app)
     if args.management_listener_config:
         from northgate_rmm.listener import (
             AgentListenerConfiguration,
@@ -149,10 +157,17 @@ def main() -> None:
                 await runner.cleanup()
 
         app.cleanup_ctx.append(management_lifecycle)
-    InspectionUI(
+    inspection = InspectionUI(
         gateway,
         InspectionStore(Path("/var/lib/northgate-rmm-remote/inspection.sqlite3")),
-    ).register(app)
+    )
+    inspection.register(app)
+    if args.integration_registry:
+        from northgate_rmm.native_api import NativeAPI
+
+        NativeAPI(
+            management, fleet, capture, inspection, args.integration_registry
+        ).register(app)
     web.run_app(app, host="127.0.0.1", port=8451, access_log=None, print=None)
 
 

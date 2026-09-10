@@ -46,6 +46,7 @@ class Management:
         self.forms: dict[str, tuple[str, str, str, float]] = {}
         self.shell_leases: dict[str, float] = {}
         self.slots = asyncio.Semaphore(4)
+        self.integration = None
         from northgate_rmm.management_extended import ExtendedManagement
 
         self.extended = ExtendedManagement(self)
@@ -433,6 +434,14 @@ class Management:
         )
 
     async def authorize_job(self, j: dict[str, Any]) -> None:
+        from northgate_rmm.integration_auth import PREFIX
+
+        if j["payload"]["authorization"].startswith(PREFIX):
+            if self.integration is None:
+                raise ValueError("Native integration is disabled")
+            await asyncio.to_thread(self.integration.authorize_job, j)
+            return
+
         def check() -> None:
             now = datetime.now(UTC)
             p = self.gateway.operation._authenticate(

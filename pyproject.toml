@@ -17,6 +17,8 @@ dependencies = [
 ]
 
 [project.scripts]
+northgate-rmm-native = "northgate_rmm.native_client:main"
+northgate-rmm-mcp = "northgate_rmm.rmm_mcp:main"
 northgate-rmm-issuer-service = "northgate_rmm.issuer_service:main"
 northgate-rmm-oidc-service = "northgate_rmm.oidc_bridge:main"
 northgate-rmm-audit-service = "northgate_rmm.audit_sink:main"
@@ -31,6 +33,9 @@ northgate-rmm-agent-service = "northgate_rmm.agent_service:main"
 northgate-rmm-enrollment-service = "northgate_rmm.enrollment_service:main"
 northgate-rmm-operator-service = "northgate_rmm.operator_service:main"
 northgate-rmm-fleet-admin = "northgate_rmm.fleet_admin:main"
+
+[project.optional-dependencies]
+mcp = ["mcp==1.30.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

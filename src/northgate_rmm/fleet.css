@@ -859,6 +859,10 @@ dialog::backdrop {
   border-radius: 10px;
   background: var(--surface);
 }
+.device-remote-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:16px}
+.device-remote-grid .panel{min-width:0;overflow:hidden}
+#device-body .device-remote-grid iframe{display:block;border:0;border-radius:0;height:65vh;min-height:480px}
+@media(max-width:950px){.device-remote-grid{grid-template-columns:minmax(0,1fr)}#device-body .device-remote-grid iframe{height:600px}}
 .toast {
   position: fixed;
   bottom: 24px;

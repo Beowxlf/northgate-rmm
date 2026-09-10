@@ -527,19 +527,22 @@ class CaptureUI:
                 capture_name = str(item.get("CaptureName", ""))
                 if capture_name.isdigit() and 1 <= int(capture_name) <= 256:
                     interface_options += f'<option value="{capture_name}">{escape(str(item.get("Name", capture_name)))}</option>'  # noqa: E501 - HTML and user-facing literals
-        content = f'<a href="/endpoints/{endpoint}">← Device profile</a><h1>Network capture</h1><p>Wxlfgar · {escape(platform)} · Capture is off until you start a job.</p>'  # noqa: E501 - HTML and user-facing literals
+        content = f'<header class="tool-heading"><div><p class="tool-eyebrow">Wxlfgar · {escape(platform)}</p><h1>Network capture</h1><p>Capture traffic, inspect conversations, and review infrastructure findings.</p></div><a class="button" target="_top" href="/endpoints/{endpoint}">Device profile</a></header>'  # noqa: E501 - HTML and user-facing literals
         content += (
-            f'<p><a href="{base}/config">Download enrollment tool configuration</a></p>'
+            '<details class="card"><summary>Tool setup</summary><p>Use enrollment '
+            "configuration when installing or repairing the endpoint capture tool.</p>"
+            f'<a class="button" href="{base}/config">Download tool configuration</a>'
+            "</details>"
         )
         if ready and interface_options:
-            content += f'<form method="post"><input type="hidden" name="nonce" value="{token}"><input type="hidden" name="action" value="start"><label>Interface <select name="interface">{interface_options}</select></label> <label>Preset <select name="preset">'  # noqa: E501 - HTML and user-facing literals
+            content += f'<section class="card"><h2>New capture</h2><p>Choose an interface and traffic preset. Capturing starts only when you select Start capture.</p><form method="post"><input type="hidden" name="nonce" value="{token}"><input type="hidden" name="action" value="start"><div class="form-grid"><label>Interface <select name="interface">{interface_options}</select></label> <label>Preset <select name="preset">'  # noqa: E501 - HTML and user-facing literals
             content += "".join(
                 f'<option value="{k}">{v}</option>' for k, v in PRESETS.items()
             )
-            content += '</select></label> <label>Seconds <input name="seconds" type="number" value="60" min="5" max="300" required></label> <label>Maximum MiB <input name="size" type="number" value="16" min="1" max="32" required></label> <label>Packet bytes <select name="snaplen"><option value="1536">1536 (standard packets)</option><option value="256">256 (reduced analysis)</option><option value="65535">Full packet</option></select></label> <label>Host IP (optional) <input name="host" maxlength="45"></label> <label>Port (optional) <input name="port" type="number" min="1" max="65535"></label> <button>Start capture</button></form>'  # noqa: E501 - HTML and user-facing literals
+            content += '</select></label> <label>Seconds <input name="seconds" type="number" value="60" min="5" max="300" required></label> <label>Maximum MiB <input name="size" type="number" value="16" min="1" max="32" required></label></div><details><summary>Packet detail & filters</summary><div class="form-grid"><label>Packet bytes <select name="snaplen"><option value="1536">1536 (standard packets)</option><option value="256">256 (reduced analysis)</option><option value="65535">Full packet</option></select></label> <label>Host IP (optional) <input name="host" maxlength="45"></label> <label>Port (optional) <input name="port" type="number" min="1" max="65535"></label></div></details><div class="actions"><button class="primary">Start capture</button></div></form></section>'  # noqa: E501 - HTML and user-facing literals
         else:
-            content += "<p>Capture is unavailable. Install the approved Wxlfgar package and capture dependency, verify permissions and confirm the endpoint is online.</p>"  # noqa: E501 - HTML and user-facing literals
-        content += "<p>Keep this page open to renew capture authorization. Stop, session expiry or a lost connection ends capture after at most 45 seconds without renewal. Maximum duration is five minutes. Files expire on the endpoint after seven days.</p>"  # noqa: E501 - HTML and user-facing literals
+            content += '<div class="notice" role="status"><strong>Capture is not ready</strong><p>Check that the device is online, Wxlfgar is installed, and its capture dependency is available. Windows requires the approved Npcap driver. Saved capture history remains below.</p></div>'  # noqa: E501 - HTML and user-facing literals
+        content += '<p class="section-note">Keep this tab open to renew capture authorization. Stop, session expiry or a lost connection ends capture after at most 45 seconds without renewal. Maximum duration is five minutes. Files expire on the endpoint after seven days.</p>'  # noqa: E501 - HTML and user-facing literals
         history = self.store.history(endpoint, target.identity_id, principal.subject)
         current = None
         if request.query.get("job"):
@@ -550,9 +553,9 @@ class CaptureUI:
         if current:
             job = json.loads(current["payload"])
             job_id = current["id"]
-            content += f'<h2>Capture {escape(job_id)}</h2><p id="capture-status">{escape(str(job.get("state", "unknown")))}</p><p id="capture-counters"></p><p id="capture-message"></p><div id="capture-results"></div><div id="capture-files"></div>'  # noqa: E501 - HTML and user-facing literals
+            content += f'<section class="card"><div class="tool-heading"><div><h2>Selected capture</h2><small>{escape(job_id)}</small></div><span class="badge" id="capture-status">{escape(str(job.get("state", "unknown")))}</span></div><div id="capture-counters" class="metrics"></div><p id="capture-message" class="notice" role="status"></p><div id="capture-results"></div><h3>Download evidence</h3><div id="capture-files"></div>'  # noqa: E501 - HTML and user-facing literals
             action_token = self.nonce(principal, endpoint)
-            content += f'<form method="post"><input type="hidden" name="nonce" value="{action_token}"><input type="hidden" name="job" value="{job_id}"><button name="action" value="stop">Stop capture</button> <button name="action" value="delete">Delete capture and artifacts</button></form>'  # noqa: E501 - HTML and user-facing literals
+            content += f'<form method="post"><input type="hidden" name="nonce" value="{action_token}"><input type="hidden" name="job" value="{job_id}"><div class="actions"><button class="primary" id="stop-capture" name="action" value="stop">Stop capture</button><button class="danger" name="action" value="delete">Delete capture & artifacts</button></div></form></section>'  # noqa: E501 - HTML and user-facing literals
             if (
                 current["session"] == principal.session_id
                 and job.get("state") not in TERMINAL
@@ -565,11 +568,17 @@ class CaptureUI:
                     job_id,
                     time.time() + 600,
                 )
-        content += "<h2>History</h2><table><thead><tr><th>Capture</th><th>State</th><th>Preset</th><th>Bytes</th></tr></thead><tbody>"  # noqa: E501 - HTML and user-facing literals
+        content += '<section class="card"><h2>Capture history</h2><p>Select a capture to review its findings and download evidence.</p><div class="table-scroll"><table><thead><tr><th>Capture</th><th>State</th><th>Preset</th><th>Bytes</th></tr></thead><tbody>'  # noqa: E501 - HTML and user-facing literals
         for row in history:
             value = json.loads(row["payload"])
             content += f'<tr><td><a href="{base}?job={row["id"]}">{row["id"][:8]}</a></td><td>{escape(str(value.get("state", "unknown")))}</td><td>{escape(str(value.get("preset", "")))}</td><td>{escape(str(value.get("bytes", 0)))}</td></tr>'  # noqa: E501 - HTML and user-facing literals
-        content += "</tbody></table><p>Traffic shown belongs to the selected interface. Encrypted payloads are not decrypted.</p>"  # noqa: E501 - HTML and user-facing literals
+        content += "</tbody></table></div>"
+        if not history:
+            content += (
+                '<p class="section-note">No saved captures for this device '
+                "and operator.</p>"
+            )
+        content += '</section><p class="section-note">Traffic belongs to the selected interface. Encrypted payloads are not decrypted.</p>'  # noqa: E501 - HTML and user-facing literals
         response = frame_response(content)
         if current:
             script = (

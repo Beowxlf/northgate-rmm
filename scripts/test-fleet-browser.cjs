@@ -209,6 +209,21 @@ const state = {
     await page.getByRole("tab", { name: "System tools", exact: true }).click();
     if ((await page.locator("#device-body iframe").count()) !== 1)
       errors.push("Tool iframe duplicated");
+    await page.getByRole("tab", {name:"SSH & files",exact:true}).click();
+    if (await page.locator("#pane-workspace iframe").count() !== 2) throw Error("SSH and tools must have separate direct frames");
+    if (await page.locator('#pane-workspace iframe[src$="/workspace"]').count()) throw Error("Nested workspace frame returned");
+    await page.locator("#pane-workspace iframe").first().evaluate(frame=>frame.dataset.sessionMarker="keep");
+    await page.getByRole("tab", {name:"Overview",exact:true}).click();
+    await page.getByRole("tab", {name:"SSH & files",exact:true}).click();
+    if (await page.locator("#pane-workspace iframe").first().getAttribute("data-session-marker") !== "keep") throw Error("SSH frame recreated across tabs");
+    // The dialog is modal, so exercise the same header theme handler directly.
+    await page.locator("#theme").evaluate(button=>button.click());
+    await page.waitForTimeout(100);
+    if (await page.locator("#pane-workspace iframe").last().evaluate(frame=>frame.contentDocument.documentElement.dataset.theme) !== "dark") throw Error("Tool theme not synchronized");
+    await page.locator("#theme").evaluate(button=>button.click());
+    await page.setViewportSize({width:390,height:844});
+    if (await page.locator("#device-dialog").evaluate(e=>e.scrollWidth>e.clientWidth+1)) throw Error("SSH workspace mobile overflow");
+    await page.setViewportSize({width:1440,height:1000});
     await page.getByRole("tab", {name:"Inventory & diagnostics",exact:true}).click();
     await page.locator("#pane-inspect tbody tr").first().waitFor();
     if (await page.locator("#pane-inspect iframe, #pane-inspect img").count()) throw Error("Nested frame or unescaped inspection content");

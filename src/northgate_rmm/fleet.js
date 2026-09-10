@@ -1172,10 +1172,16 @@
           pane.dataset.nativeInspection = "true";
           mountInspection(pane, d);
         }
-        if (selected && !["overview", "inspect"].includes(name) && !pane.querySelector("iframe")) {
+        if (selected && name === "workspace" && !pane.dataset.remoteWorkspace) {
+          pane.dataset.remoteWorkspace = "true";
+          pane.innerHTML = `<div class="device-remote-grid"><section class="panel"><div class="panel-header"><div><h2>SSH terminal</h2><p>Connect using this device's saved SSH key.</p></div><a class="button small" target="_blank" rel="noopener" href="/remote/${h(d.id)}">Open separately</a></div><iframe title="SSH terminal — ${h(d.name)}" src="/remote/${h(d.id)}"></iframe></section><section class="panel"><div class="panel-header"><div><h2>Files & saved access</h2><p>Transfers go to NorthGateRMM-Ops.</p></div></div><iframe title="Files and saved access — ${h(d.name)}" src="/remote/${h(d.id)}/tools"></iframe></section></div>`;
+        }
+        if (selected && name === "workspace") pane.querySelectorAll("iframe").forEach(bindToolTheme);
+        if (selected && !["overview", "inspect", "workspace"].includes(name) && !pane.querySelector("iframe")) {
           const iframe = document.createElement("iframe");
           iframe.title = label + " — " + d.name;
           iframe.src = `/remote/${d.id}/${name}`;
+          bindToolTheme(iframe);
           pane.append(iframe);
         }
       }
@@ -1576,10 +1582,23 @@
   } catch {
     /* Storage is optional; no server state depends on it. */
   }
+  function bindToolTheme(iframe) {
+    if (iframe.dataset.themeBound) return;
+    iframe.dataset.themeBound = "true";
+    iframe.addEventListener("load", () => syncToolTheme(iframe));
+    syncToolTheme(iframe);
+  }
+  function syncToolTheme(iframe) {
+    try {
+      const root = iframe.contentDocument?.documentElement;
+      if (root) root.dataset.theme = document.documentElement.dataset.theme || "light";
+    } catch { /* A redirected sign-in page keeps its own appearance. */ }
+  }
   $("theme").addEventListener("click", () => {
     const theme =
       document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = theme;
+    $("device-body").querySelectorAll("iframe").forEach(syncToolTheme);
     try {
       localStorage.setItem("northgate-theme", theme);
     } catch {}

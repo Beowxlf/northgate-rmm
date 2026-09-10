@@ -36,7 +36,7 @@ northgate-rmm-fleet-admin = "northgate_rmm.fleet_admin:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-northgate_rmm = ["migrations/*.sql", "*.ps1", "*.js", "fleet.html", "fleet.css", "management*.css", "management*.LICENSE", "management*.json"]
+northgate_rmm = ["migrations/*.sql", "*.ps1", "*.js", "fleet.html", "fleet.css", "management.html", "remote_tools.css", "management*.css", "management*.LICENSE", "management*.json"]
 
 [tool.ruff]
 target-version = "py311"

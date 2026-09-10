@@ -653,68 +653,15 @@ class Management:
             + "\n;const settings="
             + json.dumps(settings).replace("<", "\\u003c")
             + ";\n"
-            + Path(__file__).with_name("management.js").read_text()
+            + Path(__file__).with_name("management.js").read_text(encoding="utf-8")
         )
-        terminal_css = Path(__file__).with_name("management_xterm.css").read_text() + (
-            "\n#terminal-output{height:520px;background:#101828;paddin"
-            "g:12px;border-radius:8px}pre{white-space:pre-wrap;overfl"
-            "ow-wrap:anywhere;max-height:420px;overflow:auto}section."
-            "card{margin:16px 0}select,input,textarea{padding:8px;bor"
-            "der:1px solid #cbd5e1;border-radius:5px}button{margin:5p"
-            "x}label{display:inline-block;margin:6px}#parameters{disp"
-            "lay:flex;gap:12px;flex-wrap:wrap}"
+        terminal_css = Path(__file__).with_name("management_xterm.css").read_text()
+        content = (
+            Path(__file__).with_name("management.html").read_text(encoding="utf-8")
         )
         response = frame_response(
-            (
-                "<h2>System management</h2><p>Run an operation using the "
-                'dedicated privileged worker.</p><div id="readiness" '
-                'class="message">Checking capabilities…</div>'
-                '<details class="card"><summary>Worker capabilities</summary>'
-                '<pre id="capabilities"></pre></details><div '
-                'class="toolbar"><label>Exercise ID <input id="exercise" '
-                'maxlength="64"></label><a class="button" href="'
-            )
-            + settings["base"]
-            + (
-                '/evidence">Export activity</a></div><section '
-                'class="card"><label>Operation <select '
-                'id="operation"></select></label><form '
-                'id="parameters"></form><button id="run" '
-                'type="button">Run operation</button></section><section '
-                'class="card"><h3>Terminal</h3><button id="connect-terminal" '
-                'type="button" disabled>Connect terminal</button>'
-                '<p id="terminal-state">No '
-                "privileged session open.</p><div "
-                'id="terminal-output"></div><form '
-                'id="terminal-form"><label>Command <input '
-                'id="terminal-input" autocomplete="off"></label><button>S'
-                'end</button><button type="button" '
-                'id="interrupt">Ctrl+C</button><button type="button" '
-                'id="disconnect">Disconnect</button></form></section><sec'
-                'tion class="card"><h3>Jobs and results</h3><div '
-                'id="jobs"></div></section><div id="message" '
-                'role="status"></div><details '
-                'class="card"><summary>Infrastructure and exercise '
-                "evidence</summary><button "
-                'id="load-infrastructure">Compare '
-                "observations</button><button "
-                'id="save-infrastructure">Save infrastructure '
-                "baseline</button><pre "
-                'id="infrastructure"></pre><label>Capture job ID <input '
-                'id="capture-id"></label><button id="link-capture">Link '
-                "to exercise</button></details><details "
-                'class="card"><summary>Signed release '
-                'catalog</summary><button id="load-releases">Load '
-                "available releases</button><div "
-                'id="releases"></div></details><details '
-                'class="card"><summary>Publish a reviewed '
-                "script</summary><label>Script<textarea "
-                'id="script-content" rows="12"></textarea></label><label>'
-                "Input names (comma separated)<input "
-                'id="script-inputs"></label><button '
-                'id="publish-script">Save immutable '
-                "version</button></details><style>"
-            )
+            content.replace("__BASE__", settings["base"])
+            + "<style>"
             + terminal_css
             + "</style><script>"
             + script

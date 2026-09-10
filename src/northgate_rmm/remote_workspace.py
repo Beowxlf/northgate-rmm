@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 MAX_UPLOAD = 20 * 1024 * 1024
 UPLOAD_REQUEST_LIMIT = MAX_UPLOAD + 65536
-CSS = """body{margin:0;padding:16px;background:#f5f7fb;color:#172b4d;font:14px system-ui,sans-serif}h2{font-size:17px;margin:0 0 8px}p{color:#64748b}.toolbar{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}.card{background:white;border:1px solid #dce3ee;border-radius:8px;padding:16px;flex:1;min-width:240px}button,a.button{display:inline-block;padding:9px 14px;border:1px solid #cbd5e1;border-radius:5px;background:white;color:#172b4d;cursor:pointer;text-decoration:none}input{max-width:100%;margin:6px 0}iframe.tools-frame{height:310px}iframe{width:100%;height:520px;border:0;background:#111827;border-radius:6px}textarea{box-sizing:border-box;width:100%;padding:10px}code{overflow-wrap:anywhere}.message{padding:12px;background:#e8f5ef}form{margin:8px 0}.terminal-bar{display:flex;align-items:center;justify-content:space-between;gap:12px}small{color:#64748b}"""  # noqa: E501 - HTML and fixed command literals
+CSS = Path(__file__).with_name("remote_tools.css").read_text(encoding="utf-8")
 STYLE_HASH = (
     "'sha256-" + base64.b64encode(hashlib.sha256(CSS.encode()).digest()).decode() + "'"
 )
@@ -309,14 +309,14 @@ class RemoteWorkspace:
         upload = self.nonce(principal, endpoint, "upload")
         return frame_response(
             (f'<p class="message">{escape(message)}</p>' if message else "")
-            + '<div class="toolbar"><section class="card"><h2>Saved credentials</h2><p>SSH uses a saved key. Reveal this device RDP login when needed.</p>'  # noqa: E501 - HTML and fixed command literals
+            + '<div class="connection-info"><strong>Saved SSH access</strong><p>SSH connects with the saved key. No password entry is needed.</p></div><details class="card"><summary>Remote Desktop credentials</summary><p>Reveal the saved device login only when connecting with native RDP.</p>'  # noqa: E501 - HTML and fixed command literals
             f'<form method="post"><input type="hidden" name="nonce" value="{reveal}">'
-            '<button type="submit">Show RDP credentials</button></form></section>'
-            f'<section class="card"><h2>Send a file</h2><p>Destination: <code>{escape(folder)}</code> · 20 MB maximum.</p>'  # noqa: E501 - HTML and fixed command literals
+            '<button type="submit">Show RDP credentials</button></form></details>'
+            f'<section class="card"><p class="tool-eyebrow">File transfer</p><h2>Send a file</h2><p>Destination</p><pre>{escape(folder)}</pre><p class="section-note">Up to 20 MiB per file. Files receive unique names and are not executed automatically.</p>'  # noqa: E501 - HTML and fixed command literals
             f'<form method="post" enctype="multipart/form-data"><input type="hidden" name="nonce" value="{upload}">'  # noqa: E501 - HTML and fixed command literals
-            '<input type="file" name="file" required aria-label="File to upload"><button type="submit">Upload file</button></form>'  # noqa: E501 - HTML and fixed command literals
-            "<small>Each upload gets a unique filename. Files are not run automatically.</small></section></div>"  # noqa: E501 - HTML and fixed command literals
-            f'<a href="/remote/{endpoint}/tools">Refresh tools</a>'
+            '<label>Choose a file<input type="file" name="file" required aria-label="File to upload"></label><div class="actions"><button class="primary" type="submit">Upload to device</button></div></form></section>'  # noqa: E501 - HTML and fixed command literals
+            f'<a class="button" href="/remote/{endpoint}/tools">'
+            "Refresh files & access</a>"
         )
 
     async def upload(self, request, principal, target, parameters):

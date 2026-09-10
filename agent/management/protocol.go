@@ -164,19 +164,23 @@ func client(c Config) (*http.Client, error) {
 	if e != nil {
 		return nil, e
 	}
+	roots, e := readBounded(c.Roots, 65536)
+	if e != nil {
+		return nil, e
+	}
+	return clientWithMaterial(c, b, roots)
+}
+
+func clientWithMaterial(c Config, b, roots []byte) (*http.Client, error) {
 	var material struct {
 		Endpoint    string `json:"endpoint_id"`
 		Certificate string `json:"client_certificate_pem"`
 		Key         string `json:"private_key_pem"`
 	}
-	if e = json.Unmarshal(b, &material); e != nil || material.Endpoint != c.Endpoint {
+	if e := json.Unmarshal(b, &material); e != nil || material.Endpoint != c.Endpoint {
 		return nil, errors.New("enrollment mismatch")
 	}
 	cert, e := tls.X509KeyPair([]byte(material.Certificate), []byte(material.Key))
-	if e != nil {
-		return nil, e
-	}
-	roots, e := readBounded(c.Roots, 65536)
 	if e != nil {
 		return nil, e
 	}
@@ -189,7 +193,7 @@ func client(c Config) (*http.Client, error) {
 	if port == "" {
 		port = "443"
 	}
-	transport := &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, RootCAs: pool, Certificates: []tls.Certificate{cert}, ServerName: u.Hostname()}, TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 20 * time.Second, MaxConnsPerHost: 2}
+	transport := &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, RootCAs: pool, Certificates: []tls.Certificate{cert}, ServerName: u.Hostname()}, TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 20 * time.Second, MaxConnsPerHost: 2, MaxIdleConns: 2, MaxIdleConnsPerHost: 2, IdleConnTimeout: 45 * time.Second}
 	dial := &net.Dialer{Timeout: 5 * time.Second}
 	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 		if address != net.JoinHostPort(u.Hostname(), port) {

@@ -36,6 +36,7 @@ type Worker struct {
 	receipts                 map[string]Receipt
 	inventory                map[string]any
 	jobsAccepted             int
+	connection               pollClient
 }
 
 func saveJSON(path string, value any) error {
@@ -77,6 +78,7 @@ func Run(ctx context.Context, path string) error {
 		}
 	}
 	w := &Worker{cfg: cfg, receipts: map[string]Receipt{}, inventory: capabilities(cfg)}
+	defer w.connection.close()
 	entries, e := os.ReadDir(filepath.Join(cfg.Root, "jobs"))
 	if e != nil {
 		return e
@@ -219,21 +221,17 @@ func (w *Worker) poll(ctx context.Context) error {
 	if w.job != nil {
 		active = w.job.ID
 	}
-	frames := append([]Frame{}, w.frames...)
-	if len(frames) > 32 {
-		frames = frames[:32]
-	}
+	frames := append([]Frame{}, w.frames[:min(len(w.frames), 32)]...)
 	request := map[string]any{"nonce": nonce, "receipts": receipts, "active": active, "input_ack": w.inputAck, "frames": frames, "capabilities": w.inventory}
 	w.mu.Unlock()
 	body, e := json.Marshal(request)
 	if e != nil {
 		return e
 	}
-	client, e := client(w.cfg)
+	client, e := w.connection.get(w.cfg)
 	if e != nil {
 		return e
 	}
-	defer client.CloseIdleConnections()
 	req, e := http.NewRequestWithContext(ctx, "POST", w.cfg.Server+"/v1/management/poll", bytes.NewReader(body))
 	if e != nil {
 		return e
@@ -241,6 +239,7 @@ func (w *Worker) poll(ctx context.Context) error {
 	req.Header.Set("Content-Type", "application/json")
 	res, e := client.Do(req)
 	if e != nil {
+		w.connection.close()
 		return e
 	}
 	defer res.Body.Close()
@@ -294,6 +293,7 @@ func (w *Worker) poll(ctx context.Context) error {
 				kept = append(kept, f)
 			}
 		}
+		clear(w.frames[len(kept):])
 		w.frames = kept
 	}
 	for _, control := range response.Controls {

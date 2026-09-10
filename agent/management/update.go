@@ -269,6 +269,12 @@ func installedVersion(component string) string {
 	if path == "" {
 		return ""
 	}
+	return installedVersions.get(path, probeInstalledVersion)
+}
+
+var versionPattern = regexp.MustCompile(`\b\d+\.\d+\.\d+(?:-lab\.\d+)?\b`)
+
+func probeInstalledVersion(path string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "--version")
@@ -277,6 +283,6 @@ func installedVersion(component string) string {
 	if e != nil {
 		return ""
 	}
-	value := regexp.MustCompile(`\b\d+\.\d+\.\d+(?:-lab\.\d+)?\b`).FindString(strings.TrimSpace(string(b)))
+	value := versionPattern.FindString(strings.TrimSpace(string(b)))
 	return value
 }

@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -105,6 +104,10 @@ def test_runtime_connections_enforce_database_deadlines(postgres_dsn: str) -> No
         lock_timeout = cursor.fetchone()
         assert lock_timeout is not None
         assert lock_timeout["lock_timeout"] == "1250ms"
+        cursor.execute("SHOW timezone")
+        timezone = cursor.fetchone()
+        assert timezone is not None
+        assert timezone["TimeZone"] == "UTC"
 
     with pytest.raises(ValidationError, match="operation timeout"):
         PostgresControlPlane(postgres_dsn, operation_timeout_seconds=0.5)
@@ -1382,5 +1385,4 @@ def test_database_dump_and_isolated_restore_preserve_revocation(
 
 
 def _replace_database(dsn: str, database: str) -> str:
-    parts = urlsplit(dsn)
-    return urlunsplit((parts.scheme, parts.netloc, f"/{database}", parts.query, ""))
+    return psycopg.conninfo.make_conninfo(dsn, dbname=database)

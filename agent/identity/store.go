@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/Beowxlf/northgate-rmm/agent/internal/platformfs"
 	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
 )
 
@@ -198,7 +199,7 @@ func Load(directory string, now time.Time) (Loaded, error) {
 		return Loaded{}, ErrCorrupt
 	}
 	info, err := root.Lstat(bundleName)
-	if err != nil || !info.Mode().IsRegular() || !privateFile(info) || info.Size() < 1 || info.Size() > MaxBundleBytes {
+	if err != nil || !info.Mode().IsRegular() || !privateFile(info, filepath.Join(root.Name(), bundleName)) || info.Size() < 1 || info.Size() > MaxBundleBytes {
 		return Loaded{}, ErrCorrupt
 	}
 	file, err := root.Open(bundleName)
@@ -295,9 +296,14 @@ func openStore(directory string, create bool) (*os.Root, *os.Root, error) {
 			parent.Close()
 			return nil, nil, fmt.Errorf("protect endpoint identity directory: %w", err)
 		}
+		if err := platformfs.Protect(root.Name()); err != nil {
+			root.Close()
+			parent.Close()
+			return nil, nil, err
+		}
 		openedInfo, err = root.Stat(".")
 	}
-	if err != nil || !privateDirectory(openedInfo) {
+	if err != nil || !privateDirectory(openedInfo, root.Name()) {
 		root.Close()
 		parent.Close()
 		return nil, nil, errors.New("endpoint identity directory permissions are not private")

@@ -131,19 +131,30 @@ def build_server(client):
         outcome: str,
         verification: str,
         request_id: str,
+        disposition: str = "",
+        containment_status: str = "",
+        resolution_code: str = "",
     ) -> dict:
         """Advance/reopen a case. Resolution/closure needs verified outcomes,
-        finished tasks and completed uploads; queued jobs do not prove resolution.
+        finished tasks and completed uploads; SOC resolution also needs a final
+        disposition, containment decision and resolution code. Queued jobs do not
+        prove resolution.
         """
-        return await call(
-            "ops.case_transition",
-            id=id,
-            revision=revision,
-            status=status,
-            outcome=outcome,
-            verification=verification,
-            request_id=request_id,
-        )
+        value = {
+            "id": id,
+            "revision": revision,
+            "status": status,
+            "outcome": outcome,
+            "verification": verification,
+            "request_id": request_id,
+        }
+        optional = {
+            "disposition": disposition,
+            "containment_status": containment_status,
+            "resolution_code": resolution_code,
+        }
+        value.update({name: item for name, item in optional.items() if item})
+        return await call("ops.case_transition", **value)
 
     @server.tool(annotations=write)
     async def retain_job_evidence(case: str, job: str, request_id: str) -> dict:

@@ -14,6 +14,14 @@ then add tasks and timeline notes. A linked device can open system tools, SSH or
 browser RDP alongside the case. Remote access still requires its own permission.
 Changing an association never removes the historical record's access scope.
 
+The case queue can be filtered by status, priority and type, then sorted by
+priority, recent activity or age. Its summary shows open, critical, overdue,
+unassigned and verified-closed work. Each case records a category, analyst
+disposition, containment state and resolution code. Automated SOC cases start as
+`security`, `undetermined`, `not_started` and `not_set`. Resolving a SOC case
+requires a final disposition, a completed containment decision (including an
+explicit `not_required` decision), a resolution code, outcome and verification.
+
 Retain a completed diagnostic job by its job identifier, or attach a reviewed
 file. Uploads retain indexed chunks and can resume with the same file in the
 same browser session. Download verifies every chunk and the complete SHA-256.
@@ -72,6 +80,15 @@ agent-to-enrollment mapping. It keeps normalized alert metadata, deduplicates
 retries and supports linking an alert to a case. Wazuh remains the source of raw
 telemetry. The connector does not guess an agent mapping or automatically close
 an investigation.
+
+Security alert detail shows the source alert identifier, Project_Mati detection
+and version, Wazuh rule and level, observed/received times, ATT&CK references,
+mapped device and allowlisted context. From either an alert or its case, Response
+tools opens the approved catalog with the case identifier locked in when one is
+available. Every executable action has an adjacent information control that
+explains its purpose, expected output and endpoint impact. These explanations do
+not grant access: the server continues to enforce the existing case and endpoint
+permissions, audit attribution, enrollment binding and idempotent request ID.
 
 Native integration and MCP expose scoped case, asset, evidence and tool actions
 using the existing persistent service credential. Every request and running job

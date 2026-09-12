@@ -175,9 +175,7 @@ def wazuh_alert(identifier: str = "1700000000.1") -> dict[str, Any]:
             "description": "Suspicious PowerShell encoded execution",
             "groups": ["project_mati", "powershell"],
         },
-        "context": {
-            "win.eventdata.commandLine": "powershell.exe -EncodedCommand test"
-        },
+        "context": {"win.eventdata.commandLine": "powershell.exe -EncodedCommand test"},
     }
 
 
@@ -188,9 +186,15 @@ def test_wazuh_alert_auto_creates_groups_and_deduplicates_soc_case(rig: Any) -> 
     assert first["case"]
     case = rig.store.get("case", first["case"])
     assert case["value"]["type"] == "soc"
+    assert case["value"]["category"] == "security"
+    assert case["value"]["disposition"] == "undetermined"
+    assert case["value"]["containment_status"] == "not_started"
+    assert case["value"]["resolution_code"] == "not_set"
     assert case["value"]["alerts"] == [first["alert"]]
     assert case["value"]["automation"]["window_seconds"] == 3600
     assert len(case["value"]["tasks"]) == 2
+    alert = rig.store.get("alert", first["alert"])
+    assert alert["value"]["attack"] == ["T1059.001"]
 
     duplicate = rig.ops.ingest_wazuh(source, wazuh_alert())
     assert duplicate == {
@@ -204,8 +208,7 @@ def test_wazuh_alert_auto_creates_groups_and_deduplicates_soc_case(rig: Any) -> 
     assert related["case"] == first["case"]
     assert len(rig.store.records("case")) == 1
     assert (
-        rig.store.get("case", first["case"])["value"]["automation"]["alert_count"]
-        == 2
+        rig.store.get("case", first["case"])["value"]["automation"]["alert_count"] == 2
     )
 
 
@@ -219,6 +222,44 @@ def test_closed_case_is_not_reopened_by_new_alert(rig: Any) -> None:
     second = rig.ops.ingest_wazuh(source, wazuh_alert("1700000000.3"))
     assert second["case"] != first["case"]
     assert len(rig.store.records("case")) == 2
+
+
+def test_soc_resolution_requires_classification_and_containment(rig: Any) -> None:
+    case = save(rig, type="soc", category="security")
+    case = call(
+        rig,
+        "case_transition",
+        {"id": case["id"], "revision": case["revision"], "status": "triage"},
+    )["record"]
+    with pytest.raises(ValueError, match="SOC resolution requires"):
+        call(
+            rig,
+            "case_transition",
+            {
+                "id": case["id"],
+                "revision": case["revision"],
+                "status": "resolved",
+                "outcome": "Controlled test confirmed",
+                "verification": "Alert and endpoint evidence reviewed",
+            },
+        )
+    resolved = call(
+        rig,
+        "case_transition",
+        {
+            "id": case["id"],
+            "revision": case["revision"],
+            "status": "resolved",
+            "outcome": "Controlled test confirmed",
+            "verification": "Alert and endpoint evidence reviewed",
+            "disposition": "test_activity",
+            "containment_status": "not_required",
+            "resolution_code": "no_action",
+        },
+    )["record"]
+    assert resolved["value"]["disposition"] == "test_activity"
+    assert resolved["value"]["containment_status"] == "not_required"
+    assert resolved["value"]["resolution_code"] == "no_action"
 
 
 def save(

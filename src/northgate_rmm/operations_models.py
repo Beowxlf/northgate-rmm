@@ -23,6 +23,36 @@ KINDS = frozenset(
 )
 EDITABLE = KINDS - {"alert"}
 STATES = frozenset({"new", "triage", "in_progress", "waiting", "resolved", "closed"})
+CASE_CATEGORIES = frozenset(
+    {
+        "security",
+        "availability",
+        "identity",
+        "endpoint",
+        "network",
+        "application",
+        "change",
+        "request",
+        "other",
+    }
+)
+CASE_DISPOSITIONS = frozenset(
+    {
+        "undetermined",
+        "true_positive",
+        "benign_positive",
+        "false_positive",
+        "duplicate",
+        "test_activity",
+        "non_security",
+    }
+)
+CONTAINMENT_STATES = frozenset(
+    {"not_required", "not_started", "in_progress", "contained", "verified"}
+)
+RESOLUTION_CODES = frozenset(
+    {"not_set", "remediated", "mitigated", "accepted", "no_action", "referred"}
+)
 TRANSITIONS = {
     "new": {"triage", "in_progress", "waiting"},
     "triage": {"in_progress", "waiting", "resolved"},
@@ -131,7 +161,17 @@ def validate(kind: str, value: Any) -> dict[str, Any]:
         "tags",
     }
     fields = {
-        "case": {"type", "priority", "assignee", "response_due", "resolve_due"},
+        "case": {
+            "type",
+            "priority",
+            "assignee",
+            "response_due",
+            "resolve_due",
+            "category",
+            "disposition",
+            "containment_status",
+            "resolution_code",
+        },
         "asset": {
             "asset_type",
             "site",
@@ -244,6 +284,24 @@ def validate(kind: str, value: Any) -> dict[str, Any]:
         result.setdefault("type", "it")
         result.setdefault("priority", "normal")
         result.setdefault("assignee", "")
+        choices = {
+            "category": CASE_CATEGORIES,
+            "disposition": CASE_DISPOSITIONS,
+            "containment_status": CONTAINMENT_STATES,
+            "resolution_code": RESOLUTION_CODES,
+        }
+        defaults = {
+            "category": "security" if result["type"] == "soc" else "other",
+            "disposition": "undetermined",
+            "containment_status": "not_started"
+            if result["type"] == "soc"
+            else "not_required",
+            "resolution_code": "not_set",
+        }
+        for name, allowed in choices.items():
+            result.setdefault(name, defaults[name])
+            if result[name] not in allowed:
+                raise ValueError("Invalid case " + name)
     if kind == "relationship":
         if (
             not {"source", "target", "relation"} <= set(result)

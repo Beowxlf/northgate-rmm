@@ -81,6 +81,10 @@ def test_tool_dispatch_is_idempotent_scoped_and_csrf_bound(tmp_path, mode):
             url = f"/remote/{endpoint}/tool-catalog"
             state = await (await client.get(url)).json()
             assert len(state["tools"]) >= 8
+            assert state["action_guidance"]["tool.run"]["label"] == "Run"
+            health = next(item for item in state["tools"] if item["id"] == "health")
+            assert health["guidance"]["purpose"]
+            assert health["profile_guidance"]["snapshot"]
             for _ in range(140):
                 again = await (await client.get(url)).json()
                 assert again["csrf"] == state["csrf"]

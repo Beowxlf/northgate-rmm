@@ -22,8 +22,11 @@ from northgate_rmm.domain import Endpoint, EndpointIdentity, EndpointLifecycle
 from northgate_rmm.errors import NotFoundError
 from northgate_rmm.management_protocol import SECRET_ACTIONS, TERMINAL
 from northgate_rmm.operations_models import (
+    CASE_DISPOSITIONS,
+    CONTAINMENT_STATES,
     KINDS,
     MAX_CHUNK,
+    RESOLUTION_CODES,
     STATES,
     TRANSITIONS,
     bounded_json,
@@ -599,6 +602,34 @@ class Operations:
                 if status not in TRANSITIONS[value["status"]]:
                     raise ValueError("That case status transition is not allowed")
                 if status in {"resolved", "closed"}:
+                    disposition = v.get(
+                        "disposition", value.get("disposition", "undetermined")
+                    )
+                    containment = v.get(
+                        "containment_status",
+                        value.get("containment_status", "not_required"),
+                    )
+                    resolution = v.get(
+                        "resolution_code", value.get("resolution_code", "not_set")
+                    )
+                    if disposition not in CASE_DISPOSITIONS:
+                        raise ValueError("Invalid case disposition")
+                    if containment not in CONTAINMENT_STATES:
+                        raise ValueError("Invalid containment status")
+                    if resolution not in RESOLUTION_CODES:
+                        raise ValueError("Invalid resolution code")
+                    if value.get("type") == "soc" and (
+                        disposition == "undetermined"
+                        or containment in {"not_started", "in_progress"}
+                        or resolution == "not_set"
+                    ):
+                        raise ValueError(
+                            "SOC resolution requires disposition, a completed "
+                            "containment decision, and a resolution code"
+                        )
+                    value["disposition"] = disposition
+                    value["containment_status"] = containment
+                    value["resolution_code"] = resolution
                     value["outcome"] = text(
                         v.get("outcome", value.get("outcome", "")), 8192
                     )
@@ -1007,7 +1038,12 @@ class Operations:
             except KeyError:
                 revision = 0
             self.store.put(
-                db, "alert", key, value, "intake:" + source, revision,
+                db,
+                "alert",
+                key,
+                value,
+                "intake:" + source,
+                revision,
                 "alert.intake_failed",
             )
 
@@ -1058,7 +1094,8 @@ class Operations:
         if not isinstance(policies, list) or len(policies) > 100:
             raise ValueError("Invalid case policy collection")
         matches = [
-            p for p in policies
+            p
+            for p in policies
             if isinstance(p, dict)
             and p.get("enabled") is True
             and rule_id in p.get("rule_ids", [])
@@ -1092,8 +1129,13 @@ class Operations:
             return endpoint
 
     def auto_case(
-        self, db: Any, source_name: str, alert_id: str, value: dict[str, Any],
-        detection: dict[str, Any], policy: dict[str, Any] | None,
+        self,
+        db: Any,
+        source_name: str,
+        alert_id: str,
+        value: dict[str, Any],
+        detection: dict[str, Any],
+        policy: dict[str, Any] | None,
     ) -> str:
         if policy is None:
             return ""
@@ -1132,7 +1174,12 @@ class Operations:
             case["automation"]["alert_count"] = len(case["alerts"])
             case["automation"]["last_observed_at"] = value["observed_at"]
             self.store.put(
-                db, "case", existing["id"], case, subject, existing["revision"],
+                db,
+                "case",
+                existing["id"],
+                case,
+                subject,
+                existing["revision"],
                 "case.auto_updated",
             )
             return existing["id"]
@@ -1161,6 +1208,10 @@ class Operations:
             "name": f"[{detection['id']}] {value['name']} — {device}",
             "description": text(description, 8192),
             "type": "soc",
+            "category": "security",
+            "disposition": "undetermined",
+            "containment_status": "not_started",
+            "resolution_code": "not_set",
             "priority": value["severity"],
             "assignee": text(policy.get("assignee", ""), 256, True),
             "owner": text(policy.get("owner", "SOC"), 256, True),
@@ -1180,10 +1231,14 @@ class Operations:
             "tasks": tasks,
             "alerts": [alert_id],
             "automation": {
-                "policy_id": policy_id, "group_key": group,
-                "group_by": policy["group_by"], "window_started": window_start,
-                "window_seconds": window, "closed_behavior": "new_case",
-                "alert_count": 1, "last_observed_at": value["observed_at"],
+                "policy_id": policy_id,
+                "group_key": group,
+                "group_by": policy["group_by"],
+                "window_started": window_start,
+                "window_seconds": window,
+                "closed_behavior": "new_case",
+                "alert_count": 1,
+                "last_observed_at": value["observed_at"],
             },
         }
         self.store.put(db, "case", case_id, case, subject, 0, "case.auto_created")
@@ -1202,7 +1257,12 @@ class Operations:
         value["resolved_alert"] = alert_id
         value["resolved_at"] = datetime.now(UTC).isoformat()
         self.store.put(
-            db, "alert", key, value, "intake:" + source, old["revision"],
+            db,
+            "alert",
+            key,
+            value,
+            "intake:" + source,
+            old["revision"],
             "alert.intake_recovered",
         )
 
@@ -1251,8 +1311,13 @@ class Operations:
         severity = detection["severity"]
         if "detections" not in source:
             severity = (
-                "critical" if level >= 12 else "high" if level >= 8
-                else "normal" if level >= 4 else "low"
+                "critical"
+                if level >= 12
+                else "high"
+                if level >= 8
+                else "normal"
+                if level >= 4
+                else "low"
             )
         supplied_context = payload.get("context", {})
         if not isinstance(supplied_context, dict) or set(supplied_context) - set(
@@ -1260,8 +1325,7 @@ class Operations:
         ):
             raise ValueError("Alert context is not allowlisted")
         context = {
-            text(k, 128): text(str(v), 1024, True)
-            for k, v in supplied_context.items()
+            text(k, 128): text(str(v), 1024, True) for k, v in supplied_context.items()
         }
         observed_at = stamp(payload["timestamp"])
         received_at = datetime.now(UTC).isoformat()
@@ -1277,6 +1341,7 @@ class Operations:
             "level": level,
             "severity": severity,
             "groups": [text(g, 128) for g in groups],
+            "attack": detection["attack"],
             "observed_at": observed_at,
             "received_at": received_at,
             "context": context,
@@ -1286,7 +1351,12 @@ class Operations:
             "networks": [],
             "source_ref": text(source.get("source_ref", ""), 512, True),
         }
-        digest_value = {k: v for k, v in value.items() if k != "received_at"}
+        # ATT&CK is presentation metadata derived from the already-versioned
+        # detection contract. Exclude it so retry identity stays compatible
+        # with alerts accepted before this field was retained on the record.
+        digest_value = {
+            k: v for k, v in value.items() if k not in {"received_at", "attack"}
+        }
         digest = hashlib.sha256(bounded_json(digest_value).encode()).hexdigest()
         key = str(
             uuid5(NAMESPACE_URL, "northgate/wazuh/" + bounded_json([name, external]))

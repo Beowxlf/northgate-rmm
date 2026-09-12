@@ -155,7 +155,8 @@
   color: var(--muted);
 }
 .ops-metrics {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 20px;
@@ -171,6 +172,10 @@
   display: block;
   font-size: 25px;
   margin-top: 5px;
+}
+.ops-metric:first-child {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+  background: color-mix(in srgb, var(--primary-soft) 45%, var(--surface));
 }
 .ops-task {
   display: flex;
@@ -256,6 +261,8 @@
 }
 .ops-progress {
   width: 100%;
+  height: 8px;
+  margin-bottom: 8px;
 }
 .ops-table small {
   display: block;
@@ -281,12 +288,136 @@
 .ops-empty p {
   color: var(--muted);
 }
+.ops-alert-commandbar,
+.ops-guided-actions,
+.tool-action-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.ops-alert-commandbar {
+  padding: 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--subtle-surface);
+}
+.ops-info-button,
+.tool-info-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: 800;
+  cursor: pointer;
+}
+.ops-info-button:hover,
+.tool-info-button:hover,
+.ops-info-button:focus-visible,
+.tool-info-button:focus-visible {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary-soft);
+}
+.ops-guided-actions > span,
+.tool-action-row {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.ops-response-target {
+  border-top: 1px solid var(--line);
+  padding: 8px 0 14px;
+}
+.ops-alert-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+.ops-alert-row:first-of-type {
+  border-top: 0;
+}
+.ops-alert-facts dl {
+  grid-template-columns: 130px minmax(0, 1fr);
+}
+.ops-info-dialog {
+  width: min(560px, 94vw);
+}
+.tool-catalog-header,
+.tool-guidance-heading,
+.tool-info-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.tool-catalog-header h3,
+.tool-catalog-header p,
+.tool-guidance h4,
+.tool-guidance p {
+  margin-top: 0;
+}
+.tool-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.tool-controls > *,
+.tool-inputs input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.tool-inputs {
+  display: contents;
+}
+.tool-guidance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  margin: 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--subtle-surface);
+}
+.tool-guidance-heading,
+.tool-info-panel {
+  grid-column: 1 / -1;
+}
+.tool-guidance > div:not(.tool-guidance-heading) {
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+}
+.tool-guidance p {
+  color: var(--muted);
+  margin-bottom: 0;
+}
+.tool-info-panel {
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+.tool-action-list {
+  padding: 12px 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+.tool-jobs details {
+  margin-top: 10px;
+}
 @media (max-width: 1000px) {
   .ops-grid {
     grid-template-columns: 1fr;
   }
   .ops-form .ops-two,
-  .ops-inline-data {
+  .ops-inline-data,
+  .tool-controls,
+  .tool-guidance {
     grid-template-columns: 1fr;
   }
   .ops-dock {

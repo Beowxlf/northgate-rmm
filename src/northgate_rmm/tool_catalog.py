@@ -15,8 +15,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from northgate_rmm.management_protocol import validate_action
 from northgate_rmm.secure_files import regular_file_reference
 from northgate_rmm.tool_catalog_models import (
+    ACTION_GUIDANCE,
     BUILTIN,
+    PROFILE_GUIDANCE,
     PROFILES,
+    TOOL_GUIDANCE,
     TOOLS,
     manifest_bytes,
     validate_manifest,
@@ -113,6 +116,18 @@ class ToolCatalog:
                     "profiles": sorted(PROFILES[name]),
                     "releases": releases,
                     "release": releases[-1] if releases else None,
+                    "guidance": {
+                        "purpose": TOOL_GUIDANCE[name][0],
+                        "use_when": TOOL_GUIDANCE[name][1],
+                        "output": TOOL_GUIDANCE[name][2],
+                        "impact": TOOL_GUIDANCE[name][3],
+                    },
+                    "profile_guidance": {
+                        profile: PROFILE_GUIDANCE.get(
+                            profile, "Approved bounded profile."
+                        )
+                        for profile in sorted(PROFILES[name])
+                    },
                 }
             )
         jobs = [
@@ -125,7 +140,16 @@ class ToolCatalog:
             worker = {"ready": False, "reason": "Worker enrollment changed"}
         await self.m.gateway.audit(principal, endpoint, "tools.catalog.viewed", uuid4())
         return web.json_response(
-            {"csrf": token, "tools": tools, "worker": worker, "jobs": jobs},
+            {
+                "csrf": token,
+                "tools": tools,
+                "worker": worker,
+                "jobs": jobs,
+                "action_guidance": {
+                    action: {"label": value[0], "description": value[1]}
+                    for action, value in ACTION_GUIDANCE.items()
+                },
+            },
             headers=self.m.headers(),
         )
 

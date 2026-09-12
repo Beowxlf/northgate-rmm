@@ -28,6 +28,8 @@
   };
   const button = (text, op, id = "", kind = "", style = "") =>
     `<button type="button" class="button ${style}" data-ops="${esc(op)}" data-id="${esc(id)}" data-kind="${esc(kind)}">${esc(text)}</button>`;
+  const infoButton = (topic, labelText) =>
+    `<button type="button" class="ops-info-button" data-ops="info" data-id="${esc(topic)}" aria-label="About ${esc(labelText)}">i</button>`;
   const badge = (text) => `<span class="badge">${esc(label(text))}</span>`;
   const empty = (title, detail) =>
     `<div class="ops-empty"><strong>${esc(title)}</strong><p>${esc(detail)}</p></div>`;
@@ -53,9 +55,18 @@
     category: "asset",
     query: "",
     caseFilter: "open",
+    casePriority: "all",
+    caseType: "all",
+    caseSort: "priority",
     generation: 0,
     endpoint: "",
     dock: null,
+  };
+  const actionHelp = {
+    "response-tools": ["Response tools", "Opens approved, bounded diagnostics for the selected endpoint. Tool execution still requires endpoint permission, is audited, and can be linked to this case. No tool automatically isolates, remediates, or deletes data."],
+    "dock-ssh": ["SSH session", "Opens an interactive SSH session to the selected endpoint. Use only when a bounded diagnostic is insufficient. The session does not expand your endpoint permissions."],
+    "dock-desktop": ["Desktop session", "Opens the managed Windows desktop session. Interactive work remains subject to existing endpoint access controls and audit policy."],
+    "case-status": ["Case status", "Moves the case through triage, investigation, waiting, resolution, and verified closure. SOC cases require a final disposition, containment decision, outcome, and verification before resolution."],
   };
   const rows = (kind) => ui.data?.[plural[kind]] || [];
   const record = (kind, id) => rows(kind).find((r) => r.id === id);
@@ -299,7 +310,7 @@
     let list = rows(kind).filter((r) =>
       JSON.stringify(r.value).toLowerCase().includes(ui.query.toLowerCase()),
     );
-    if (kind === "case")
+    if (kind === "case") {
       list = list.filter(
         (r) =>
           ui.caseFilter === "all" ||
@@ -307,14 +318,26 @@
             ? !["closed", "resolved"].includes(r.value.status)
             : r.value.status === ui.caseFilter),
       );
+      if (ui.casePriority !== "all")
+        list = list.filter((r) => r.value.priority === ui.casePriority);
+      if (ui.caseType !== "all")
+        list = list.filter((r) => r.value.type === ui.caseType);
+      const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
+      list.sort((a, b) =>
+        ui.caseSort === "updated"
+          ? b.updated - a.updated
+          : ui.caseSort === "oldest"
+            ? a.created - b.created
+            : (priorityOrder[a.value.priority] ?? 9) -
+                (priorityOrder[b.value.priority] ?? 9) || b.updated - a.updated,
+      );
+    }
     const metrics =
       kind === "case"
         ? `<div class="ops-metrics">${[
             [
               "Open",
-              rows("case").filter(
-                (r) => !["closed", "resolved"].includes(r.value.status),
-              ).length,
+              ui.data.metrics?.open ?? 0,
             ],
             [
               "Critical",
@@ -325,11 +348,12 @@
               ).length,
             ],
             [
-              "Unassigned",
-              rows("case").filter(
-                (r) => !r.value.assignee && r.value.status !== "closed",
-              ).length,
+              "Overdue",
+              (ui.data.metrics?.overdue_response || 0) +
+                (ui.data.metrics?.overdue_resolution || 0),
             ],
+            ["Unassigned", ui.data.metrics?.unassigned ?? 0],
+            ["Verified closed", ui.data.metrics?.verified_closed ?? 0],
           ]
             .map(
               ([name, count]) =>
@@ -353,6 +377,15 @@
               ["closed", "Closed"],
             ],
             ui.caseFilter,
+          )}</select><select data-ops-case-priority aria-label="Case priority">${options(
+            [["all", "All priorities"], ...["critical", "high", "normal", "low"].map((x) => [x, label(x)])],
+            ui.casePriority,
+          )}</select><select data-ops-case-type aria-label="Case type">${options(
+            [["all", "All case types"], ["soc", "SOC investigations"], ["it", "IT incidents"], ["problem", "Problems"], ["request", "Requests"]],
+            ui.caseType,
+          )}</select><select data-ops-case-sort aria-label="Sort cases">${options(
+            [["priority", "Priority first"], ["updated", "Recently updated"], ["oldest", "Oldest first"]],
+            ui.caseSort,
           )}</select>`
         : ""
     }${button("Refresh", "refresh")}${can(permission) ? button(`New ${kind}`, "new", "", kind, "primary") : ""}</div>${list.length ? `<div class="panel table-scroll"><table class="ops-table"><thead><tr><th>${kind === "case" ? "Case" : "Record"}</th><th>Type / status</th><th>Owner / team</th><th>Related devices</th><th>Updated</th></tr></thead><tbody>${list.map((r) => `<tr><td><button class="ops-link" data-ops="open" data-kind="${kind}" data-id="${esc(r.id)}">${esc(r.value.name)}</button><small>${esc(r.value.detection_id || r.id.slice(0, 8))}${r.value.detection_version ? ` v${esc(r.value.detection_version)}` : ""} · revision ${r.revision}</small></td><td>${badge(r.value.intake_status || r.value.status || r.value.asset_type || r.value.document_type || r.value.confidence || kind)} ${r.value.priority || r.value.severity ? badge(r.value.priority || r.value.severity) : ""}</td><td>${esc(r.value.case_id ? "Linked SOC case" : r.value.assignee || r.value.owner || "Unassigned")}<small>${esc(r.value.team)}</small></td><td>${(r.value.endpoints || []).map(endpointName).map(esc).join(", ") || "Intake health"}</td><td>${esc(date(r.updated))}</td></tr>`).join("")}</tbody></table></div>` : empty(`No ${plural[kind]} match`, "Create a record or adjust the filters. Records are limited to your authorized scope.")}`;
@@ -370,6 +403,9 @@
         ui.caseFilter = e.target.value;
         renderList();
       });
+    ui.root.querySelector("[data-ops-case-priority]")?.addEventListener("change", (e) => { ui.casePriority = e.target.value; renderList(); });
+    ui.root.querySelector("[data-ops-case-type]")?.addEventListener("change", (e) => { ui.caseType = e.target.value; renderList(); });
+    ui.root.querySelector("[data-ops-case-sort]")?.addEventListener("change", (e) => { ui.caseSort = e.target.value; renderList(); });
   }
   async function showRecord(kind, id, before = null) {
     const generation = ui.generation;
@@ -395,6 +431,23 @@
           `<div class="ops-task"><div class="grow"><strong>${esc(task.title)}</strong><small>${esc(task.assignee || "Unassigned")} · ${esc(label(task.status))}</small>${task.verification ? `<small>${esc(task.verification)}</small>` : ""}</div>${editing ? button("Update", "task", task.id, kind, "small") : ""}</div>`,
       )
       .join("");
+    const completedTasks = (v.tasks || []).filter((task) =>
+      ["done", "cancelled"].includes(task.status),
+    ).length;
+    const taskProgress = (v.tasks || []).length
+      ? Math.round((completedTasks / v.tasks.length) * 100)
+      : 0;
+    const linkedAlerts = (v.alerts || [])
+      .map((alertId) => record("alert", alertId))
+      .filter(Boolean);
+    const alertHTML = linkedAlerts.length
+      ? linkedAlerts
+          .map(
+            (alert) =>
+              `<div class="ops-alert-row"><div class="grow"><strong>${esc(alert.value.name)}</strong><small>${esc(alert.value.detection_id)}${alert.value.detection_version ? ` v${esc(alert.value.detection_version)}` : ""} · ${esc(label(alert.value.severity))} · ${esc(date(alert.value.observed_at))}</small><small>Source ${esc(alert.value.source)}/${esc(alert.value.external_id)}</small></div>${button("Open alert", "open", alert.id, "alert", "small")}</div>`,
+          )
+          .join("")
+      : "<p class='subtle'>No security alerts are linked.</p>";
     const timeline = events.length
       ? `<ol class="ops-timeline">${events.map(timelineEntry).join("")}</ol>`
       : "<p class='subtle'>No timeline entries.</p>";
@@ -409,7 +462,7 @@
       .map((key) => `<h4>${esc(label(key))}</h4><p>${esc(v[key])}</p>`)
       .join(
         "",
-      )}</section>${kind === "case" ? `<section class="ops-card"><div class="ops-toolbar"><h3>Tasks</h3>${editing ? button("Add task", "task", "", kind) : ""}</div>${taskHTML || "<p class='subtle'>No tasks yet.</p>"}</section><section class="ops-card"><div class="ops-toolbar"><h3>Evidence</h3>${can("evidence.manage") && editing ? button("Attach evidence", "attach", id, kind) : ""}${can("evidence.manage") && editing ? button("Retain job result", "pin-job", id, kind) : ""}</div>${evidence.length ? evidence.map((e) => `<div class="ops-task"><div class="grow"><strong>${esc(e.name)}</strong><small>${esc(e.state)} · ${esc(e.size)} bytes · ${e.retained ? "Held for case" : "Standard retention"}</small><small>SHA-256 ${esc(e.sha256)}</small></div>${e.state === "complete" || e.state === "completed" ? button("Download", "download", e.id, kind, "small") : e.state === "uploading" && editing && can("evidence.manage") ? button("Cancel upload", "cancel-upload", e.id, kind, "small") : ""}</div>`).join("") : "<p class='subtle'>Attach reviewed files or retain a diagnostic result. Secrets belong in Access & secrets.</p>"}</section>` : ""}<section class="ops-card"><div class="ops-toolbar"><h3>Timeline</h3>${editing ? button("Add note", "note", id, kind) : ""}</div>${timeline}</section><section class="ops-card"><h3>Revision history</h3>${(detail.versions || []).map((rev) => `<details><summary>Revision ${rev.revision} · ${esc(date(rev.created))} · ${esc(rev.subject)}</summary><pre class="ops-document">${esc(JSON.stringify(rev.value || rev.payload || {}, null, 2))}</pre></details>`).join("") || "<p class='subtle'>No prior versions.</p>"}</section></div><aside><section class="ops-card"><h3>Context</h3><dl><dt>Owner</dt><dd>${esc(v.assignee || v.owner || "Unassigned")}</dd><dt>Team</dt><dd>${esc(v.team || "Unassigned")}</dd><dt>Response due</dt><dd>${esc(date(v.response_due))}</dd><dt>Resolve due</dt><dd>${esc(date(v.resolve_due))}</dd></dl>${(v.endpoints || []).map((endpoint) => `<div class="ops-task"><div class="grow"><strong>${esc(endpointName(endpoint))}</strong></div>${button("Open", "device", endpoint, "", "small")}</div><div class="actions">${button("System tools", "dock-manage", endpoint, "", "small")}${button("SSH", "dock-ssh", endpoint, "", "small")}${ui.context.devices.find((d) => d.id === endpoint)?.platform === "windows" ? button("Desktop", "dock-desktop", endpoint, "", "small") : ""}</div>`).join("")}<p class="ops-note">Actions still require device permission. Session context does not expand access.</p></section><section class="ops-card"><h3>Related infrastructure</h3>${["asset", "service", "network"].map((k) => (v[plural[k]] || []).map((ref) => `<p>${button(recordName(k, ref), "open", ref, k, "small")}</p>`).join("")).join("") || "<p class='subtle'>No relationships recorded.</p>"}${kind === "asset" && editing ? button("Link enrollment", "reconcile", id, kind) : ""}</section></aside></div><section id="ops-session-dock"></section>`;
+      )}</section>${kind === "case" ? `<section class="ops-card"><div class="ops-toolbar"><div><h3>Investigation checklist</h3><p class="ops-note">${completedTasks} of ${(v.tasks || []).length} complete</p></div>${editing ? button("Add task", "task", "", kind) : ""}</div><progress class="ops-progress" max="100" value="${taskProgress}">${taskProgress}%</progress>${taskHTML || "<p class='subtle'>No tasks yet.</p>"}</section><section class="ops-card"><div class="ops-toolbar"><h3>Linked security alerts</h3>${editing ? button("Link alert", "link-alert", id, kind) : ""}</div>${alertHTML}</section><section class="ops-card"><div class="ops-toolbar"><h3>Evidence</h3>${can("evidence.manage") && editing ? button("Attach evidence", "attach", id, kind) : ""}${can("evidence.manage") && editing ? button("Retain job result", "pin-job", id, kind) : ""}</div>${evidence.length ? evidence.map((e) => `<div class="ops-task"><div class="grow"><strong>${esc(e.name)}</strong><small>${esc(e.state)} · ${esc(e.size)} bytes · ${e.retained ? "Held for case" : "Standard retention"}</small><small>SHA-256 ${esc(e.sha256)}</small></div>${e.state === "complete" || e.state === "completed" ? button("Download", "download", e.id, kind, "small") : e.state === "uploading" && editing && can("evidence.manage") ? button("Cancel upload", "cancel-upload", e.id, kind, "small") : ""}</div>`).join("") : "<p class='subtle'>Attach reviewed files or retain a diagnostic result. Secrets belong in Access & secrets.</p>"}</section>` : ""}<section class="ops-card"><div class="ops-toolbar"><h3>Timeline</h3>${editing ? button("Add note", "note", id, kind) : ""}</div>${timeline}</section><section class="ops-card"><h3>Revision history</h3>${(detail.versions || []).map((rev) => `<details><summary>Revision ${rev.revision} · ${esc(date(rev.created))} · ${esc(rev.subject)}</summary><pre class="ops-document">${esc(JSON.stringify(rev.value || rev.payload || {}, null, 2))}</pre></details>`).join("") || "<p class='subtle'>No prior versions.</p>"}</section></div><aside><section class="ops-card"><h3>Case context</h3><dl><dt>Owner</dt><dd>${esc(v.assignee || v.owner || "Unassigned")}</dd><dt>Team</dt><dd>${esc(v.team || "Unassigned")}</dd>${kind === "case" ? `<dt>Category</dt><dd>${esc(label(v.category || (v.type === "soc" ? "security" : "other")))}</dd><dt>Disposition</dt><dd>${esc(label(v.disposition || "undetermined"))}</dd><dt>Containment</dt><dd>${esc(label(v.containment_status || (v.type === "soc" ? "not_started" : "not_required")))}</dd><dt>Resolution</dt><dd>${esc(label(v.resolution_code || "not_set"))}</dd>` : ""}<dt>Response due</dt><dd>${esc(date(v.response_due))}</dd><dt>Resolve due</dt><dd>${esc(date(v.resolve_due))}</dd></dl>${(v.endpoints || []).map((endpoint) => `<div class="ops-response-target"><div class="ops-task"><div class="grow"><strong>${esc(endpointName(endpoint))}</strong><small>${esc(ui.context.devices.find((d) => d.id === endpoint)?.platform || "endpoint")}</small></div>${button("Open device", "device", endpoint, "", "small")}</div><div class="ops-guided-actions"><span>${button("Response tools", "response-tools", endpoint, "", "small")}${infoButton("response-tools", "response tools")}</span><span>${button("SSH", "dock-ssh", endpoint, "", "small")}${infoButton("dock-ssh", "SSH session")}</span>${ui.context.devices.find((d) => d.id === endpoint)?.platform === "windows" ? `<span>${button("Desktop", "dock-desktop", endpoint, "", "small")}${infoButton("dock-desktop", "desktop session")}</span>` : ""}</div></div>`).join("")}<p class="ops-note">Every action still requires its existing endpoint permission. Opening this case does not expand access.</p></section><section class="ops-card"><h3>Related infrastructure</h3>${["asset", "service", "network"].map((k) => (v[plural[k]] || []).map((ref) => `<p>${button(recordName(k, ref), "open", ref, k, "small")}</p>`).join("")).join("") || "<p class='subtle'>No relationships recorded.</p>"}${kind === "asset" && editing ? button("Link enrollment", "reconcile", id, kind) : ""}</section></aside></div><section id="ops-session-dock"></section>`;
     let recordHost = ui.root.querySelector("#ops-record-content");
     if (!recordHost) {
       ui.root.innerHTML =
@@ -421,19 +474,22 @@
       "",
     );
     ui.detail = { ...detail, record: r };
-    if (kind === "case" && editing) {
-      const bar = document.createElement("div");
-      bar.className = "ops-toolbar";
-      bar.innerHTML = button("Link security alert", "link-alert", id, kind);
-      recordHost.prepend(bar);
-    }
     if (kind === "alert" && can("case.manage")) {
       const bar = document.createElement("div");
-      bar.className = "ops-toolbar";
+      bar.className = "ops-alert-commandbar";
       bar.innerHTML = v.case_id
         ? button("Open SOC case", "open", v.case_id, "case", "primary")
         : button("Create SOC case", "case-from-alert", id, kind, "primary");
+      (v.endpoints || []).forEach((endpoint) => {
+        bar.innerHTML += button("Open response tools", "response-tools", endpoint) + infoButton("response-tools", "response tools");
+      });
       recordHost.prepend(bar);
+    }
+    if (kind === "alert") {
+      const facts = document.createElement("section");
+      facts.className = "ops-card ops-alert-facts";
+      facts.innerHTML = `<div class="ops-toolbar"><h3>Detection facts</h3>${badge(v.severity || "unknown")}</div><dl><dt>Detection</dt><dd>${esc(v.detection_id || v.rule_id)}${v.detection_version ? ` v${esc(v.detection_version)}` : ""}</dd><dt>Source alert</dt><dd>${esc(v.source)}/${esc(v.external_id)}</dd><dt>Wazuh rule</dt><dd>${esc(v.rule_id)} · level ${esc(v.level)}</dd><dt>Observed</dt><dd>${esc(date(v.observed_at))}</dd><dt>Received</dt><dd>${esc(date(v.received_at))}</dd><dt>ATT&CK</dt><dd>${(v.attack || []).map((item) => badge(item)).join(" ") || "Not mapped"}</dd><dt>Device</dt><dd>${(v.endpoints || []).map(endpointName).map(esc).join(", ") || "Unmapped"}</dd></dl><h4>Allowlisted alert context</h4><pre class="ops-document">${esc(values(v.context))}</pre>`;
+      recordHost.querySelector(".ops-detail-title")?.after(facts);
     }
     if (detail.next_before) {
       const older = document.createElement("div");
@@ -488,6 +544,20 @@
     };
     node.showModal();
   }
+  function information(topic) {
+    const content = actionHelp[topic];
+    if (!content) return;
+    ui.dialog?.remove();
+    const node = document.createElement("dialog");
+    node.className = "ops-dialog ops-info-dialog";
+    node.innerHTML = `<header><h2>${esc(content[0])}</h2><button type="button" class="icon-button" aria-label="Close explanation">×</button></header><p>${esc(content[1])}</p><footer>${button("Close", "close-info", "", "", "primary")}</footer>`;
+    document.body.append(node);
+    ui.dialog = node;
+    node.querySelector(".icon-button").onclick = () => node.close();
+    node.querySelector('[data-ops="close-info"]').onclick = () => node.close();
+    node.addEventListener("close", () => node.remove());
+    node.showModal();
+  }
   function edit(kind, r = null, sourceAlert = null) {
     const v = r?.value || {},
       id = r?.id || crypto.randomUUID();
@@ -538,6 +608,26 @@
         "Priority",
         ["low", "normal", "high", "critical"].map((x) => [x, label(x)]),
         v.priority || "normal",
+      )}</div><div class="ops-two">${select(
+        "category",
+        "Category",
+        ["security", "availability", "identity", "endpoint", "network", "application", "change", "request", "other"].map((x) => [x, label(x)]),
+        v.category || (v.type === "soc" ? "security" : "other"),
+      )}${select(
+        "disposition",
+        "Disposition",
+        ["undetermined", "true_positive", "benign_positive", "false_positive", "duplicate", "test_activity", "non_security"].map((x) => [x, label(x)]),
+        v.disposition || "undetermined",
+      )}</div><div class="ops-two">${select(
+        "containment_status",
+        "Containment",
+        ["not_required", "not_started", "in_progress", "contained", "verified"].map((x) => [x, label(x)]),
+        v.containment_status || (v.type === "soc" ? "not_started" : "not_required"),
+      )}${select(
+        "resolution_code",
+        "Resolution code",
+        ["not_set", "remediated", "mitigated", "accepted", "no_action", "referred"].map((x) => [x, label(x)]),
+        v.resolution_code || "not_set",
       )}</div>${input("assignee", "Assignee", v.assignee)}<div class="ops-two">${input("response_due", "Response due", localInput(v.response_due), "datetime-local")}${input("resolve_due", "Resolve due", localInput(v.resolve_due), "datetime-local")}</div>`;
     if (kind === "asset")
       fields += `<div class="ops-two">${select(
@@ -803,6 +893,7 @@
   async function action(op, id, kind) {
     const r = ui.detail?.record;
     if (op === "refresh") return load();
+    if (op === "info") return information(id);
     if (op === "category") {
       ui.category = id;
       ui.query = "";
@@ -821,6 +912,28 @@
       ui.context.openDevice(id);
       return;
     }
+    if (op === "response-tools") {
+      ui.cleanup?.();
+      ui.root.classList.add("ops-session-layout");
+      const host = ui.root.querySelector("#ops-session-dock");
+      host.replaceChildren();
+      const heading = document.createElement("div");
+      heading.className = "ops-toolbar";
+      heading.innerHTML = `<div><h3>${esc(endpointName(id))}</h3><p class="ops-note">Approved response tools · existing permissions and audit controls remain in force</p></div>${button("Close response panel", "close-dock")}`;
+      const toolHost = document.createElement("section");
+      toolHost.className = "ops-card ops-response-tools";
+      host.append(heading, toolHost);
+      await loadTools();
+      const caseId = ui.selected?.kind === "case" ? ui.selected.id : ui.detail?.record?.value?.case_id || "";
+      ui.cleanup = window.NorthGateTools.mount(toolHost, id, {
+        caseId,
+        lockedCase: Boolean(caseId),
+        initialTool: ui.selected?.kind === "alert" ? "evidence" : "health",
+        initialProfile: ui.selected?.kind === "alert" ? "soc" : "snapshot",
+      });
+      host.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     if (op.startsWith("dock-")) {
       ui.root.classList.add("ops-session-layout");
       const host = ui.root.querySelector("#ops-session-dock");
@@ -835,6 +948,8 @@
       return;
     }
     if (op === "close-dock") {
+      ui.cleanup?.();
+      ui.cleanup = null;
       ui.root.classList.remove("ops-session-layout");
       ui.root.querySelector("#ops-session-dock").replaceChildren();
       return;
@@ -873,7 +988,23 @@
             "verification",
             "How was the outcome verified?",
             r.value.verification,
-          ),
+          ) +
+          `<div class="ops-two">${select(
+            "disposition",
+            "Final disposition",
+            ["undetermined", "true_positive", "benign_positive", "false_positive", "duplicate", "test_activity", "non_security"].map((s) => [s, label(s)]),
+            r.value.disposition || "undetermined",
+          )}${select(
+            "containment_status",
+            "Containment decision",
+            ["not_required", "not_started", "in_progress", "contained", "verified"].map((s) => [s, label(s)]),
+            r.value.containment_status || (r.value.type === "soc" ? "not_started" : "not_required"),
+          )}</div>${select(
+            "resolution_code",
+            "Resolution code",
+            ["not_set", "remediated", "mitigated", "accepted", "no_action", "referred"].map((s) => [s, label(s)]),
+            r.value.resolution_code || "not_set",
+          )}<p class="ops-note">SOC cases require a final disposition, a completed containment decision, an outcome, and verification before resolution.</p>`,
         (form, key) =>
           mutate(
             "case_transition",
@@ -883,6 +1014,9 @@
               status: form.get("status"),
               outcome: form.get("outcome"),
               verification: form.get("verification"),
+              disposition: form.get("disposition"),
+              containment_status: form.get("containment_status"),
+              resolution_code: form.get("resolution_code"),
             },
             key,
           ),

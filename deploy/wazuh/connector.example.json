@@ -7,10 +7,158 @@
   "queue_file": "/var/lib/northgate-rmm-intake/queue.sqlite3",
   "minimum_level": 3,
   "detections": {
-    "110101": {"context_fields": ["win.eventdata.newProcessName", "win.eventdata.commandLine"]},
-    "110111": {"context_fields": ["win.eventdata.serviceName", "win.eventdata.serviceFileName", "win.eventdata.accountName"]},
-    "110121": {"context_fields": ["win.eventdata.subjectUserName", "win.eventdata.newProcessName", "win.eventdata.commandLine"]},
-    "110131": {"context_fields": ["srcuser", "dstuser", "command", "tty", "pwd"]}
+    "110101": {
+      "context_fields": [
+        "win.eventdata.newProcessName",
+        "win.eventdata.commandLine"
+      ]
+    },
+    "110111": {
+      "context_fields": [
+        "win.eventdata.serviceName",
+        "win.eventdata.serviceFileName",
+        "win.eventdata.accountName"
+      ]
+    },
+    "110121": {
+      "context_fields": [
+        "win.eventdata.subjectUserName",
+        "win.eventdata.newProcessName",
+        "win.eventdata.commandLine"
+      ]
+    },
+    "110131": {
+      "context_fields": [
+        "srcuser",
+        "dstuser",
+        "command",
+        "tty",
+        "pwd"
+      ]
+    },
+    "110201": {
+      "context_fields": [
+        "request.remote_ip",
+        "request.method",
+        "request.uri",
+        "request.host",
+        "request.tls.version",
+        "status",
+        "duration",
+        "user_id"
+      ]
+    },
+    "110203": {
+      "context_fields": [
+        "request.remote_ip",
+        "request.method",
+        "request.uri",
+        "request.host",
+        "status",
+        "duration",
+        "user_id"
+      ]
+    },
+    "110204": {
+      "context_fields": [
+        "request.remote_ip",
+        "request.method",
+        "request.uri",
+        "request.host",
+        "request.tls.version",
+        "status"
+      ]
+    },
+    "110205": {
+      "context_fields": [
+        "request.remote_ip",
+        "request.method",
+        "request.uri",
+        "request.host",
+        "status",
+        "duration",
+        "user_id"
+      ]
+    },
+    "110207": {
+      "context_fields": [
+        "request.remote_ip",
+        "request.method",
+        "request.uri",
+        "request.host",
+        "status",
+        "duration",
+        "user_id"
+      ]
+    },
+    "110209": {
+      "context_fields": [
+        "request.remote_ip",
+        "request.method",
+        "request.uri",
+        "request.host",
+        "status",
+        "duration",
+        "user_id"
+      ]
+    },
+    "110211": {
+      "context_fields": [
+        "request.remote_ip",
+        "request.method",
+        "request.uri",
+        "request.host",
+        "status",
+        "duration",
+        "user_id"
+      ]
+    },
+    "110221": {
+      "context_fields": [
+        "system.eventId",
+        "eventdata.utcTime",
+        "eventdata.image",
+        "eventdata.parentImage",
+        "eventdata.commandLine",
+        "eventdata.user",
+        "eventdata.targetFilename",
+        "eventdata.hashes"
+      ]
+    },
+    "110222": {
+      "context_fields": [
+        "system.eventId",
+        "eventdata.utcTime",
+        "eventdata.image",
+        "eventdata.parentImage",
+        "eventdata.commandLine",
+        "eventdata.user",
+        "eventdata.targetFilename",
+        "eventdata.hashes"
+      ]
+    },
+    "110223": {
+      "context_fields": [
+        "system.eventId",
+        "eventdata.utcTime",
+        "eventdata.image",
+        "eventdata.parentImage",
+        "eventdata.commandLine",
+        "eventdata.user",
+        "eventdata.targetFilename",
+        "eventdata.hashes"
+      ]
+    },
+    "110230": {
+      "context_fields": [
+        "server",
+        "service",
+        "log_path",
+        "healthy",
+        "reason",
+        "checked_at"
+      ]
+    }
   },
   "agents": {}
 }

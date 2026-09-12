@@ -7,8 +7,16 @@ The source registry owns detection ID/version, ATT&CK mapping, context allowlist
 Unmapped devices and case-creation faults create owner-visible intake-health records and return HTTP 503. The Wazuh queue retains and exponentially retries them. Network and authentication failures remain visible in queue status and the service journal. Hard payload conflicts remain rejected for operator review.
 
 Wazuh remains the raw-event source. RMM accepts selected alert metadata, links it
-to an exact current RMM enrollment, and lets operators attach the alert to a case.
-This connector does not run response actions or automatically create/close cases.
+to an exact current RMM enrollment, and applies the private source policy to create
+or update a SOC case. The connector runs no endpoint response actions and never
+automatically closes a case.
+
+The Project_Mati allowlist now includes the OWASP Top 10:2025 website signals and
+focused Sysmon for Linux detections. Policy windows are exported from the
+authoritative detection manifest: 30 minutes for critical protection/integrity
+signals and one hour for the remaining grouped detections. Two Wazuh rule IDs may
+represent the same logging-health detection; grouping by endpoint and detection ID
+therefore joins related configuration and health evidence into one open case.
 
 ## Components
 

@@ -1,0 +1,422 @@
+#!/usr/bin/python3
+"""Wazuh custom integration. Standard library only; Python 3.10 and later.
+
+Integrator invokes this with an alert-file argument. Only normalized metadata is
+queued. A separate bounded timer invocation sends it without delaying analysis.
+Never log source events, response bodies, the bearer, or CLI arguments.
+"""
+
+import argparse
+import contextlib
+import hashlib
+import http.client
+import ipaddress
+import json
+import os
+import re
+import socket
+import sqlite3
+import ssl
+import stat
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlsplit
+from uuid import UUID
+
+CONFIG = Path("/etc/northgate-rmm-intake/connector.json")
+MAX_ALERT = 2 * 1024 * 1024
+MAX_METADATA = 8192
+MAX_QUEUE = 1000
+MAX_QUEUE_BYTES = 8 * 1024 * 1024
+SECRET = re.compile(
+    r"-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----|"
+    r"-----BEGIN [^-]*PRIVATE KEY-----|\b\d{6}(?:-\d{6}){7}\b|"
+    r"(?i:bearer\s+[a-z0-9._~-]{24,})|"
+    r"(?i:(?:password|passphrase|client_secret|access_token|refresh_token)"
+    r"\s*[:=]\s*[^\s,;}]{4,})"
+)
+
+
+class IntakeError(Exception):
+    """Contains only fixed diagnostic codes, never exception input."""
+
+
+@contextlib.contextmanager
+def regular_file(path, maximum, private=False):
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    fd = os.open(path, flags)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > maximum:
+            raise IntakeError("invalid_file")
+        if (
+            private
+            and os.name == "posix"
+            and (info.st_uid not in {0, os.geteuid()} or info.st_mode & 0o027)
+        ):
+            raise IntakeError("unsafe_file_permissions")
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def read_regular(path, maximum, private=False):
+    with regular_file(path, maximum, private) as fd:
+        data = os.read(fd, maximum + 1)
+        if len(data) > maximum:
+            raise IntakeError("oversized_file")
+        return data
+
+
+def load_config(path=CONFIG):
+    value = json.loads(read_regular(path, 65536, private=True))
+    if not isinstance(value, dict) or value.get("schema") != 1:
+        raise IntakeError("invalid_configuration")
+    url = urlsplit(value.get("url", ""))
+    if (
+        url.scheme != "https"
+        or not url.hostname
+        or url.port not in (None, 443)
+        or url.username
+        or url.password
+        or url.query
+        or url.fragment
+        or url.path != "/remote/ops/intake/wazuh"
+    ):
+        raise IntakeError("invalid_destination")
+    address = ipaddress.ip_address(value["connect_address"])
+    if not address.is_private or address.is_loopback or address.is_link_local:
+        raise IntakeError("destination_must_be_private")
+    for field in ("token_file", "ca_file", "queue_file"):
+        if not Path(value[field]).is_absolute():
+            raise IntakeError("configuration_paths_must_be_absolute")
+    agents = value.get("agents")
+    if not isinstance(agents, dict) or len(agents) > 1000:
+        raise IntakeError("invalid_agent_mapping")
+    for agent, binding in agents.items():
+        if not re.fullmatch(r"[0-9]{3,8}", agent) or not isinstance(binding, dict):
+            raise IntakeError("invalid_agent_mapping")
+        UUID(binding["endpoint"])
+        UUID(binding["identity"])
+    detections = value.get("detections")
+    if not isinstance(detections, dict) or not detections or len(detections) > 1000:
+        raise IntakeError("invalid_detection_allowlist")
+    for rule_id, item in detections.items():
+        if not re.fullmatch(r"[0-9]{1,12}", rule_id) or not isinstance(item, dict):
+            raise IntakeError("invalid_detection_allowlist")
+        fields = item.get("context_fields", [])
+        if (
+            not isinstance(fields, list)
+            or len(fields) > 32
+            or any(
+                not isinstance(f, str)
+                or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", f)
+                for f in fields
+            )
+        ):
+            raise IntakeError("invalid_context_allowlist")
+    level = value.get("minimum_level", 3)
+    if type(level) is not int or not 0 <= level <= 16:
+        raise IntakeError("invalid_level")
+    value["minimum_level"] = level
+    return value
+
+
+def clean_text(value, limit, identifier=False):
+    if not isinstance(value, str) or not value or len(value) > limit:
+        raise IntakeError("invalid_metadata")
+    if identifier:
+        if not re.fullmatch(r"[A-Za-z0-9._:-]+", value):
+            raise IntakeError("invalid_metadata_identifier")
+        return value
+    value = SECRET.sub("[redacted]", value)
+    return " ".join("".join(c if ord(c) >= 32 else " " for c in value).split())
+
+
+def normalize(event, config):
+    if not isinstance(event, dict):
+        raise IntakeError("invalid_alert")
+    agent = event.get("agent", {}).get("id")
+    if not isinstance(agent, str) or not re.fullmatch(r"[0-9]{3,8}", agent):
+        raise IntakeError("invalid_agent")
+    rule = event.get("rule", {})
+    level = rule.get("level")
+    if type(level) is not int or not 0 <= level <= 16:
+        raise IntakeError("invalid_alert_level")
+    if level < config["minimum_level"]:
+        return None
+    rule_id = clean_text(str(rule.get("id", "")), 64, identifier=True)
+    detection = config["detections"].get(rule_id)
+    if detection is None:
+        return None
+    stamp = event.get("timestamp")
+    if not isinstance(stamp, str) or len(stamp) > 64:
+        raise IntakeError("invalid_timestamp")
+    # Wazuh writes offsets such as +0000. Python 3.10 accepts the equivalent
+    # +00:00 form but only newer Python versions parse the compact offset.
+    stamp = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", stamp.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(stamp)
+    if parsed.tzinfo is None:
+        raise IntakeError("timestamp_requires_timezone")
+    groups = rule.get("groups", [])
+    if not isinstance(groups, list) or len(groups) > 32:
+        raise IntakeError("invalid_groups")
+    result = {
+        "id": clean_text(str(event["id"]), 256, identifier=True),
+        "timestamp": parsed.isoformat(),
+        "agent": {"id": agent},
+        "rule": {
+            "id": rule_id,
+            "level": level,
+            "description": clean_text(rule["description"], 1024),
+            "groups": [clean_text(group, 128) for group in groups],
+        },
+    }
+    context = {}
+    for path in detection.get("context_fields", []):
+        current = None
+        for candidate in (event, event.get("data", {})):
+            current = candidate
+            for part in path.split("."):
+                if not isinstance(current, dict) or part not in current:
+                    current = None
+                    break
+                current = current[part]
+            if current is not None:
+                break
+        if current is not None and isinstance(current, (str, int, float, bool)):
+            context[path] = clean_text(str(current), 1024)
+    if context:
+        result["context"] = context
+    if len(encode(result)) > MAX_METADATA:
+        raise IntakeError("metadata_limit")
+    return result
+
+
+def encode(value):
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+
+
+@contextlib.contextmanager
+def queue(path):
+    path = Path(path)
+    parent = path.parent.stat()
+    if path.parent.is_symlink() or (
+        os.name == "posix"
+        and (parent.st_mode & 0o077 or parent.st_uid not in {0, os.geteuid()})
+    ):
+        raise IntakeError("unsafe_queue_directory")
+    if path.exists() or path.is_symlink():
+        with regular_file(path, 16 * 1024 * 1024, private=True):
+            pass
+    mask = os.umask(0o077)
+    try:
+        db = sqlite3.connect(path, timeout=0.5)
+    finally:
+        os.umask(mask)
+    try:
+        db.execute("PRAGMA journal_mode=DELETE")
+        db.execute("PRAGMA synchronous=FULL")
+        db.execute("PRAGMA max_page_count=4096")
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS queue (key TEXT PRIMARY KEY,payload BLOB "
+            "NOT NULL,binding BLOB NOT NULL,created REAL NOT NULL,"
+            "attempts INTEGER NOT NULL DEFAULT 0,"
+            "next_try REAL NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT 'pending',"
+            "last_status INTEGER)"
+        )
+        db.commit()
+        yield db
+    finally:
+        db.close()
+
+
+def enqueue(event, config):
+    value = normalize(event, config)
+    if value is None:
+        return "filtered"
+    payload = encode(value)
+    key = hashlib.sha256(value["id"].encode()).hexdigest()
+    with queue(config["queue_file"]) as db:
+        db.execute("BEGIN IMMEDIATE")
+        previous = db.execute(
+            "SELECT payload FROM queue WHERE key=?", (key,)
+        ).fetchone()
+        if previous:
+            if previous[0] != payload:
+                raise IntakeError("source_identifier_conflict")
+            return "duplicate"
+        count, size = db.execute(
+            "SELECT COUNT(*),COALESCE(SUM(LENGTH(payload)),0) FROM queue"
+        ).fetchone()
+        if count >= MAX_QUEUE or size + len(payload) > MAX_QUEUE_BYTES:
+            raise IntakeError("queue_full_alert_retained_in_wazuh")
+        db.execute(
+            "INSERT INTO queue(key,payload,binding,created) VALUES(?,?,?,?)",
+            (
+                key,
+                payload,
+                encode(config["agents"].get(value["agent"]["id"])),
+                time.time(),
+            ),
+        )
+        db.commit()
+    return "queued"
+
+
+class PinnedHTTPS(http.client.HTTPSConnection):
+    def __init__(self, host, address, context):
+        super().__init__(host, timeout=3, context=context)
+        self.address = address
+
+    def connect(self):
+        sock = socket.create_connection((self.address, 443), timeout=self.timeout)
+        try:
+            self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+        except BaseException:
+            sock.close()
+            raise
+
+
+def send(payload, config):
+    token = read_regular(config["token_file"], 256, private=True).decode().strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{43,128}", token):
+        raise IntakeError("invalid_intake_identity")
+    # CA input is a trusted regular file; certificate and hostname verification
+    # are mandatory. Never inherit proxy environment or follow redirects.
+    ca = read_regular(config["ca_file"], 65536, private=True).decode()
+    context = ssl.create_default_context(cadata=ca)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    url = urlsplit(config["url"])
+    connection = PinnedHTTPS(url.hostname, config["connect_address"], context)
+    try:
+        connection.request(
+            "POST",
+            url.path,
+            payload,
+            {"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+        )
+        response = connection.getresponse()
+        body = response.read(4097)
+        if response.status == 202:
+            if len(body) > 4096:
+                return 502
+            try:
+                receipt = json.loads(body)
+                UUID(receipt["alert"])
+                if type(receipt["duplicate"]) is not bool:
+                    return 502
+            except (ValueError, TypeError, KeyError):
+                return 502
+        return response.status
+    finally:
+        connection.close()
+
+
+def flush(config, sender=send, batch=10):
+    result = {"sent": 0, "rejected": 0, "deferred": 0}
+    deadline = time.monotonic() + 35
+    with queue(config["queue_file"]) as db:
+        rows = db.execute(
+            "SELECT key,payload,binding,attempts FROM queue WHERE state='pending' "
+            "AND next_try<=? ORDER BY created LIMIT ?",
+            (time.time(), min(batch, 10)),
+        ).fetchall()
+        for key, payload, binding, attempts in rows:
+            if time.monotonic() >= deadline:
+                break
+            # Local mappings are rechecked on retry. A removed mapping must not
+            # be forwarded using obsolete local approval.
+            try:
+                event = json.loads(payload)
+                current_binding = config["agents"].get(event["agent"]["id"])
+                queued_binding = json.loads(binding)
+                if (
+                    event.get("rule", {}).get("id") not in config["detections"]
+                    or event.get("rule", {}).get("level", -1) < config["minimum_level"]
+                    or (
+                        queued_binding is not None
+                        and encode(current_binding) != binding
+                    )
+                ):
+                    status = 409
+                else:
+                    status = sender(payload, config)
+            except (OSError, ValueError, IntakeError, http.client.HTTPException):
+                status = 0
+            if status == 202:
+                db.execute("DELETE FROM queue WHERE key=?", (key,))
+                result["sent"] += 1
+            elif status in (400, 409, 413, 422):
+                db.execute(
+                    "UPDATE queue SET state='rejected',last_status=? WHERE key=?",
+                    (status, key),
+                )
+                result["rejected"] += 1
+            else:
+                db.execute(
+                    "UPDATE queue SET attempts=attempts+1,next_try=?,last_status=? "
+                    "WHERE key=?",
+                    (time.time() + min(900, 30 * 2 ** min(attempts, 5)), status, key),
+                )
+                result["deferred"] += 1
+            db.commit()
+            if status in (0, 401, 403, 429, 502, 503, 504) or 300 <= status < 400:
+                break
+    return result
+
+
+def status(config):
+    with queue(config["queue_file"]) as db:
+        counts = dict(db.execute("SELECT state,COUNT(*) FROM queue GROUP BY state"))
+        oldest = db.execute("SELECT MIN(created) FROM queue").fetchone()[0]
+        statuses = dict(
+            db.execute(
+                "SELECT COALESCE(last_status,0),COUNT(*) FROM queue "
+                "GROUP BY COALESCE(last_status,0)"
+            )
+        )
+    return {
+        "pending": counts.get("pending", 0),
+        "rejected": counts.get("rejected", 0),
+        "oldest_age_seconds": int(time.time() - oldest) if oldest else 0,
+        "mapped_agents": len(config["agents"]),
+        "last_status_counts": {str(k): v for k, v in statuses.items()},
+    }
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("alert_file", nargs="?")
+    parser.add_argument("ignored_wazuh_arguments", nargs="*")
+    parser.add_argument("--config", default=str(CONFIG))
+    parser.add_argument("--flush", action="store_true")
+    parser.add_argument("--status", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        config = load_config(Path(args.config))
+        if args.flush:
+            result = flush(config)
+        elif args.status:
+            result = status(config)
+        elif args.alert_file:
+            event = json.loads(read_regular(args.alert_file, MAX_ALERT))
+            result = {"result": enqueue(event, config)}
+        else:
+            raise IntakeError("alert_file_required")
+        if args.flush or args.status:
+            print(json.dumps(result, sort_keys=True))
+        return 0
+    except IntakeError as error:
+        print("northgate-rmm-intake: " + str(error), file=sys.stderr)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
+        print("northgate-rmm-intake: input_or_configuration_error", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

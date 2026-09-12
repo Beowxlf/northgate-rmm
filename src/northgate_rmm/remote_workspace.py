@@ -62,13 +62,13 @@ def seal_credentials(key: bytes, values: list[dict]) -> bytes:
 
 
 def open_credentials(key: bytes, blob: bytes) -> dict:
-    if not 28 <= len(blob) <= 65536:
+    if not 28 <= len(blob) <= 16 * 1024 * 1024:
         raise ValueError("Invalid credential envelope")
     values = json.loads(
         AESGCM(credential_key(key)).decrypt(blob[:12], blob[12:], b"rmm-credentials-v1")
     )
     result = {}
-    if not isinstance(values, list) or len(values) > 8:
+    if not isinstance(values, list) or len(values) > 4096:
         raise ValueError("Invalid credentials")
     for value in values:
         endpoint, identity = UUID(value["endpoint_id"]), UUID(value["identity_id"])
@@ -220,8 +220,18 @@ class RemoteWorkspace:
         except ValueError:
             raise web.HTTPNotFound() from None
         await self.gateway.principal(request, endpoint, require_online=False)
+        desktop = (
+            '<div class="terminal-bar"><h2>Browser desktop</h2>'
+            f'<a class="button" href="/remote/{endpoint}/desktop" '
+            'target="ssh-terminal">Open browser desktop</a>'
+            f'<a class="button" href="/remote/{endpoint}/desktop.rdp">'
+            "Download native RDP connection</a></div>"
+            if "rdp" in self.gateway.methods[endpoint]
+            else ""
+        )
         return frame_response(
-            f'<iframe title="Credentials and file transfer" src="/remote/{endpoint}/tools" height="250" class="tools-frame"></iframe>'  # noqa: E501 - HTML and fixed command literals
+            desktop
+            + f'<iframe title="Credentials and file transfer" src="/remote/{endpoint}/tools" height="250" class="tools-frame"></iframe>'  # noqa: E501 - HTML and fixed command literals
             '<div class="terminal-bar"><h2>SSH terminal</h2>'
             f'<a class="button" target="_blank" rel="noopener" href="/remote/{endpoint}">Open separately</a></div>'  # noqa: E501 - HTML and fixed command literals
             f'<iframe title="SSH terminal" name="ssh-terminal" src="/remote/{endpoint}"></iframe>'  # noqa: E501 - HTML and fixed command literals
@@ -290,6 +300,8 @@ class RemoteWorkspace:
                 self.consume(
                     str(fields.get("nonce", "")), principal, endpoint, "reveal"
                 )
+                if self.gateway.legacy_credential_guard:
+                    await self.gateway.legacy_credential_guard(target)
                 value = self.credentials.get(endpoint)
                 if value is None or value[0] != target.identity_id:
                     raise web.HTTPNotFound(
@@ -353,6 +365,24 @@ class RemoteWorkspace:
             if await reader.next() is not None:
                 raise web.HTTPBadRequest(text="Only one file per upload")
             await self.gateway.principal(request, target.endpoint_id)
+            if self.gateway.secret_resolver:
+                resolved = await self.gateway.secret_resolver(
+                    request, principal, target, "ssh"
+                )
+                if resolved.pop("__rmm_secret_id", ""):
+                    parameters = {
+                        k: v
+                        for k, v in parameters.items()
+                        if k
+                        not in {
+                            "username",
+                            "password",
+                            "domain",
+                            "private-key",
+                            "passphrase",
+                        }
+                    }
+                    parameters.update(resolved)
             correlation = uuid4()
             await self.gateway.audit(
                 principal,

@@ -23,11 +23,13 @@ from northgate_rmm.management_protocol import (
 )
 from northgate_rmm.management_store import QueueFull
 
-MAX_NATIVE_BODY = 1024 * 1024
+MAX_NATIVE_BODY = 2 * 1024 * 1024
 
 
 class NativeAPI:
-    def __init__(self, management, fleet, capture, inspection, registry):
+    def __init__(
+        self, management, fleet, capture, inspection, registry, *, operations=None
+    ):
         self.m, self.fleet, self.capture, self.inspection = (
             management,
             fleet,
@@ -35,6 +37,7 @@ class NativeAPI:
             inspection,
         )
         self.auth = IntegrationAuth(registry, management.gateway.key)
+        self.operations = operations
         self.setup = CaptureSetup(management)
         self.slots = asyncio.Semaphore(4)
         self.lock = asyncio.Lock()
@@ -70,6 +73,36 @@ class NativeAPI:
     def authorize_job(self, job):
         entry = self.auth.verify_job(job)
         self.endpoint(entry, job["endpoint"], job["action"])
+        self.authorize_case(
+            entry, job["endpoint"], job["action"], job["payload"]["params"]
+        )
+
+    def authorize_case(self, entry, endpoint, action, params):
+        if action not in {"tool.run", "tool.artifact.read"}:
+            return
+        case_id = params.get("case_id")
+        if not case_id:
+            if action == "tool.artifact.read":
+                raise web.HTTPForbidden(text="Artifact reads require a linked case")
+            return
+        if self.operations is None:
+            raise web.HTTPForbidden(
+                text="Case-linked tool use requires case permission"
+            )
+        from northgate_rmm.operations import IntegrationActor
+
+        actor = IntegrationActor(
+            "integration:" + entry["id"], "native-case-check", entry
+        )
+        record = self.operations.authorized_record(
+            actor, "case", case_id, "case.manage"
+        )
+        if str(endpoint) not in record["value"]["endpoints"]:
+            raise web.HTTPForbidden(text="Device is not linked to this case")
+        if record["value"]["status"] == "closed":
+            raise web.HTTPConflict(
+                text="Reopen the case before starting a tool operation"
+            )
 
     async def audit(self, entry, endpoint, action, correlation=None):
         await self.m.gateway.audit(
@@ -128,6 +161,12 @@ class NativeAPI:
             ) from None
 
     async def call(self, entry, operation, args):
+        if isinstance(operation, str) and operation.startswith("ops."):
+            if self.operations is None:
+                raise web.HTTPServiceUnavailable(
+                    text="Operations workspace is not configured"
+                )
+            return await self.operations.native_call(entry, operation[4:], args)
         if operation == "describe":
             if args:
                 raise ValueError("Unexpected arguments")
@@ -161,6 +200,61 @@ class NativeAPI:
         endpoint, device = await asyncio.to_thread(
             self.endpoint, entry, args.get("endpoint", "")
         )
+        if operation in {"tool_catalog", "install_tool"}:
+            from northgate_rmm.tool_catalog import ToolCatalog
+            from northgate_rmm.tool_catalog_models import (
+                BUILTIN,
+                PROFILES,
+                TOOLS,
+                manifest_bytes,
+            )
+
+            catalog = ToolCatalog(self.m)
+            entries = catalog.entries(
+                device.platform.value, getattr(device, "architecture", "amd64")
+            )
+            if operation == "tool_catalog":
+                await self.audit(entry, endpoint, "tool.catalog.read")
+                return {
+                    "tools": [
+                        {
+                            "id": name,
+                            "builtin": name in BUILTIN,
+                            "profiles": sorted(PROFILES[name]),
+                            "releases": [
+                                e["manifest"]
+                                for e in entries
+                                if e["manifest"]["id"] == name
+                            ],
+                        }
+                        for name, platforms in TOOLS.items()
+                        if device.platform.value in platforms
+                    ]
+                }
+            selected = next(
+                (
+                    e
+                    for e in entries
+                    if e["manifest"]["id"] == args["tool_id"]
+                    and e["manifest"]["version"] == args["version"]
+                ),
+                None,
+            )
+            if selected is None:
+                raise ValueError("Tool version is not in the approved catalog")
+            return await self.submit(
+                entry,
+                endpoint,
+                device,
+                "tool.install",
+                {
+                    "manifest": base64.b64encode(
+                        manifest_bytes(selected["manifest"])
+                    ).decode(),
+                    "signature": selected["signature"],
+                },
+                args["request_id"],
+            )
         if operation == "device":
             await self.audit(entry, endpoint, "device.read")
             rows = await asyncio.to_thread(self.fleet.inventory)
@@ -238,6 +332,8 @@ class NativeAPI:
                 "capture.install",
                 "update.install",
                 "script.run",
+                "tool.install",
+                "tool.update",
             }:
                 raise ValueError("Use the specific catalog operation")
             return await self.submit(
@@ -343,6 +439,7 @@ class NativeAPI:
         if not worker.get("ready") or worker.get("identity") != str(device.identity_id):
             raise web.HTTPConflict(text="Enrolled management worker is not ready")
         validate_action(action, params, device.platform.value)
+        await asyncio.to_thread(self.authorize_case, entry, endpoint, action, params)
         identifier = str(UUID(request_id))
         principal = self.auth.principal(entry, identifier)
         async with self.lock:

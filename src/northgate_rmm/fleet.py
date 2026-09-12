@@ -178,7 +178,13 @@ class Fleet:
     async def asset(self, request: web.Request) -> web.Response:
         await self.principal(request)
         name = request.match_info["name"]
-        if name not in {"fleet.js", "fleet.css"}:
+        if name not in {
+            "fleet.js",
+            "fleet.css",
+            "operations_ui.js",
+            "operations_ui.css",
+            "tool_catalog_ui.js",
+        }:
             raise web.HTTPNotFound()
         return web.Response(
             body=Path(__file__).with_name(name).read_bytes(),

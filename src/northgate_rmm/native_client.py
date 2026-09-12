@@ -54,8 +54,8 @@ class NativeClient:
         data = json.dumps(
             {"operation": operation, "arguments": arguments}, allow_nan=False
         ).encode()
-        if len(data) > 1024 * 1024:
-            raise ValueError("Native request exceeds 1 MiB")
+        if len(data) > 2 * 1024 * 1024:
+            raise ValueError("Native request exceeds 2 MiB")
         request = urllib.request.Request(  # noqa: S310 - exact HTTPS origin validated
             self.url,
             data=data,

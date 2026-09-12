@@ -26,11 +26,12 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from northgate_rmm.errors import AuthorizationError
 from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
 from northgate_rmm.remote_policy import RemoteLease, RemoteTarget, authorize_remote
+from northgate_rmm.remote_sessions import RemoteSessionStore
 from northgate_rmm.remote_workspace import UPLOAD_REQUEST_LIMIT, frame_response
 
 COOKIE = "__Secure-rmm-remote"
 RECHECK_SECONDS = 30
-MAX_LEASES = 8
+MAX_LEASES = 64
 MAX_BODY = 65536
 UPSTREAM = "http://127.0.0.1:8088"
 
@@ -54,6 +55,10 @@ class LeaseState:
     auth_data: str = ""
     auth_token: str = ""
     authorization: str = ""
+    method: str = ""
+    case_id: str = ""
+    outcome: str = "transport_closed"
+    secret_id: str = ""
 
 
 class RemoteGateway:
@@ -63,19 +68,35 @@ class RemoteGateway:
         targets: dict[UUID, tuple[RemoteTarget, dict[str, str]]],
         key: bytes,
         origin: str,
+        *,
+        receipt_store: RemoteSessionStore | None = None,
     ) -> None:
         if not origin.startswith("https://") or origin.endswith("/"):
             raise ValueError("remote origin must be an exact HTTPS origin")
         self.operation = operation
         self.targets = targets
+        self.methods = getattr(
+            targets,
+            "methods",
+            {
+                endpoint: {target.protocol: (target, params)}
+                for endpoint, (target, params) in targets.items()
+            },
+        )
+        self.receipt_store = receipt_store or RemoteSessionStore()
+        self.secret_resolver = None
+        self.secret_authorizer = None
+        self.legacy_credential_guard = None
+        self.case_authorizer = None
         self.key = key
         self.origin = origin
         self.leases: dict[str, LeaseState] = {}
-        self.forms: dict[str, tuple[str, str, UUID, datetime]] = {}
+        self.forms: dict[str, tuple] = {}
         self.client: ClientSession | None = None
         # The verifier admits four connections per workload identity. Leave room
         # for the operator service while browser assets arrive concurrently.
         self._verification_slots = asyncio.Semaphore(2)
+        self._start_lock = asyncio.Lock()
 
     async def principal(
         self,
@@ -152,11 +173,38 @@ class RemoteGateway:
     def purge(self) -> None:
         now = datetime.now(UTC)
         self.forms = {k: v for k, v in self.forms.items() if v[3] > now}
-        self.leases = {
-            k: v
-            for k, v in self.leases.items()
-            if v.lease.expires_at > now or v.websocket is not None
-        }
+        for key, state in tuple(self.leases.items()):
+            if state.lease.expires_at <= now and state.websocket is None:
+                self.receipt_store.update(
+                    state.lease.session_id,
+                    status="expired",
+                    outcome="authorization_expired",
+                )
+                self.leases.pop(key, None)
+
+    def method_target(self, endpoint, method):
+        try:
+            return self.methods[endpoint][method]
+        except KeyError:
+            raise web.HTTPNotFound(
+                text="This remote method is not configured for this enrollment"
+            ) from None
+
+    async def sessions(self, request):
+        try:
+            endpoint = UUID(request.match_info["endpoint"])
+        except ValueError:
+            raise web.HTTPNotFound() from None
+        await self.principal(request, endpoint, require_online=False)
+        self.purge()
+        target = self.targets[endpoint][0]
+        return web.json_response(
+            {
+                "methods": sorted(self.methods[endpoint]),
+                "sessions": self.receipt_store.list(endpoint, target.identity_id),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     async def desktop_file(self, request: web.Request) -> web.Response:
         try:
@@ -164,7 +212,10 @@ class RemoteGateway:
         except ValueError:
             raise web.HTTPNotFound() from None
         principal = await self.principal(request, endpoint_id)
-        target, parameters = self.targets[endpoint_id]
+        # Keep the existing native file on SSH-only Windows configurations.
+        target, parameters = self.methods[endpoint_id].get(
+            "rdp", self.targets[endpoint_id]
+        )
         username = parameters.get("username", "")
         domain = parameters.get("domain", "")
         if domain:
@@ -198,11 +249,35 @@ class RemoteGateway:
         )
 
     async def landing(self, request: web.Request) -> web.Response:
+        if request.method == "POST":
+            async with self._start_lock:
+                return await self._landing(request)
+        return await self._landing(request)
+
+    async def _landing(self, request: web.Request) -> web.Response:
         try:
             endpoint_id = UUID(request.match_info["endpoint"])
         except ValueError:
             raise web.HTTPNotFound() from None
         principal = await self.principal(request, endpoint_id)
+        method = (
+            "rdp"
+            if request.path.endswith("/desktop")
+            else self.targets[endpoint_id][0].protocol
+        )
+        target, parameters = self.method_target(endpoint_id, method)
+        label = (
+            "Browser desktop" if request.path.endswith("/desktop") else "SSH terminal"
+        )
+        case_id = request.query.get("case_id", "")
+        if case_id and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}", case_id):
+            raise web.HTTPBadRequest(text="Invalid case reference")
+        if case_id:
+            if self.case_authorizer is None:
+                raise web.HTTPForbidden(
+                    text="Case session authorization is unavailable"
+                )
+            await self.case_authorizer(principal, endpoint_id, case_id)
         self.purge()
         if request.method == "GET":
             if len(self.forms) >= 32:
@@ -213,6 +288,8 @@ class RemoteGateway:
                 principal.session_id,
                 endpoint_id,
                 datetime.now(UTC) + timedelta(minutes=5),
+                method,
+                case_id,
             )
             endpoint = await asyncio.to_thread(
                 self.operation._store.get_endpoint, endpoint_id
@@ -221,14 +298,14 @@ class RemoteGateway:
                 f'<a target="_top" href="/endpoints/{endpoint_id}">← Device profile</a>'
                 f"<h1>Connect to {escape(endpoint.display_name)}</h1>"
                 '<section class="panel"><div class="panel-heading"><div>'
-                "<h2>SSH terminal</h2><p>Start a terminal in your browser. "
+                f"<h2>{label}</h2><p>Start a connection in your browser. "
                 "Sessions end after one hour; "
                 "device and sign-in access are checked throughout.</p>"
                 "<p>Use Send a file in the remote workspace "
                 "to upload into NorthGateRMM-Ops.</p>"
-                f'<form method="post" action="/remote/{endpoint_id}">'
+                f'<form method="post" action="{escape(request.path)}">'
                 f'<input type="hidden" name="nonce" value="{nonce}">'
-                '<button class="button" type="submit">Connect SSH Terminal'
+                f'<button class="button" type="submit">Connect {label}'
                 "</button></form>"
                 '<form method="post" action="/remote/end">'
                 '<button class="button" type="submit">End current session</button>'
@@ -248,13 +325,45 @@ class RemoteGateway:
             raise web.HTTPForbidden()
         if claim[3] <= datetime.now(UTC):
             raise web.HTTPForbidden()
+        if claim[4] != method:
+            raise web.HTTPForbidden()
+        case_id = claim[5]
+        if case_id:
+            if self.case_authorizer is None:
+                raise web.HTTPForbidden(
+                    text="Case session authorization is unavailable"
+                )
+            await self.case_authorizer(principal, endpoint_id, case_id)
+        if request.cookies.get(COOKIE, "") in self.leases:
+            raise web.HTTPConflict(
+                text="End the current browser remote session before starting another"
+            )
         if len(self.leases) >= MAX_LEASES or any(
             state.lease.endpoint_id == endpoint_id for state in self.leases.values()
         ):
             raise web.HTTPConflict(
                 text="A remote session already exists; close it or wait for expiry"
             )
-        target, parameters = self.targets[endpoint_id]
+        parameters = dict(parameters)
+        secret_id = ""
+        if self.secret_resolver:
+            resolved = await self.secret_resolver(request, principal, target, method)
+            secret_id = resolved.pop("__rmm_secret_id", "")
+            if secret_id:
+                for field in (
+                    "username",
+                    "password",
+                    "domain",
+                    "private-key",
+                    "passphrase",
+                ):
+                    parameters.pop(field, None)
+            parameters.update(resolved)
+        principal = await self.principal(request, endpoint_id)
+        if secret_id and self.secret_authorizer:
+            await self.secret_authorizer(
+                request, endpoint_id, secret_id, principal=principal
+            )
         now = datetime.now(UTC)
         lease = RemoteLease(
             uuid4(),
@@ -281,21 +390,40 @@ class RemoteGateway:
             "disable-audio": "true",
             "enable-sftp": "false",
         }
+        if method == "rdp":
+            options.update(
+                {
+                    "security": parameters.get("security", "nla"),
+                    "ignore-cert": "false",
+                    "cert-tofu": "false",
+                    "disable-auth": "false",
+                }
+            )
+            if options["security"] not in {"nla", "nla-ext"}:
+                raise web.HTTPServiceUnavailable(text="Browser RDP requires NLA")
         data = encrypt_connection(
             self.key,
             {
                 "username": str(lease.session_id),
                 "expires": int((now + timedelta(seconds=60)).timestamp() * 1000),
                 "connections": {
-                    "SSH Terminal": {"protocol": target.protocol, "parameters": options}
+                    (
+                        "Browser Desktop"
+                        if request.path.endswith("/desktop")
+                        else "SSH Terminal"
+                    ): {"protocol": target.protocol, "parameters": options}
                 },
             },
         )
         cookie = secrets.token_urlsafe(32)
+        self.receipt_store.create(lease, method, case_id)
         self.leases[cookie] = LeaseState(
             lease,
             auth_data=data,
             authorization=request.headers.get("Authorization", ""),
+            method=method,
+            case_id=case_id,
+            secret_id=secret_id,
         )
         response = web.HTTPFound("/guacamole/?" + urlencode({"data": data}))
         response.set_cookie(
@@ -324,12 +452,26 @@ class RemoteGateway:
         try:
             state.lease.check(
                 principal,
-                self.targets[state.lease.endpoint_id][0],
+                self.method_target(state.lease.endpoint_id, state.method)[0]
+                if state.method
+                else self.targets[state.lease.endpoint_id][0],
                 now=datetime.now(UTC),
             )
         except AuthorizationError:
             raise web.HTTPForbidden() from None
         state.authorization = authorization or request.headers.get("Authorization", "")
+        if state.case_id:
+            if self.case_authorizer is None:
+                raise web.HTTPForbidden()
+            await self.case_authorizer(
+                principal, state.lease.endpoint_id, state.case_id
+            )
+        if state.secret_id:
+            if self.secret_authorizer is None:
+                raise web.HTTPForbidden()
+            await self.secret_authorizer(
+                request, state.lease.endpoint_id, state.secret_id, principal=principal
+            )
         return state, principal
 
     async def keepalive(self, request: web.Request) -> web.Response:
@@ -362,6 +504,14 @@ class RemoteGateway:
             raise web.HTTPForbidden()
         if self.client is None:
             raise web.HTTPServiceUnavailable()
+        if request.path.rstrip("/").endswith("/parameters"):
+            raise web.HTTPForbidden(text="Connection credentials are managed by RMM")
+        # HTTP polling tunnels have no owned stream to close on lease revocation.
+        # Require the guarded WebSocket transport for both SSH and RDP.
+        if request.path.rstrip("/").endswith("/tunnel"):
+            raise web.HTTPForbidden(
+                text="This gateway requires WebSocket remote transport"
+            )
         if len(request.query.getall("token", [])) > 1:
             raise web.HTTPForbidden()
         tokens = [
@@ -468,9 +618,16 @@ class RemoteGateway:
             state.lease.session_id,
         )
         self.leases.pop(request.cookies.get(COOKIE, ""), None)
+        state.outcome = "operator_disconnected"
+        self.receipt_store.update(
+            state.lease.session_id, status="closed", outcome=state.outcome
+        )
         if state.websocket is not None:
             await state.websocket.close()
-        response = web.HTTPFound(f"/remote/{state.lease.endpoint_id}")
+        response = web.HTTPFound(
+            f"/remote/{state.lease.endpoint_id}"
+            + ("/desktop" if state.method == "rdp" else "")
+        )
         response.del_cookie(COOKIE, path="/")
         raise response
 
@@ -484,6 +641,7 @@ class RemoteGateway:
         )
         # Reserve before awaiting to prevent two simultaneous desktop streams.
         state.websocket = browser
+        state.outcome = "connection_failed"
         tasks: list[asyncio.Task[None]] = []
         try:
             async with self.client.ws_connect(
@@ -498,6 +656,12 @@ class RemoteGateway:
                     state.lease.session_id,
                 )
                 await browser.prepare(request)
+                state.outcome = "transport_closed"
+                self.receipt_store.update(
+                    state.lease.session_id,
+                    status="connected",
+                    outcome="transport_connected",
+                )
 
                 async def forward(source, destination) -> None:
                     async for message in source:
@@ -511,9 +675,13 @@ class RemoteGateway:
                 async def guard() -> None:
                     while True:
                         await asyncio.sleep(RECHECK_SECONDS)
-                        await self.checked_lease(
-                            request, authorization=state.authorization
-                        )
+                        try:
+                            await self.checked_lease(
+                                request, authorization=state.authorization
+                            )
+                        except Exception:
+                            state.outcome = "authorization_expired"
+                            raise
 
                 tasks = [
                     asyncio.create_task(forward(browser, upstream)),
@@ -527,6 +695,9 @@ class RemoteGateway:
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
             await browser.close()
+            self.receipt_store.update(
+                state.lease.session_id, status="closed", outcome=state.outcome
+            )
             self.leases.pop(request.cookies.get(COOKIE, ""), None)
             with suppress(Exception):
                 await self.audit(
@@ -545,6 +716,9 @@ class RemoteGateway:
         app.router.add_get("/remote/keepalive", self.keepalive)
         app.router.add_get("/remote/session.js", self.session_script)
         app.router.add_get("/remote/{endpoint}/desktop.rdp", self.desktop_file)
+        app.router.add_get("/remote/{endpoint}/desktop", self.landing)
+        app.router.add_post("/remote/{endpoint}/desktop", self.landing)
+        app.router.add_get("/remote/{endpoint}/sessions", self.sessions)
         app.router.add_get("/remote/{endpoint}", self.landing)
         app.router.add_post("/remote/{endpoint}", self.landing)
         app.router.add_route("*", "/guacamole/{tail:.*}", self.proxy)
@@ -556,6 +730,9 @@ class RemoteGateway:
 
         async def stop(app: web.Application) -> None:
             for state in tuple(self.leases.values()):
+                self.receipt_store.update(
+                    state.lease.session_id, status="closed", outcome="gateway_stopped"
+                )
                 if state.websocket is not None:
                     await state.websocket.close()
             if self.client is not None:

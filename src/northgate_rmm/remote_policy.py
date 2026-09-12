@@ -16,6 +16,76 @@ from northgate_rmm.errors import AuthorizationError, ValidationError
 from northgate_rmm.operator_api import OperatorAuthorizationPolicy, OperatorPrincipal
 
 
+class RemoteTargets(dict):
+    """Primary targets remain compatible; methods hold explicitly enrolled services."""
+
+    def __init__(self, methods):
+        self.methods = methods
+        super().__init__(
+            (endpoint, choices.get("ssh", next(iter(choices.values()))))
+            for endpoint, choices in methods.items()
+        )
+
+
+def parse_remote_targets(value):
+    if not isinstance(value, list) or not 1 <= len(value) <= 8192:
+        raise ValueError("invalid remote targets")
+    methods = {}
+    allowed = {
+        "username",
+        "password",
+        "domain",
+        "security",
+        "cert-fingerprints",
+        "server-layout",
+        "resize-method",
+        "color-depth",
+        "private-key",
+        "host-key",
+    }
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {
+            "endpoint_id",
+            "identity_id",
+            "address",
+            "protocol",
+            "port",
+            "parameters",
+        }:
+            raise ValueError("invalid remote target fields")
+        target = RemoteTarget(
+            UUID(item["endpoint_id"]),
+            UUID(item["identity_id"]),
+            item["address"],
+            item["protocol"],
+            item["port"],
+        )
+        parameters = item["parameters"]
+        if (
+            not isinstance(parameters, dict)
+            or not set(parameters) <= allowed
+            or any(type(v) is not str or len(v) > 8192 for v in parameters.values())
+        ):
+            raise ValueError("invalid remote parameters")
+        if target.protocol == "rdp" and parameters.get("security", "nla") not in {
+            "nla",
+            "nla-ext",
+        }:
+            raise ValueError("browser RDP requires Network Level Authentication")
+        choices = methods.setdefault(target.endpoint_id, {})
+        if target.protocol in choices:
+            raise ValueError("duplicate remote method")
+        if any(
+            (other.identity_id, other.address) != (target.identity_id, target.address)
+            for other, _ in choices.values()
+        ):
+            raise ValueError(
+                "remote methods must belong to the same enrollment and host"
+            )
+        choices[target.protocol] = (target, dict(parameters))
+    return RemoteTargets(methods)
+
+
 @dataclass(frozen=True, slots=True)
 class RemoteTarget:
     endpoint_id: UUID

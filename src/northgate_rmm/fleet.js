@@ -32,6 +32,12 @@
     lastRefresh: 0,
   };
   const pages = {
+    cases: ["Cases", "Investigate security events and resolve IT issues with retained evidence.", "SOC & IT"],
+    infrastructure: ["Infrastructure", "Assets, services, networks and their verified relationships.", "OPERATIONAL CONTEXT"],
+    knowledge: ["Knowledge & changes", "Versioned procedures, planned changes and verified outcomes.", "SHARED KNOWLEDGE"],
+    tools: ["Tool catalog", "Install and run approved tools on demand for the selected device.", "ENDPOINT CAPABILITIES"],
+    runbooks: ["Service runbooks", "Approved recurring work under a scoped service identity.", "AUTOMATION"],
+    secrets: ["Access & secrets", "Use protected credentials and track access and recovery.", "CONTROLLED ACCESS"],
     overview: [
       "Overview",
       "Your devices, outstanding work and operational health.",
@@ -211,7 +217,9 @@
       $("refresh-state").textContent = "Updated just now";
       $("session-status").textContent =
         `Session expires ${when(state.data.session_expires)} · Local display times`;
-      if (
+      if (window.NorthGateOps?.active()) {
+        window.NorthGateOps.updateDevices(devices());
+      } else if (
         !document.querySelector("dialog[open]") &&
         !document.activeElement?.matches("input,textarea,select")
       )
@@ -239,6 +247,7 @@
   }
   function render() {
     if (!state.data) return;
+    if (window.NorthGateOps?.active()) window.NorthGateOps.unmount();
     const [title, description, eyebrow] = pages[state.page];
     $("page-title").textContent = title;
     $("crumb").textContent = title;
@@ -252,6 +261,14 @@
     $("nav-alerts").textContent = records("alert").filter(
       (a) => !["resolved", "snoozed"].includes(a.value.state),
     ).length;
+    if (["cases", "infrastructure", "knowledge", "tools", "runbooks", "secrets"].includes(state.page)) {
+      $("metrics").replaceChildren();
+      $("page-actions").replaceChildren();
+      window.NorthGateOps?.mount($("page-content"), {
+        page: state.page, devices: devices(), openDevice, notify, fleetAPI: api,
+      });
+      return;
+    }
     $("page-actions").innerHTML =
       state.page === "devices"
         ? button("Export inventory", "export-devices")
@@ -538,7 +555,8 @@
       ],
       state.alertFilter,
     )}</select><span class="subtle">Alerts resolve automatically when the observed condition clears.</span></div>`;
-    return panel(
+    const security = `<div class="banner"><strong>Security alerts and SOC cases</strong><span>Wazuh detections and automatically linked investigations are in Security alert intake.</span>${button("Open security intake", "navigate", "cases", "small primary")}</div>`;
+    return security + panel(
       "Alert inbox",
       `${list.length} alerts`,
       tabs +
@@ -1121,10 +1139,12 @@
       `${d.platform} · ${d.architecture} · ${d.health}`;
     const tabs = [
       ["overview", "Overview"],
-      ...(d.permissions.includes("manage") ? [["manage", "System tools"]] : []),
+      ...(d.permissions.includes("manage") ? [["manage", "System tools"], ["tool-catalog", "Installable tools"]] : []),
       ...(d.permissions.includes("remote")
         ? [
             ["workspace", "SSH & files"],
+            ...(d.platform === "windows" ? [["desktop", "Desktop"]] : []),
+            ["secrets", "Access & secrets"],
             ["capture", "Network capture"],
             ["inspect", "Inventory & diagnostics"],
           ]
@@ -1152,6 +1172,8 @@
       ["Worker version", d.capabilities.version || "Not installed"],
       ["Capture version", d.capabilities.versions?.wxlfgar || "Not reported"],
     ];
+    deviceToolCleanup?.();
+    deviceToolCleanup = null;
     $("device-body").innerHTML =
       `<section id="pane-overview" role="tabpanel" aria-labelledby="tab-overview"><div class="split">${panel("Device details", "", `<div class="panel-body"><dl class="facts">${facts.map(([k, v]) => `<dt>${h(k)}</dt><dd>${h(v)}</dd>`).join("")}</dl></div>`)}${panel("Baseline & context", "Snapshot compares reported versions and feature readiness.", `<div class="panel-body"><p class="subtle">${d.baseline ? `Saved ${h(when(d.baseline))}` : "No baseline saved yet"}</p>${d.changes.length ? `<pre class="code">${h(JSON.stringify(d.changes, null, 2))}</pre>` : "<p>No observed changes against a saved baseline.</p>"}<div class="actions">${d.permissions.includes("manage") ? button("Save current baseline", "baseline", d.id, "small") : ""}${state.data.admin ? button("Edit device details", "edit-device", d.id, "small") : ""}</div><p class="section-note">${h(d.metadata.notes || "")}</p></div>`)}</div><div class="actions"><a class="button" href="/endpoints/${h(d.id)}">Open full device record</a>${d.platform === "windows" && d.permissions.includes("remote") ? `<a class="button" href="/remote/${h(d.id)}/desktop.rdp">Download RDP connection</a>` : ""}</div></section>` +
       tabs
@@ -1177,10 +1199,14 @@
           pane.innerHTML = `<div class="device-remote-grid"><section class="panel"><div class="panel-header"><div><h2>SSH terminal</h2><p>Connect using this device's saved SSH key.</p></div><a class="button small" target="_blank" rel="noopener" href="/remote/${h(d.id)}">Open separately</a></div><iframe title="SSH terminal — ${h(d.name)}" src="/remote/${h(d.id)}"></iframe></section><section class="panel"><div class="panel-header"><div><h2>Files & saved access</h2><p>Transfers go to NorthGateRMM-Ops.</p></div></div><iframe title="Files and saved access — ${h(d.name)}" src="/remote/${h(d.id)}/tools"></iframe></section></div>`;
         }
         if (selected && name === "workspace") pane.querySelectorAll("iframe").forEach(bindToolTheme);
-        if (selected && !["overview", "inspect", "workspace"].includes(name) && !pane.querySelector("iframe")) {
+        if (selected && name === "tool-catalog" && !pane.dataset.toolsMounted) {
+          pane.dataset.toolsMounted = "true";
+          mountDeviceTools(pane, d);
+        }
+        if (selected && !["overview", "inspect", "workspace", "tool-catalog"].includes(name) && !pane.querySelector("iframe")) {
           const iframe = document.createElement("iframe");
           iframe.title = label + " — " + d.name;
-          iframe.src = `/remote/${d.id}/${name}`;
+          iframe.src = `/remote/${d.id}/${name === "secrets" ? "secrets/ui" : name}`;
           bindToolTheme(iframe);
           pane.append(iframe);
         }
@@ -1568,8 +1594,20 @@
       button.disabled = false;
     }
   });
+  let deviceToolCleanup = null;
+  async function mountDeviceTools(pane, device) {
+    try {
+      await window.NorthGateOps.loadTools();
+      if (pane.isConnected && $("device-dialog").open)
+        deviceToolCleanup = window.NorthGateTools.mount(pane, device.id);
+    } catch (error) { if (pane.isConnected) pane.textContent = error.message; }
+  }
   $("device-dialog").addEventListener("close", () => {
-    if (!$("device-dialog").open) $("device-body").replaceChildren();
+    if (!$("device-dialog").open) {
+      deviceToolCleanup?.();
+      deviceToolCleanup = null;
+      $("device-body").replaceChildren();
+    }
   });
   $("refresh").addEventListener("click", () => refresh(true));
   $("menu-toggle").addEventListener("click", () => {

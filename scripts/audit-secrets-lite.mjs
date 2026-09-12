@@ -9,8 +9,10 @@ const ignoredDirectories = new Set([
   ".ruff_cache",
   ".tools",
   ".venv",
+  "__pycache__",
   "node_modules",
   "artifacts",
+  "work",
 ]);
 const ignoredFiles = new Set(["package-lock.json"]);
 const findings = [];

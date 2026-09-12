@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sources": [{
+    "id": "northgate-wazuh",
+    "enabled": true,
+    "token_sha256": "REPLACE_WITH_SHA256_OF_DEDICATED_BEARER",
+    "source_ref": "Wazuh-Machine:/var/ossec/logs/alerts/alerts.json",
+    "agents": {},
+    "detections": {
+      "110101": {"id":"PM-WIN-PS-001","version":"1.0.0","severity":"high","attack":["T1059.001"],"context_fields":["win.eventdata.newProcessName","win.eventdata.commandLine"],"checklist":["Confirm the user and parent process","Decode the command without executing it","Review network and child-process activity","Determine whether the activity was approved"]},
+      "110111": {"id":"PM-WIN-SVC-001","version":"1.0.0","severity":"high","attack":["T1543.003"],"context_fields":["win.eventdata.serviceName","win.eventdata.serviceFileName","win.eventdata.accountName"],"checklist":["Validate the service name and binary path","Check signature and file origin","Identify the installing account and parent activity","Remove only after authorization and evidence capture"]},
+      "110121": {"id":"PM-WIN-DEF-001","version":"1.0.0","severity":"critical","attack":["T1562.001"],"context_fields":["win.eventdata.subjectUserName","win.eventdata.newProcessName","win.eventdata.commandLine"],"checklist":["Confirm the initiating identity and authorization","Check current Defender preferences and protection state","Review adjacent process and PowerShell events","Restore protection through an approved action if changed"]},
+      "110131": {"id":"PM-LNX-PRIV-001","version":"1.0.0","severity":"high","attack":["T1548.003"],"context_fields":["srcuser","dstuser","command","tty","pwd"],"checklist":["Confirm the initiating user and sudo policy","Review the exact command and working directory","Check shell history and child activity","Determine whether the action was approved"]}
+    },
+    "case_policies": [{
+      "id": "project-mati-soc-v1",
+      "enabled": true,
+      "rule_ids": ["110101", "110111", "110121", "110131"],
+      "minimum_level": 10,
+      "group_by": ["endpoint", "detection_id"],
+      "window_seconds": 3600,
+      "closed_behavior": "new_case",
+      "owner": "SOC",
+      "team": "SOC",
+      "tags": ["automatic", "wazuh"]
+    }]
+  }]
+}

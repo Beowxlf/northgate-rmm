@@ -262,6 +262,22 @@ def test_soc_resolution_requires_classification_and_containment(rig: Any) -> Non
     assert resolved["value"]["resolution_code"] == "no_action"
 
 
+def test_operations_snapshot_reuses_one_database_connection(rig: Any) -> None:
+    save(rig, name="Connection test case")
+    original = rig.store.connection
+    connections = 0
+
+    def counted(*args: Any, **kwargs: Any) -> Any:
+        nonlocal connections
+        connections += 1
+        return original(*args, **kwargs)
+
+    rig.store.connection = counted
+    state = rig.ops.snapshot(rig.actors["owner"])
+    assert len(state["cases"]) == 1
+    assert connections == 1
+
+
 def save(
     rig: Any,
     kind: str = "case",

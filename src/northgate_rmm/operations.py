@@ -276,15 +276,19 @@ class Operations:
             "exercise": "exercises",
             "alert": "alerts",
         }
-        for kind, label in plural.items():
-            rows = []
-            for record in self.store.records(kind):
-                try:
-                    record = self.authorized_record(p, kind, record["id"])
-                except (web.HTTPForbidden, KeyError):
-                    continue
-                rows.append(record)
-            result[label] = rows
+        # Reuse one consistent read transaction. Opening a new PostgreSQL
+        # connection for every scoped record made larger alert queues needlessly
+        # slow without changing any authorization decision.
+        with self.store.connection() as db:
+            for kind, label in plural.items():
+                visible = []
+                for record in self.store.records(kind, db=db):
+                    try:
+                        record = self.authorized_record(p, kind, record["id"], db=db)
+                    except (web.HTTPForbidden, KeyError):
+                        continue
+                    visible.append(record)
+                result[label] = visible
         cases = result["cases"]
         now = time.time()
 

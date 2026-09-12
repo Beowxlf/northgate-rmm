@@ -197,16 +197,18 @@ class OperationsStore:
             raise KeyError("Record not found")
         return self.decode(row)
 
-    def records(self, kind: str, limit: int = 2000) -> Any:
-        with self.connection() as db:
-            return [
-                self.decode(r)
-                for r in db.execute(
-                    "SELECT * FROM ops_records WHERE kind=? "
-                    "ORDER BY updated DESC,id LIMIT ?",
-                    (kind, limit),
-                ).fetchall()
-            ]
+    def records(self, kind: str, limit: int = 2000, db: Any = None) -> Any:
+        if db is None:
+            with self.connection() as connection:
+                return self.records(kind, limit, connection)
+        return [
+            self.decode(r)
+            for r in db.execute(
+                "SELECT * FROM ops_records WHERE kind=? "
+                "ORDER BY updated DESC,id LIMIT ?",
+                (kind, limit),
+            ).fetchall()
+        ]
 
     def put(
         self,

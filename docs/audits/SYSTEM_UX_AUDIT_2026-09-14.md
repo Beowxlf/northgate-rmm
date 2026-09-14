@@ -65,6 +65,16 @@ Deployed server package: `1.2.0+lab.20260914`, wheel SHA-256
 `5a1be94f146b40c8092758d12b3626919336213520dbf9c4ba2ca623d0d15f26`.
 No new agent binary was needed for these server-side fixes.
 
+Git publication: draft [PR 36](https://github.com/Beowxlf/northgate-rmm/pull/36).
+The current implementation and guides are published on the audit branch; they
+have not been merged into `main`. CI on commit `3965726` passed Debian 12 systemd
+qualification and release-candidate trust qualification. Repository security
+stopped at strict typing (1,330 diagnostics in CI; the local environment reports
+1,358). Governance/workflow validation itself passed, but that workflow stopped
+at the three synthetic secret-fixture matches described below. Later security
+and documentation checks in those workflows were not reached. These are open
+merge gates, not successful CI results.
+
 The lightweight secret scan found only generated cache copies and explicit
 synthetic security fixtures (a header without a private key, repeated-number
 recovery test value and named synthetic password). Credential values, DPAPI

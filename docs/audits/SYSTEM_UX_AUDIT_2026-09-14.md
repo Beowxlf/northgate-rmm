@@ -26,6 +26,7 @@ source/deployment drift, repository documentation, and native credential custody
 | Infrastructure documentation in the RMM is largely unpopulated | Live scope contains 2 assets and no service, network or relationship records. These workflows exist, but their data population is incomplete. |
 | Automated credential/recovery policy is not configured fleet-wide | All 16 workers report credential rotation unavailable and no managed recovery account. The 16 vault-backed lab logins are separate from managed recovery/rotation policy; they must not be presented as equivalent coverage. |
 | Windows Go vet is not clean | Two unsafe-pointer diagnostics remain in the native account-query code in `credential_rotation_windows.go`. Rotation is unavailable in the observed fleet configuration; review and qualify this path before enabling it. The passing Go tests do not clear these diagnostics. |
+| High-severity development dependency advisory | Pinned `smol-toml` to 1.7.1 through an npm override and regenerated the lockfile. npm audit reports zero known vulnerabilities; malformed TOML now rejects without hanging. [Upstream advisory](https://github.com/advisories/GHSA-7w5x-hrqm-74c2). The default-branch alert remains open until the fix is merged there. |
 
 ## Verification
 

@@ -7,7 +7,19 @@ from typing import Any
 from uuid import UUID
 
 PERMISSIONS = frozenset(
-    {"view", "remote", "manage", "patch", "recovery", "fleet_admin"}
+    {
+        "view",
+        "remote",
+        "manage",
+        "patch",
+        "recovery",
+        "fleet_admin",
+        "ops.view",
+        "case.manage",
+        "infrastructure.manage",
+        "evidence.manage",
+        "automation.manage",
+    }
 )
 
 
@@ -68,11 +80,14 @@ def load_grants(value: Any) -> tuple[OperatorGrant, ...]:
 
 
 def action_permission(action: str) -> str:
-    if action in {"recovery.rotate", "bitlocker.escrow"}:
+    if action in {"recovery.rotate", "bitlocker.escrow", "credential.rotate"}:
         return "recovery"
-    if (
-        action.startswith(("patches.", "package.", "update."))
-        or action in {"prerequisites.install", "capture.install"}
-    ):
+    if action.startswith(("patches.", "package.", "update.")) or action in {
+        "prerequisites.install",
+        "capture.install",
+        "tool.install",
+        "tool.update",
+        "tool.remove",
+    }:
         return "patch"
     return "manage"

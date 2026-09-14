@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-var Version = "1.1.0-lab.2"
+var Version = "1.2.0-lab.4"
 
 const MaxResult = 32 * 1024 * 1024
 const MaxFile = 16 * 1024 * 1024
@@ -35,17 +35,18 @@ const MaxOutput = 512 * 1024
 var ID = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
 
 type Config struct {
-	Endpoint     string `json:"endpoint_id"`
-	Identity     string `json:"identity_id"`
-	Signing      string `json:"signing_key"`
-	Escrow       string `json:"escrow_key"`
-	UpdateKey    string `json:"update_key"`
-	UpdateSigner string `json:"update_signer"`
-	Server       string `json:"server_url"`
-	ServerIP     string `json:"server_ip"`
-	Roots        string `json:"server_roots"`
-	IdentityFile string `json:"identity_file"`
-	Root         string `json:"state_directory"`
+	Endpoint          string             `json:"endpoint_id"`
+	Identity          string             `json:"identity_id"`
+	Signing           string             `json:"signing_key"`
+	Escrow            string             `json:"escrow_key"`
+	UpdateKey         string             `json:"update_key"`
+	UpdateSigner      string             `json:"update_signer"`
+	Server            string             `json:"server_url"`
+	ServerIP          string             `json:"server_ip"`
+	Roots             string             `json:"server_roots"`
+	IdentityFile      string             `json:"identity_file"`
+	Root              string             `json:"state_directory"`
+	CredentialAccount *CredentialAccount `json:"credential_account,omitempty"`
 }
 type Job struct {
 	ID       string                     `json:"id"`
@@ -82,15 +83,16 @@ type Control struct {
 	Input  []Input `json:"input"`
 }
 type Response struct {
-	Schema   int                 `json:"schema"`
-	Endpoint string              `json:"endpoint"`
-	Identity string              `json:"identity"`
-	Nonce    string              `json:"nonce"`
-	Expires  int64               `json:"expires"`
-	Job      *Job                `json:"job"`
-	Controls []Control           `json:"controls"`
-	Acks     []string            `json:"acks"`
-	FrameAck [][]json.RawMessage `json:"frame_ack"`
+	Schema        int                 `json:"schema"`
+	Endpoint      string              `json:"endpoint"`
+	Identity      string              `json:"identity"`
+	Nonce         string              `json:"nonce"`
+	Expires       int64               `json:"expires"`
+	Job           *Job                `json:"job"`
+	DiagnosticJob *Job                `json:"diagnostic_job,omitempty"`
+	Controls      []Control           `json:"controls"`
+	Acks          []string            `json:"acks"`
+	FrameAck      [][]json.RawMessage `json:"frame_ack"`
 }
 type Receipt struct {
 	Job    string            `json:"job"`
@@ -221,10 +223,15 @@ func verify(c Config, env Envelope, nonce string) (Response, error) {
 	if response.Schema != 1 || response.Endpoint != c.Endpoint || response.Identity != c.Identity || response.Nonce != nonce || response.Expires < now || response.Expires > now+40 {
 		return response, errors.New("expired or mismatched response")
 	}
-	if j := response.Job; j != nil {
-		if !ID.MatchString(j.ID) || j.Endpoint != c.Endpoint || j.Identity != c.Identity || j.Subject == "" || j.Session == "" || j.Expires < float64(now) || j.Expires > float64(now+901) {
-			return response, errors.New("invalid job binding")
+	for _, j := range []*Job{response.Job, response.DiagnosticJob} {
+		if j != nil {
+			if !ID.MatchString(j.ID) || j.Endpoint != c.Endpoint || j.Identity != c.Identity || j.Subject == "" || j.Session == "" || j.Expires < float64(now) || j.Expires > float64(now+901) {
+				return response, errors.New("invalid job binding")
+			}
 		}
+	}
+	if response.DiagnosticJob != nil && !diagnosticJob(*response.DiagnosticJob) {
+		return response, errors.New("action is not permitted in diagnostic lane")
 	}
 	return response, nil
 }

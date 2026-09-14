@@ -159,7 +159,18 @@ def test_workspace_credentials_and_upload_authorization(monkeypatch):
 
 
 @pytest.mark.parametrize("platform", ["windows", "linux"])
-def test_upload_transport_preserves_binary_data(monkeypatch, tmp_path, platform):
+@pytest.mark.parametrize(
+    "algorithm",
+    [
+        "ssh-ed25519",
+        "ecdsa-sha2-nistp256",
+        "ecdsa-sha2-nistp384",
+        "ecdsa-sha2-nistp521",
+    ],
+)
+def test_upload_transport_preserves_binary_data(
+    monkeypatch, tmp_path, platform, algorithm
+):
     import json
 
     from northgate_rmm.remote_workspace import send_upload
@@ -210,7 +221,7 @@ def test_upload_transport_preserves_binary_data(monkeypatch, tmp_path, platform)
     parameters = {
         "username": "rmmremote",
         "private-key": "synthetic-key",
-        "host-key": "10.20.30.40 ssh-ed25519 synthetic-pin",
+        "host-key": f"10.20.30.40 {algorithm} synthetic-pin",
     }
     result = asyncio.run(
         send_upload(TARGET, parameters, platform, source, name, digest)
@@ -220,6 +231,7 @@ def test_upload_transport_preserves_binary_data(monkeypatch, tmp_path, platform)
     assert len(writes) == 1
     assert commands[0][0] == "/usr/bin/sftp"
     assert commands[1][0] == "/usr/bin/ssh"
+    assert "HostKeyAlgorithms=" + algorithm in commands[1]
     assert str(source).encode() in batches[0]
     assert (".upload-" + name).encode() in batches[0]
     assert payload not in batches[0]

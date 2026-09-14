@@ -1,3 +1,4 @@
+# Historical canary bootstrap. Use install-linux-browser-desktop.py for existing enrolled lab accounts.
 set -euo pipefail
 test "$(hostname)" = ng-rmm-can01
 test ! -d /root/rmm-remote-bootstrap

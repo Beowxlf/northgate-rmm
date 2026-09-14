@@ -11,6 +11,7 @@ import base64
 import os
 import re
 import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -63,12 +64,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "signature": base64.b64encode(key.sign(payload)).decode("ascii"),
                 }
             )
-            temporary = destination / (fingerprint + ".pending")
-            with temporary.open("xb") as output:
-                output.write(record)
-                output.flush()
-                os.fsync(output.fileno())
-            os.replace(temporary, destination / (fingerprint + ".json"))
+            # An interrupted publisher must not reserve the next run's filename.
+            # Keep the previous signed assertion intact until its replacement is
+            # fully written, and remove only this invocation's temporary file.
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="wb",
+                    dir=destination,
+                    prefix=fingerprint + ".",
+                    suffix=".pending",
+                    delete=False,
+                ) as output:
+                    temporary = Path(output.name)
+                    output.write(record)
+                    output.flush()
+                    os.fchmod(output.fileno(), 0o644)
+                    os.fsync(output.fileno())
+                os.replace(temporary, destination / (fingerprint + ".json"))
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
         descriptor = os.open(destination, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(descriptor)

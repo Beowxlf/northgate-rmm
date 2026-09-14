@@ -1,5 +1,11 @@
 # Private lab remote access
 
+For the September 13 Linux rollout, use
+[Linux browser desktop](LINUX-BROWSER-DESKTOP.md). It adds a Desktop tab for
+configured Linux endpoints, with xrdp/XFCE and saved OpenBao credentials. The
+older native-desktop bootstrap below is historical; it is not the current Linux
+browser installation procedure.
+
 Open an online endpoint's detail page and select:
 
 - **Open Remote Desktop**: download and open a standard `.rdp` file in the native

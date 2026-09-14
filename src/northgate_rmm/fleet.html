@@ -6,6 +6,8 @@
     <meta name="color-scheme" content="light dark" />
     <title>Operations workspace · NorthGate</title>
     <link rel="stylesheet" href="/remote/fleet/assets/fleet.css" />
+    <link rel="stylesheet" href="/remote/fleet/assets/operations_ui.css" />
+    <script src="/remote/fleet/assets/operations_ui.js" defer></script>
     <script src="/remote/fleet/assets/fleet.js" defer></script>
   </head>
   <body>
@@ -30,7 +32,12 @@
           ><span aria-hidden="true">◇</span> Alerts
           <span id="nav-alerts" class="nav-count">—</span></a
         >
+        <a href="#cases" data-page="cases"><span aria-hidden="true">▤</span> Cases</a>
+        <a href="#infrastructure" data-page="infrastructure"><span aria-hidden="true">⌘</span> Infrastructure</a>
+        <a href="#knowledge" data-page="knowledge"><span aria-hidden="true">▥</span> Knowledge & changes</a>
         <div class="nav-caption">MANAGE</div>
+        <a href="#tools" data-page="tools"><span aria-hidden="true">⚒</span> Tool catalog</a>
+        <a href="#runbooks" data-page="runbooks"><span aria-hidden="true">↻</span> Service runbooks</a>
         <a href="#groups" data-page="groups"
           ><span aria-hidden="true">▦</span> Device groups</a
         >
@@ -47,6 +54,7 @@
           ><span aria-hidden="true">▤</span> Activity</a
         >
         <div class="nav-caption">ASSURANCE</div>
+        <a href="#secrets" data-page="secrets"><span aria-hidden="true">⚿</span> Access & secrets</a>
         <a href="#recovery" data-page="recovery"
           ><span aria-hidden="true">◈</span> Recovery</a
         >

@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "url": "https://operator.rmm.internal/remote/ops/intake/wazuh",
+  "connect_address": "10.10.150.22",
+  "token_file": "/etc/northgate-rmm-intake/bearer",
+  "ca_file": "/etc/northgate-rmm-intake/server-ca.pem",
+  "queue_file": "/var/lib/northgate-rmm-intake/queue.sqlite3",
+  "minimum_level": 3,
+  "agents": {}
+}

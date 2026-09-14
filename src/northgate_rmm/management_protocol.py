@@ -22,6 +22,13 @@ MAX_FILE = 15 * 1024 * 1024
 MAX_OUTPUT = 512 * 1024
 TERMINAL = frozenset({"completed", "failed", "cancelled", "expired", "result_unknown"})
 ACTIONS = {
+    "tool.list": (),
+    "tool.verify": ("tool_id",),
+    "tool.install": ("manifest", "signature"),
+    "tool.update": ("manifest", "signature"),
+    "tool.run": ("tool_id", "profile", "inputs", "case_id"),
+    "tool.remove": ("tool_id",),
+    "tool.artifact.read": ("artifact_id", "offset", "size", "case_id"),
     "capture.install": ("url", "sha256", "signature", "version", "public_key"),
     "capabilities": (),
     "prerequisites.install": (),
@@ -44,13 +51,22 @@ ACTIONS = {
     "encryption.status": (),
     "bitlocker.escrow": (),
     "recovery.rotate": ("hours",),
+    "credential.rotate": (
+        "rotation_id",
+        "phase",
+        "username",
+        "account_sid",
+        "protocol",
+        "expected_version",
+        "candidate",
+    ),
     "isolation.start": ("seconds",),
     "isolation.release": (),
     "script.run": ("script_id", "version", "inputs"),
     "shell.start": ("columns", "rows"),
     "update.install": ("component", "url", "sha256", "signature", "version"),
 }
-SECRET_ACTIONS = frozenset({"bitlocker.escrow", "recovery.rotate"})
+SECRET_ACTIONS = frozenset({"bitlocker.escrow", "recovery.rotate", "credential.rotate"})
 
 
 def canonical(value: Any) -> bytes:
@@ -129,6 +145,10 @@ def validate_action(action: Any, params: Any, platform: str) -> dict[str, Any]:
         raise ValueError("Unsupported operation or parameters")
     if platform not in {"windows", "linux"}:
         raise ValueError("Unsupported platform")
+    if action.startswith("tool."):
+        from northgate_rmm.tool_catalog_models import validate_tool_action
+
+        validate_tool_action(action, params, platform)
     if action == "bitlocker.escrow" and platform != "windows":
         raise ValueError("BitLocker requires Windows")
     if len(canonical(params)) > MAX_RESULT:
@@ -144,6 +164,29 @@ def validate_action(action: Any, params: Any, platform: str) -> dict[str, Any]:
     def integer(name: str, low: int, high: int) -> None:
         if type(params.get(name)) is not int or not low <= params[name] <= high:
             raise ValueError("Invalid " + name)
+
+    if action == "credential.rotate":
+        if (
+            platform != "windows"
+            or str(UUID(params["rotation_id"])) != params["rotation_id"]
+            or params["phase"] not in {"apply", "check"}
+            or params["username"] != "rmmremote"
+            or params["protocol"] != "rdp"
+            or not isinstance(params["account_sid"], str)
+            or not re.fullmatch(
+                r"S-1-5-21-[0-9]{1,10}-[0-9]{1,10}-[0-9]{1,10}-[1-9][0-9]{3,9}",
+                params["account_sid"],
+            )
+        ):
+            raise ValueError("Unsupported managed credential account")
+        integer("expected_version", 1, 2147483647)
+        if (
+            not isinstance(params["candidate"], str)
+            or not 60
+            <= len(base64.b64decode(params["candidate"], validate=True))
+            <= 2048
+        ):
+            raise ValueError("Invalid encrypted candidate")
 
     if action.startswith("files."):
         path = params["path"]

@@ -37,6 +37,9 @@ type Worker struct {
 	inventory                map[string]any
 	jobsAccepted             int
 	connection               pollClient
+	diagnostic               *Job
+	diagnosticCancel         context.CancelFunc
+	diagnosticLease          time.Time
 }
 
 func saveJSON(path string, value any) error {
@@ -163,10 +166,13 @@ func Run(ctx context.Context, path string) error {
 	}()
 	defer func() {
 		w.mu.Lock()
-		cancel, term := w.cancel, w.terminal
+		cancel, term, diagnosticCancel := w.cancel, w.terminal, w.diagnosticCancel
 		w.mu.Unlock()
 		if cancel != nil {
 			cancel()
+		}
+		if diagnosticCancel != nil {
+			diagnosticCancel()
 		}
 		if term != nil {
 			term.Close()
@@ -178,6 +184,7 @@ func Run(ctx context.Context, path string) error {
 			return nil
 		case <-ticker.C:
 		}
+		sampleHealth(cfg)
 		_ = w.poll(ctx) // No credentials, decrypted receipts or remote output in service logs.
 	}
 }
@@ -185,6 +192,8 @@ func (w *Worker) expireLease() {
 	w.mu.Lock()
 	expired := w.job != nil && time.Now().After(w.lease)
 	cancel, term := w.cancel, w.terminal
+	diagnosticExpired := w.diagnostic != nil && time.Now().After(w.diagnosticLease)
+	diagnosticCancel := w.diagnosticCancel
 	w.mu.Unlock()
 	if expired {
 		if cancel != nil {
@@ -193,6 +202,9 @@ func (w *Worker) expireLease() {
 		if term != nil {
 			term.Close()
 		}
+	}
+	if diagnosticExpired && diagnosticCancel != nil {
+		diagnosticCancel()
 	}
 }
 func (w *Worker) poll(ctx context.Context) error {
@@ -223,6 +235,11 @@ func (w *Worker) poll(ctx context.Context) error {
 	}
 	frames := append([]Frame{}, w.frames[:min(len(w.frames), 32)]...)
 	request := map[string]any{"nonce": nonce, "receipts": receipts, "active": active, "input_ack": w.inputAck, "frames": frames, "capabilities": w.inventory}
+	if w.diagnostic != nil {
+		request["diagnostic_active"] = w.diagnostic.ID
+	} else {
+		request["diagnostic_active"] = ""
+	}
 	w.mu.Unlock()
 	body, e := json.Marshal(request)
 	if e != nil {
@@ -297,6 +314,18 @@ func (w *Worker) poll(ctx context.Context) error {
 		w.frames = kept
 	}
 	for _, control := range response.Controls {
+		if w.diagnostic != nil && w.diagnostic.ID == control.Job {
+			if control.Cancel {
+				w.diagnosticCancel()
+				continue
+			}
+			deadline := time.UnixMilli(int64(control.Lease * 1000))
+			if deadline.After(time.Now().Add(46 * time.Second)) {
+				return errors.New("excessive diagnostic lease")
+			}
+			w.diagnosticLease = deadline
+			continue
+		}
 		if w.job == nil || w.job.ID != control.Job {
 			continue
 		}
@@ -346,7 +375,7 @@ func (w *Worker) poll(ctx context.Context) error {
 			w.inputAck = input.Sequence
 		}
 	}
-	if response.Job != nil && w.job == nil {
+	if response.Job != nil && w.job == nil && (w.diagnostic == nil || response.Job.Action == "shell.start") {
 		job := *response.Job
 		if e = validateJob(job, w.cfg); e != nil {
 			return e
@@ -364,6 +393,27 @@ func (w *Worker) poll(ctx context.Context) error {
 		w.lease = time.Now().Add(45 * time.Second)
 		w.outputSequence = 0
 		w.inputAck = 0
+		go w.execute(jobCtx, job)
+	}
+	if response.DiagnosticJob != nil && w.diagnostic == nil && (w.job == nil || w.job.Action == "shell.start") {
+		job := *response.DiagnosticJob
+		if !diagnosticJob(job) {
+			return errors.New("invalid diagnostic action")
+		}
+		if e = validateJob(job, w.cfg); e != nil {
+			return e
+		}
+		if w.jobsAccepted >= 10000 {
+			return errors.New("worker ledger full")
+		}
+		if e = saveJSON(filepath.Join(w.cfg.Root, "jobs", job.ID), map[string]string{"id": job.ID, "state": "accepted"}); e != nil {
+			return e
+		}
+		jobCtx, cancel := context.WithDeadline(ctx, time.UnixMilli(int64(job.Expires*1000)))
+		w.jobsAccepted++
+		w.diagnostic = &job
+		w.diagnosticCancel = cancel
+		w.diagnosticLease = time.Now().Add(45 * time.Second)
 		go w.execute(jobCtx, job)
 	}
 	return nil
@@ -401,6 +451,14 @@ func (w *Worker) execute(ctx context.Context, job Job) {
 		return
 	} // Remain occupied; restarting reconciles the durable acceptance marker.
 	w.inventory = inventory
+	if w.diagnostic != nil && w.diagnostic.ID == job.ID {
+		if w.diagnosticCancel != nil {
+			w.diagnosticCancel()
+		}
+		w.diagnostic = nil
+		w.diagnosticCancel = nil
+		return
+	}
 	if w.cancel != nil {
 		w.cancel()
 	}
@@ -447,5 +505,10 @@ func (w *Worker) runTerminal(ctx context.Context, job Job) Result {
 	return result
 }
 func capabilities(c Config) map[string]any {
-	return map[string]any{"version": Version, "platform": runtime.GOOS, "execution_identity": executionIdentity(), "privileged": true, "boot_id": bootID(), "features": platformCapabilities(), "capture_installed": captureInstalled(), "recovery_account": recoveryAccountStatus(c), "versions": map[string]string{"worker": Version, "agent": installedVersion("agent"), "wxlfgar": installedVersion("wxlfgar")}}
+	features := platformCapabilities()
+	features["diagnostic_lane"] = true
+	features["tool_catalog"] = true
+	features["health_history"] = true
+	features["credential_rotation"] = credentialRotationCapabilities(c)
+	return map[string]any{"version": Version, "platform": runtime.GOOS, "execution_identity": executionIdentity(), "privileged": true, "boot_id": bootID(), "features": features, "capture_installed": captureInstalled(), "recovery_account": recoveryAccountStatus(c), "versions": map[string]string{"worker": Version, "agent": installedVersion("agent"), "wxlfgar": installedVersion("wxlfgar")}}
 }

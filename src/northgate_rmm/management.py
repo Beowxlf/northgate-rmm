@@ -40,6 +40,20 @@ from northgate_rmm.remote_workspace import frame_response
 RECOVERY_ROLE = "recovery_operator"
 
 
+def diagnostic_action(action: str, params: dict[str, Any]) -> bool:
+    """Only bounded read operations may run alongside an interactive terminal."""
+    if action in {"tool.list", "tool.verify", "tool.artifact.read"}:
+        return True
+    profiles = {
+        "health": {"snapshot", "history", "changes"},
+        "connectivity": {"dns", "tcp", "tls"},
+        "osquery": {"system", "processes", "users", "listening", "startup"},
+    }
+    return action == "tool.run" and params.get("profile") in profiles.get(
+        params.get("tool_id"), set()
+    )
+
+
 class Management:
     def __init__(self, gateway: RemoteGateway, store: ManagementStore) -> None:
         self.gateway, self.store = gateway, store
@@ -146,12 +160,20 @@ class Management:
         value = await self.body(request)
         self.csrf(request, p, endpoint, value.get("csrf"))
         operation = value.get("action")
+        if operation == "credential.rotate":
+            raise web.HTTPBadRequest(
+                text="Use Secrets to rotate a managed account credential"
+            )
         if operation == "capture.install":
             raise web.HTTPBadRequest(
                 text="Use Network capture to install its approved package"
             )
         if not isinstance(operation, str):
             raise web.HTTPBadRequest(text="Invalid operation")
+        if operation.startswith("tool."):
+            raise web.HTTPBadRequest(
+                text="Use Installable tools for catalog operations"
+            )
         try:
             if operation == "cancel":
                 j = self.store.job(str(UUID(value["job"])))
@@ -314,7 +336,7 @@ class Management:
             raise web.HTTPNotFound() from None
         if (
             j["endpoint"] != str(endpoint)
-            or j["action"] not in SECRET_ACTIONS
+            or j["action"] not in {"bitlocker.escrow", "recovery.rotate"}
             or j["state"] != "completed"
         ):
             raise web.HTTPNotFound()
@@ -437,12 +459,16 @@ class Management:
         from northgate_rmm.integration_auth import PREFIX
 
         if j["payload"]["authorization"].startswith(PREFIX):
+            if j["action"] in SECRET_ACTIONS:
+                raise ValueError(
+                    "Native integrations cannot authorize credential operations"
+                )
             if self.integration is None:
                 raise ValueError("Native integration is disabled")
             await asyncio.to_thread(self.integration.authorize_job, j)
             return
 
-        def check() -> None:
+        def check() -> Any:
             now = datetime.now(UTC)
             p = self.gateway.operation._authenticate(
                 j["payload"]["authorization"], now=now, correlation_id=uuid4()
@@ -471,9 +497,21 @@ class Management:
             )
             if j["action"] in SECRET_ACTIONS and RECOVERY_ROLE not in p.roles:
                 raise ValueError("Recovery role revoked")
+            return p
 
         async with self.gateway._verification_slots:
-            await asyncio.to_thread(check)
+            principal = await asyncio.to_thread(check)
+        if j["action"] == "credential.rotate":
+            authorizer = getattr(self.gateway, "credential_rotation_authorizer", None)
+            if authorizer is None:
+                raise ValueError("Credential rotation authorization unavailable")
+            await authorizer(principal, j)
+        case_id = j["payload"]["params"].get("case_id", "")
+        if j["action"] in {"tool.run", "tool.artifact.read"} and case_id:
+            authorizer = getattr(self.gateway, "case_authorizer", None)
+            if authorizer is None:
+                raise ValueError("Case authorization unavailable")
+            await authorizer(principal, UUID(j["endpoint"]), case_id)
 
     def worker_application(self) -> web.Application:
         app = web.Application(client_max_size=MAX_RESULT + 65536)
@@ -562,8 +600,32 @@ class Management:
                     )
                 controls = []
                 job = None
+                diagnostic_job = None
                 active = v.get("active", "")
-                for j in self.store.pending(peer.endpoint_id, identity.identity_id):
+                diagnostic_active = v.get("diagnostic_active", "")
+                for active_id in (active, diagnostic_active):
+                    if active_id and (
+                        not isinstance(active_id, str)
+                        or str(UUID(active_id)) != active_id
+                    ):
+                        raise ValueError("Invalid active job")
+                if active and active == diagnostic_active:
+                    raise ValueError("A job cannot occupy both worker lanes")
+                capabilities = v.get("capabilities", {})
+                features = (
+                    capabilities.get("features", {})
+                    if isinstance(capabilities, dict)
+                    else {}
+                )
+                diagnostic_enabled = (
+                    isinstance(features, dict)
+                    and features.get("diagnostic_lane") is True
+                )
+                pending = self.store.pending(peer.endpoint_id, identity.identity_id)
+                main_action = next(
+                    (j["action"] for j in pending if j["id"] == active), None
+                )
+                for j in pending:
                     allowed = True
                     try:
                         await self.authorize_job(j)
@@ -576,15 +638,32 @@ class Management:
                         allowed = False
                     if not allowed:
                         self.store.cancel(j["id"])
-                    if (
-                        j["state"] == "queued"
-                        and allowed
-                        and not j["cancel"]
+                    queued = j["state"] == "queued" and allowed and not j["cancel"]
+                    eligible_diagnostic = diagnostic_action(
+                        j["action"], j["payload"]["params"]
+                    )
+                    dispatch_diagnostic = (
+                        queued
+                        and diagnostic_enabled
+                        and eligible_diagnostic
+                        and not diagnostic_active
+                        and diagnostic_job is None
+                        and (not active or main_action == "shell.start")
+                        and (job is None or job["action"] == "shell.start")
+                    )
+                    dispatch_main = (
+                        queued
+                        and not dispatch_diagnostic
                         and not active
                         and job is None
-                    ):
+                        and (
+                            (not diagnostic_active and diagnostic_job is None)
+                            or j["action"] == "shell.start"
+                        )
+                    )
+                    if dispatch_diagnostic or dispatch_main:
                         if self.store.dispatch(j["id"]):
-                            job = {
+                            dispatched = {
                                 k: j[k]
                                 for k in (
                                     "id",
@@ -597,11 +676,22 @@ class Management:
                                     "exercise",
                                 )
                             }
-                            job["params"] = j["payload"]["params"]
-                    elif j["id"] == active:
+                            dispatched["params"] = j["payload"]["params"]
+                            if dispatch_diagnostic:
+                                diagnostic_job = dispatched
+                            else:
+                                job = dispatched
+                    elif j["id"] in {active, diagnostic_active}:
+                        wrong_lane = j["id"] == diagnostic_active and (
+                            not diagnostic_enabled
+                            or not eligible_diagnostic
+                            or (active and main_action != "shell.start")
+                        )
                         control = {
                             "job": j["id"],
-                            "cancel": bool(j["cancel"]) or not allowed,
+                            "cancel": bool(j["cancel"])
+                            or not allowed
+                            or bool(wrong_lane),
                             "lease": min(time.time() + 45, j["expires"]),
                         }
                         if j["action"] == "shell.start":
@@ -613,6 +703,12 @@ class Management:
                         controls.append(control)
                 if active and not any(c["job"] == active for c in controls):
                     controls.append({"job": active, "cancel": True, "lease": 0})
+                if diagnostic_active and not any(
+                    c["job"] == diagnostic_active for c in controls
+                ):
+                    controls.append(
+                        {"job": diagnostic_active, "cancel": True, "lease": 0}
+                    )
                 body = {
                     "schema": 1,
                     "endpoint": str(peer.endpoint_id),
@@ -624,6 +720,8 @@ class Management:
                     "acks": acks,
                     "frame_ack": [(f["job"], f["sequence"]) for f in frames],
                 }
+                if diagnostic_enabled:
+                    body["diagnostic_job"] = diagnostic_job
                 return web.json_response(
                     sign(self.gateway.key, body), headers=self.headers()
                 )
@@ -653,7 +751,8 @@ class Management:
             "actions": {
                 name: fields
                 for name, fields in ACTIONS.items()
-                if name != "capture.install"
+                if name not in {"capture.install", "credential.rotate"}
+                and not name.startswith("tool.")
                 and self.gateway.operation._policy.permits(
                     p.subject, endpoint, action_permission(name)
                 )

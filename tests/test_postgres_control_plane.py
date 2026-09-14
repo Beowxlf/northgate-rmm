@@ -1350,7 +1350,9 @@ def test_database_dump_and_isolated_restore_preserve_revocation(
     restore_dsn = _replace_database(postgres_dsn, restore_database)
     with psycopg.connect(admin_dsn, autocommit=True) as connection:
         connection.execute(
-            sql.SQL("CREATE DATABASE {}").format(sql.Identifier(restore_database))
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0 ENCODING 'UTF8'").format(
+                sql.Identifier(restore_database)
+            )
         )
     try:
         # Same bounded local-tool invocation against the isolated restore database.

@@ -1,17 +1,14 @@
-# Modern workspace source candidate â€” 2026-09-08
+# Modern workspace
 
-Status: reviewed source; local regression/browser fixture review completed on
-2026-09-09. PostgreSQL/Linux integration and live deployment remain unqualified.
-The owner requested code completion first and testing afterward. This candidate
-does not change the running lab, identity-provider settings or endpoint software.
+The workspace is deployed in the NorthGate lab. The [2026-09-14 audit](audits/SYSTEM_UX_AUDIT_2026-09-14.md) records current qualification, findings and remaining acceptance work. Earlier dated review notes below are historical evidence, not current deployment status.
 
 ## Implemented capability
 
-| Area | Behavior in this candidate |
+| Area | Behavior |
 | --- | --- |
 | Workspace | Responsive CRM-style navigation, light/dark themes, overview, loading and stale-data states, keyboard-accessible dialogs and device tabs |
 | Inventory | Search, sort, pagination, filters, private saved views, multi-select, JSON export, site/owner/tags/criticality/notes |
-| Device workspace | Integrated tabs for existing SYSTEM/root management, SSH and NorthGateRMM-Ops file transfer, capture and inspection; Windows RDP download |
+| Device workspace | Integrated tabs for existing SYSTEM/root management, SSH and NorthGateRMM-Ops file transfer, capture and inspection; native RDP downloads for configured Windows/Linux desktops |
 | Organization | Nested device groups; group targeting includes descendants; dependency and cycle validation |
 | Policies | Validated Windows/Linux actions and parameters, UTC maintenance windows, canary count, concurrency, failure threshold and promotion review |
 | Rollouts | Explicit target preview, exclusions, enrollment identity pinning, idempotent start/dispatch, pause/resume/cancel, queue-pressure waiting, outcomes |

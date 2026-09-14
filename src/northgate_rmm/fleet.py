@@ -178,7 +178,13 @@ class Fleet:
     async def asset(self, request: web.Request) -> web.Response:
         await self.principal(request)
         name = request.match_info["name"]
-        if name not in {"fleet.js", "fleet.css"}:
+        if name not in {
+            "fleet.js",
+            "fleet.css",
+            "operations_ui.js",
+            "operations_ui.css",
+            "tool_catalog_ui.js",
+        }:
             raise web.HTTPNotFound()
         return web.Response(
             body=Path(__file__).with_name(name).read_bytes(),
@@ -284,6 +290,13 @@ class Fleet:
                     "worker_ready": bool(bound and worker.get("ready")),
                     "worker_seen": worker.get("last_seen"),
                     "managed": endpoint.endpoint_id in self.gateway.targets,
+                    "remote_methods": sorted(
+                        name
+                        for name, (target, _) in getattr(self.gateway, "methods", {})
+                        .get(endpoint.endpoint_id, {})
+                        .items()
+                        if target.identity_id == endpoint.identity_id
+                    ),
                     "capabilities": capabilities,
                     "metadata": meta,
                     "metadata_revision": asset_records.get(key, {}).get("revision", 0),

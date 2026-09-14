@@ -1,6 +1,7 @@
 """Native service identity, dispatch, revocation and scope regression coverage."""
 
 import asyncio
+import base64
 import hashlib
 import json
 from types import SimpleNamespace
@@ -17,6 +18,39 @@ from northgate_rmm.management import Management
 from northgate_rmm.management_store import ManagementStore
 from northgate_rmm.native_api import NativeAPI
 from northgate_rmm.native_client import NativeClient, NoRedirect
+
+
+@pytest.mark.parametrize(
+    "platform,expected", [("windows", b"whoami\r"), ("linux", b"whoami\n")]
+)
+def test_native_terminal_newline_submits_on_each_platform(tmp_path, platform, expected):
+    async def scenario():
+        f = fixture(tmp_path)
+        f.device.platform.value = platform
+        identifier = str(uuid4())
+        await f.api.submit(
+            f.entry,
+            f.endpoint,
+            f.device,
+            "shell.start",
+            {"columns": 80, "rows": 24},
+            identifier,
+        )
+        f.api.m.store.dispatch(identifier)
+        await f.api.call(
+            f.entry,
+            "terminal_io",
+            {
+                "endpoint": str(f.endpoint),
+                "job": identifier,
+                "text": "whoami\n",
+                "sequence": 1,
+            },
+        )
+        frames = f.api.m.store.frames(identifier, "in", 0)
+        assert base64.b64decode(frames[0]["value"]["data"]) == expected
+
+    asyncio.run(scenario())
 
 
 def fixture(tmp_path):
@@ -96,6 +130,58 @@ def fixture(tmp_path):
         device=device,
         status=status,
     )
+
+
+@pytest.mark.parametrize("action", ["tool.run", "tool.artifact.read"])
+def test_case_scope_rechecked_before_submit_and_worker_dispatch(tmp_path, action):
+    f = fixture(tmp_path)
+    f.entry["actions"] += [action, "ops.view", "case.manage"]
+    f.save()
+    case_id = str(uuid4())
+    value = {"endpoints": [str(f.endpoint)], "status": "in_progress"}
+    checks = []
+
+    def authorized_record(actor, kind, identifier, permission):
+        assert actor.subject == "integration:test"
+        assert (kind, identifier, permission) == ("case", case_id, "case.manage")
+        checks.append(identifier)
+        return {"value": value}
+
+    f.api.operations = SimpleNamespace(authorized_record=authorized_record)
+    params = (
+        {"tool_id": "health", "profile": "history", "inputs": {}, "case_id": case_id}
+        if action == "tool.run"
+        else {
+            "artifact_id": str(uuid4()),
+            "offset": 0,
+            "size": 4096,
+            "case_id": case_id,
+        }
+    )
+    value["status"] = "closed"
+    with pytest.raises(web.HTTPConflict):
+        asyncio.run(
+            f.api.submit(f.entry, f.endpoint, f.device, action, params, str(uuid4()))
+        )
+    value["status"] = "in_progress"
+    identifier = str(uuid4())
+    asyncio.run(f.api.submit(f.entry, f.endpoint, f.device, action, params, identifier))
+    job = f.api.m.store.job(identifier, private=True)
+    f.api.authorize_job(job)
+    value["status"] = "closed"
+    with pytest.raises(web.HTTPConflict):
+        f.api.authorize_job(job)
+    value["status"] = "in_progress"
+    value["endpoints"] = []
+    with pytest.raises(web.HTTPForbidden):
+        f.api.authorize_job(job)
+    assert len(checks) == 5
+
+
+def test_native_artifact_read_without_case_is_denied(tmp_path):
+    f = fixture(tmp_path)
+    with pytest.raises(web.HTTPForbidden):
+        f.api.authorize_case(f.entry, f.endpoint, "tool.artifact.read", {})
 
 
 def test_native_dispatch_idempotency_and_audit(tmp_path):

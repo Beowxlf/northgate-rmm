@@ -21,6 +21,7 @@ import (
 )
 
 var actions = map[string][]string{
+	"tool.list": {}, "tool.verify": {"tool_id"}, "tool.install": {"manifest", "signature"}, "tool.update": {"manifest", "signature"}, "tool.run": {"tool_id", "profile", "inputs", "case_id"}, "tool.remove": {"tool_id"}, "tool.artifact.read": {"artifact_id", "offset", "size", "case_id"},
 	"capture.install": {"url", "sha256", "signature", "version", "public_key"},
 	"capabilities":    {}, "prerequisites.install": {}, "posture": {}, "services.list": {}, "service.control": {"name", "operation"},
 	"processes.list": {}, "process.stop": {"pid", "start_token"}, "files.list": {"path"}, "files.read": {"path"},
@@ -28,7 +29,8 @@ var actions = map[string][]string{
 	"reboot.status": {}, "reboot": {"delay"}, "packages.list": {}, "package.install": {"name"}, "package.remove": {"name"},
 	"patches.scan": {}, "patches.install": {}, "encryption.status": {}, "bitlocker.escrow": {},
 	"recovery.rotate": {"hours"}, "isolation.start": {"seconds"}, "isolation.release": {},
-	"script.run": {"script_id", "version", "inputs", "content"}, "shell.start": {"columns", "rows"},
+	"credential.rotate": {"rotation_id", "phase", "username", "account_sid", "protocol", "expected_version", "candidate"},
+	"script.run":        {"script_id", "version", "inputs", "content"}, "shell.start": {"columns", "rows"},
 	"update.install": {"component", "url", "sha256", "signature", "version"},
 }
 
@@ -44,6 +46,12 @@ func validateJob(j Job, c Config) error {
 		if _, ok = j.Params[k]; !ok {
 			return errors.New("missing job input")
 		}
+	}
+	if strings.HasPrefix(j.Action, "tool.") {
+		return validateToolJob(j, c)
+	}
+	if j.Action == "credential.rotate" {
+		return validateCredentialJob(j, c)
 	}
 	checkInt := func(key string, low, high int) bool {
 		var v int
@@ -174,6 +182,12 @@ func executeJob(ctx context.Context, j Job, c Config) Result {
 		r.Error = e.Error()
 		return r
 	}
+	if strings.HasPrefix(j.Action, "tool.") {
+		return executeTool(ctx, j, c)
+	}
+	if j.Action == "credential.rotate" {
+		return executeCredentialRotation(ctx, j, c)
+	}
 	if j.Action == "capabilities" {
 		b, _ := json.Marshal(capabilities(c))
 		return Result{State: "completed", Exit: 0, Output: string(b), Identity: executionIdentity()}
@@ -225,7 +239,11 @@ func executeJob(ctx context.Context, j Job, c Config) Result {
 		}
 		return runCommand(ctx, cmd, MaxOutput)
 	}
-	return platformAction(ctx, j, c)
+	result := platformAction(ctx, j, c)
+	if result.State == "completed" && (j.Action == "services.list" || j.Action == "packages.list" || j.Action == "posture") {
+		recordToolObservation(j.Action, result.Output)
+	}
+	return result
 }
 func fileAction(j Job) ([]byte, error) {
 	path := text(j, "path")

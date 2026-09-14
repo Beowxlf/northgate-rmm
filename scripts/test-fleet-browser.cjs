@@ -68,16 +68,21 @@ const state = {
       viewport: { width: 1440, height: 1000 },
     });
     const page = await context.newPage();
+    await page.clock.install();
     page.on("pageerror", (error) => errors.push(error.message));
-    let failSecondAsset = false,
+    let fleetPolls = 0, failSecondAsset = false,
       assetSaves = 0;
     const inspectionCollected = new Set(["services"]), inspectionBaselines = new Set();
     let inspectionFailure = false;
     await page.route("https://operator.test/**", async (route) => {
       const request = route.request(),
         url = new URL(request.url());
-      if (url.pathname === "/remote/fleet/api/state")
+      if (url.pathname === "/remote/fleet/api/state") {
+        fleetPolls++;
         return route.fulfill({ json: state });
+      }
+      if (url.pathname === "/remote/ops/api/state")
+        return route.fulfill({json:{cases:[],assets:[],services:[],networks:[],relationships:[],documents:[],changes:[],exercises:[],alerts:[],csrf:"fixture",capabilities:{"ops.view":true,"case.manage":true,"infrastructure.manage":true,"evidence.manage":true}}});
       if (/^\/remote\/[^/]+\/inspect$/.test(url.pathname)) {
         const category = url.searchParams.get("category") || "services";
         if (inspectionFailure) {inspectionFailure = false;return route.fulfill({status:403,body:"Forbidden"});}
@@ -137,7 +142,7 @@ const state = {
         url.pathname === "/remote/fleet/ui"
           ? "fleet.html"
           : url.pathname.split("/").pop();
-      if (["fleet.html", "fleet.js", "fleet.css"].includes(name))
+      if (["fleet.html", "fleet.js", "fleet.css", "operations_ui.js", "operations_ui.css", "tool_catalog_ui.js"].includes(name))
         return route.fulfill({
           body: fs.readFileSync(path.join(root, name)),
           contentType: name.endsWith(".js")
@@ -251,6 +256,20 @@ const state = {
     if (await page.locator("#device-dialog").evaluate(e=>e.scrollWidth>e.clientWidth+1)) throw Error("Native device workspace horizontal overflow");
     await page.setViewportSize({width:1440,height:1000});
     await page.locator("#device-dialog .close-dialog").click();
+    await page.locator('[data-page="cases"]').click();
+    await page.getByRole("button",{name:"New case",exact:true}).waitFor();
+    const originalOpsRoot=await page.locator("#page-content .ops-tabs").elementHandle();
+    await page.getByRole("button",{name:"New case",exact:true}).click();
+    await page.locator('dialog.ops-dialog [name="name"]').fill("Unsaved periodic refresh check");
+    const previousPolls=fleetPolls;
+    const periodicResponse=page.waitForResponse(response=>response.url().endsWith("/remote/fleet/api/state"));
+    await page.clock.fastForward(31000);
+    await periodicResponse;
+    if(fleetPolls<=previousPolls)throw Error("Periodic fleet refresh did not execute");
+    if(!await page.locator("#page-content .ops-tabs").evaluate((node,old)=>node===old,originalOpsRoot))throw Error("Periodic fleet refresh remounted operations page");
+    if(await page.locator('dialog.ops-dialog [name="name"]').inputValue()!=="Unsaved periodic refresh check")throw Error("Periodic fleet refresh lost operations draft");
+    await page.locator('dialog.ops-dialog [data-close]').first().click();
+    await page.locator('[data-page="devices"]').click();
     await page.locator("#theme").click();
     await page.screenshot({
       path: path.join(output, "RMM-review-desktop.png"),

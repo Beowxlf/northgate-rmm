@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "northgate-rmm"
-version = "0.1.0.dev0"
-description = "Private Linux and Windows endpoint monitoring"
+version = "1.2.0+lab.20260914"
+description = "Private Windows and Linux endpoint management and SOC/IT case workspace"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 northgate-rmm-native = "northgate_rmm.native_client:main"
 northgate-rmm-mcp = "northgate_rmm.rmm_mcp:main"
+northgate-rmm-operations-backup = "northgate_rmm.operations_backup:main"
 northgate-rmm-issuer-service = "northgate_rmm.issuer_service:main"
 northgate-rmm-oidc-service = "northgate_rmm.oidc_bridge:main"
 northgate-rmm-audit-service = "northgate_rmm.audit_sink:main"
@@ -41,7 +42,7 @@ mcp = ["mcp==1.30.0"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-northgate_rmm = ["migrations/*.sql", "*.ps1", "*.js", "fleet.html", "fleet.css", "management.html", "remote_tools.css", "management*.css", "management*.LICENSE", "management*.json"]
+northgate_rmm = ["migrations/*.sql", "*.ps1", "*.js", "*.html", "*.css", "management*.LICENSE", "management*.json"]
 
 [tool.ruff]
 target-version = "py311"

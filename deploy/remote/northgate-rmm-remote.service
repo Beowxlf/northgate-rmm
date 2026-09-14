@@ -1,0 +1,35 @@
+[Unit]
+Description=NorthGate RMM private remote desktop authorization gateway
+After=network-online.target northgate-rmm-oidc.service docker.service
+Requires=northgate-rmm-oidc.service
+
+[Service]
+User=northgate-rmm-operator
+Group=northgate-rmm-operator
+LoadCredential=server-key:/etc/northgate-rmm/secrets/material/operator-key.pem
+LoadCredential=database-dsn:/etc/northgate-rmm/secrets/operator-database-dsn
+LoadCredential=verifier-client-cert:/etc/northgate-rmm/secrets/material/operator-client-chain.pem
+LoadCredential=verifier-client-key:/etc/northgate-rmm/secrets/material/operator-client-key.pem
+LoadCredential=remote-credentials:/etc/northgate-rmm/secrets/remote-credentials.aes
+LoadCredential=remote-key:/etc/northgate-rmm/secrets/remote-json-key
+LoadCredential=remote-targets:/etc/northgate-rmm/secrets/remote-targets.json
+ExecStart=/opt/northgate-rmm/venv/bin/python -m northgate_rmm.remote_service --operator-config /etc/northgate-rmm/remote-operator-service.json --key %d/remote-key --targets %d/remote-targets --origin https://operator.rmm.internal --credentials %d/remote-credentials
+Restart=on-failure
+RestartSec=5
+UMask=0077
+StateDirectory=northgate-rmm-remote
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=384M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

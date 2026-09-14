@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestCreateFixtureProducesLoadablePrivateIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Stat() error = %v", err)
 	}
-	if got := info.Mode().Perm(); got != 0o600 {
+	if got := info.Mode().Perm(); runtime.GOOS == "linux" && got != 0o600 {
 		t.Fatalf("identity mode = %o, want 600", got)
 	}
 }

@@ -21,7 +21,18 @@ case "$action" in
 esac
 
 if [ -d /run/systemd/system ]; then
-  for service in operator enrollment agent; do
+  for workload in audit-export certificate-status backup retention; do
+    for suffix in service timer; do
+      if systemctl is-active --quiet "northgate-rmm-${workload}.${suffix}"; then
+        echo "stop operational workloads before package changes" >&2
+        exit 60
+      fi
+    done
+  done
+fi
+
+if [ -d /run/systemd/system ]; then
+  for service in audit oidc issuer operator enrollment agent; do
     unit="northgate-rmm-${service}.service"
     if [ "$service" = "agent" ]; then
       unit=northgate-rmm-agent-ingress.service
@@ -32,7 +43,7 @@ if [ -d /run/systemd/system ]; then
     fi
   done
   if [ "$action" = "remove" ]; then
-    for service in operator enrollment agent; do
+    for service in audit oidc issuer operator enrollment agent; do
       unit="northgate-rmm-${service}.service"
       if [ "$service" = "agent" ]; then
         unit=northgate-rmm-agent-ingress.service

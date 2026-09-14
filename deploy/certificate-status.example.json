@@ -1,0 +1,5 @@
+{
+  "registry": "/run/credentials/northgate-rmm-certificate-status.service/registry",
+  "private_key": "/run/credentials/northgate-rmm-certificate-status.service/signing-key",
+  "output_directory": "/var/lib/northgate-rmm-status"
+}

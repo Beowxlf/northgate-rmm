@@ -1,140 +1,91 @@
 # NorthGate RMM
 
-This workspace begins a security-first, cross-platform remote monitoring and
-management (RMM) software project.
+NorthGate RMM is a deployed private-lab platform for Windows and Linux endpoint
+management, SOC/IT cases, infrastructure records, and protected remote access.
+It is a lab product, not a claim of enterprise certification or unrestricted
+production readiness.
 
-The first objective is not to reproduce every feature in TacticalRMM. It is to
-learn the problem deeply and build one trustworthy vertical slice:
+## Current capabilities
 
-1. enroll one Linux test endpoint;
-2. give it a durable cryptographic identity;
-3. collect read-only inventory and health data;
-4. display whether the endpoint is healthy, stale, or offline;
-5. revoke its access; and
-6. preserve an audit trail explaining every state change.
+- Fleet inventory, heartbeat and management-worker health, device groups,
+  monitoring alerts, policies, and bounded rollout operations.
+- SYSTEM/root tools, audited terminals, service and process management,
+  inventory snapshots, diagnostics, file transfer, software and update actions.
+- Native RDP downloads and browser desktops for configured Windows and Linux
+  devices; SSH terminals and files remain available alongside desktop access.
+- OpenBao-backed lab accounts and recovery secrets, exact enrollment bindings,
+  scoped use/reveal permissions, and optional workstation-encrypted RDP profiles.
+- Wxlfgar capture installation, dependency checks, bounded capture sessions,
+  network observations, and retained analysis results.
+- SOC and IT cases, Wazuh detection intake, evidence, case disposition and
+  resolution, infrastructure relationships, knowledge records, and changes.
+- Signed installable tools, diagnostic profiles, resource budgets, service
+  runbooks, and a scoped native API/MCP integration.
 
-Unrestricted remote shells, desktop control, arbitrary file transfer, mass
-patching, and multi-tenant administration are intentionally outside the first
-version. Those features sharply increase the security and operational risk.
+Capabilities are qualified by device and identity. Missing Npcap, a package
+manager unavailable to SYSTEM, a stopped worker, and incomplete Windows setup
+must not be represented as successful operations. Native desktop sessions use
+the endpoint's OS account and network rules; they are not terminated by signing
+out of the RMM browser session.
 
-Start with [the learning and build program](docs/RMM_LEARNING_AND_BUILD_PROGRAM.md),
-then complete [Module 1: The RMM Problem Map](docs/modules/01_RMM_PROBLEM_MAP.md).
-The first executable lesson is
-[Module 2: The Synthetic Trust Slice](docs/modules/02_PHASE1_SYNTHETIC_SLICE.md).
+## Deployment and audit status
 
-## Project controls
+The lab inventory contains 16 enrolled machines: six Windows and ten Linux.
+The [current audit](docs/audits/SYSTEM_UX_AUDIT_2026-09-14.md) separates verified
+behavior, remediations, pending acceptance, and platform limitations. Read it
+before treating a source-level test as proof of live product behavior.
 
-- [Project charter](PROJECT_CHARTER.md)
-- [Version 1.0 release criteria](docs/governance/V1_RELEASE_CRITERIA.md)
-- [V1A and V1B exit audit](docs/audits/V1A_V1B_EXIT_AUDIT_2026-09-04.md)
-- [Development phases](docs/governance/PHASES.md)
-- [Authorization gates](docs/governance/AUTHORIZATION_GATES.md)
-- [Licensing policy](docs/governance/LICENSING.md)
-- [Third-party notice inventory](THIRD_PARTY_NOTICES.md)
-- [Required free-software checks](docs/governance/REQUIRED_CHECKS.md)
-- [Phase 2 data inventory](docs/security/PHASE2_DATA_INVENTORY.md)
-- [Architecture overview](docs/architecture/OVERVIEW.md)
-- [Infrastructure and microsegmentation](docs/architecture/INFRASTRUCTURE_AND_MICROSEGMENTATION.md)
-- [NorthGate VM and network change packet](docs/change-plans/NORTHGATE_RMM_VM_AND_NETWORK_PACKET_2026-08-30.md)
-- [Cross-platform remote access](docs/architecture/REMOTE_ACCESS.md)
+The original Linux-only and monitoring-only phase documents describe historical
+milestones. Their statements that deployment, the identity provider, remote
+shells, or the issuer do not exist are **not current deployment status**. Later
+owner authorizations expanded the lab product to both operating systems and
+remote management. Historical evidence remains available under `docs/audits/`
+and `docs/governance/authorizations/`.
+
+Daily backup schedules are disabled at the owner's request. Manual and
+change-specific recovery services remain available. A verified backup archive
+does not by itself prove a full-system restore.
+
+## Operator and developer guides
+
+- [Modern fleet workspace](docs/modern-workspace.md)
+- [SOC/IT workspace](docs/soc-it-workspace.md)
+- [Operations workspace](docs/operations-workspace.md)
+- [Wazuh intake](docs/wazuh-intake.md)
+- [Tool catalog](docs/tool-catalog.md)
+- [Browser desktops and secrets](docs/browser-rdp-and-secrets.md)
+- [Linux desktop installation](deploy/remote/LINUX-BROWSER-DESKTOP.md)
+- [Native desktop credentials](docs/native-desktop-credentials.md)
+- [Recovery archive and restore](docs/operations-backup-and-restore.md)
+- [Original runtime architecture](docs/operations/V1_SOURCE_RUNTIME.md)
 - [Threat model](docs/security/THREAT_MODEL.md)
-- [Security requirements](docs/security/SECURITY_REQUIREMENTS.md)
-- [Incident response](docs/operations/INCIDENT_RESPONSE.md)
-- [Backup and restore](docs/operations/BACKUP_RESTORE.md)
-- [Linux package lifecycle](docs/operations/LINUX_PACKAGE_LIFECYCLE.md)
-- [Agent service runtime](docs/operations/AGENT_SERVICE_RUNTIME.md)
-- [Enrollment service runtime](docs/operations/ENROLLMENT_SERVICE_RUNTIME.md)
-- [Operator service runtime](docs/operations/OPERATOR_SERVICE_RUNTIME.md)
-- [Server package lifecycle](docs/operations/SERVER_PACKAGE_LIFECYCLE.md)
+- [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-The Phase 1 trustworthy vertical-slice simulation is complete. Separate,
-bounded authorizations permit **Phase 2 Linux-agent and control-plane source
-development**.
-G2 remains closed: endpoint or VM installation, live identity, live collection,
-networking, and infrastructure changes remain prohibited.
+## Development checks
 
-The control-plane source includes a strict message decoder, transactional
-PostgreSQL adapter and migrations, digest-only single-use enrollment grants,
-certificate-key-to-endpoint authorization, exact-message retry acknowledgement,
-restart/concurrency/recovery tests, escaped server-rendered read models, and an
-in-memory test-only certificate authority. The source-only enrollment boundary
-validates proof-of-possession CSRs and public credentials returned by a separate
-issuer without holding a CA signing key. A read-only operator application
-revalidates an external MFA session against a pinned single-operator policy on
-every request, audits the decision, and exposes only escaped endpoint list and
-detail views. A private, agent-only listener adapter
-now enforces TLS 1.3 mutual authentication, exact certificate URI and public-key
-binding, TLS/header/whole-request deadlines, global and per-identity pre-body
-concurrency admission, database operation deadlines, authenticated rate ceilings,
-single-request connections, bounded HTTP parsing, and generic fail-closed errors
-in real loopback socket tests. A source-only executable now composes that agent
-listener with PostgreSQL, reads the DSN from a protected credential file, refuses
-root execution, verifies the exact migration set before binding, and shuts down
-cleanly. A separate source-only executable now composes the one-time enrollment
-route, PostgreSQL grant state, and a fixed-route mTLS issuer client without
-loading the issuer signing key. Both JSON contracts and hardened reference
-`systemd` units remain disabled and uninstalled: no operational certificate
-issuer, approved network rule, job scheduler, or command-execution primitive is
-present.
+Use Python 3.11 or later and the pinned dependencies in `requirements-dev.txt`.
+PostgreSQL tests need a **separate UTF-8 test database**; never point them at a
+deployed RMM database. `DATABASE_URL` and `RMM_OPERATIONS_TEST_DSN` select that
+isolated database. Tests skipped for lack of a database are not database proof.
 
-A third source-only executable composes the read-only operator application,
-PostgreSQL, a server-authenticated TLS listener, and a fixed-route TLS 1.3 mTLS
-session-verifier client. It revalidates the opaque human session on every read,
-pins the single-operator identity tuple, separates its public server and verifier
-workload identities, bounds admission and responses, and exposes no mutation
-route. Its example configuration and hardened reference `systemd` unit are also
-disabled and uninstalled; no operational IdP connection or operator listener is
-present.
-
-The executable Go agent includes strict non-secret configuration, bounded
-allowlisted Linux collectors, the Phase 1-compatible inventory envelope, a
-checksum-validated quota spool, a crash-durable per-boot sequence allocator,
-and an outbound-only transport interface. It also includes a source-tested TLS
-1.3 mutual-authentication sender with exact
-message acknowledgement and bounded jittered retry policy. A create-once local
-identity store now validates the endpoint-bound certificate, key, and explicit
-server roots before publishing one permission-restricted bundle. A closed-schema
-JSON event logger rejects arbitrary fields and raw error text. A Debian 12 amd64
-lifecycle contract, executable entrypoint, installable package, and hardened,
-resource-bounded `systemd` unit have passed prior isolated Debian 12 tests.
-Reproducible release-candidate packaging, SPDX SBOM, SLSA provenance, and
-test-only signature verification have also passed. Evidence-complete G2A and
-G2B qualification records retain every required digest. The integrated V1A
-contract and V1B control-plane source qualification are complete, including a
-source-built, disabled Debian 12 server package and two-way co-installation
-lifecycle proof in a networkless sandbox. This is not an operational
-deployment: no issuer/IdP integration, approved deployment configuration,
-command runner, or privileged helper is present.
-Operational PKI, online certificate status, runtime logging integration,
-externally rollback-protected state, encryption, and keyed spool integrity
-remain G2 blockers.
-
-## Phase 1 developer checks
-
-```powershell
-python -m pip install --requirement requirements-dev.txt
-ruff format --check src tests server/packaging/launcher.py
-ruff check src tests server/packaging/launcher.py
-mypy src tests server/packaging/launcher.py
-pytest --cov=northgate_rmm --cov-branch --cov-fail-under=90
-bandit --recursive src server/packaging/launcher.py --severity-level medium
+```text
+ruff check src tests
+pytest -q
+node --test tests/tool_catalog_ui.test.cjs
 ```
 
-## Phase 2 agent developer checks
+From `agent/`, use the Go toolchain version in `go.mod`:
 
-Run these commands from `agent/` with the pinned Go version in `go.mod`:
-
-```powershell
-go fmt ./...
+```text
 go vet ./...
 go test ./...
 go test -race ./...
-go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
-go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 ```
+
+The full CI workflow includes dependency, packaging, security, and governance
+checks. Platform-specific tests and live acceptance are separate from unit tests.
 
 ## License
 
 NorthGate RMM is available under the [Apache License 2.0](LICENSE). See the
-[licensing policy](docs/governance/LICENSING.md) for contribution, dependency,
-notice, and relicensing controls.
+[licensing policy](docs/governance/LICENSING.md) for dependency and notice controls.

@@ -1,0 +1,13 @@
+{
+  "deployment_id": "REPLACE_WITH_DEPLOYMENT_UUID",
+  "database_dsn_credential": "/run/credentials/northgate-rmm-audit-export.service/database-dsn",
+  "checkpoint_public_key": "/etc/northgate-rmm/tls/audit-checkpoint-public.pem",
+  "sink": {
+    "connect_address": "127.0.0.1",
+    "port": 8448,
+    "authority": "audit.rmm.internal",
+    "ca_certificate": "/etc/northgate-rmm/tls/server-ca.pem",
+    "client_certificate": "/etc/northgate-rmm/tls/export-chain.pem",
+    "client_private_key": "/run/credentials/northgate-rmm-audit-export.service/client-key"
+  }
+}

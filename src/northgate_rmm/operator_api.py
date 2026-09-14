@@ -16,6 +16,8 @@ from uuid import UUID, uuid4
 
 from northgate_rmm.domain import Endpoint, require_aware
 from northgate_rmm.errors import AuthorizationError, NotFoundError, ValidationError
+from northgate_rmm.fleet_access import OperatorGrant
+from northgate_rmm.presentation import STYLE_SOURCE
 from northgate_rmm.views import (
     EndpointReader,
     render_endpoint_detail,
@@ -101,7 +103,7 @@ class OperatorPrincipal:
 
 @dataclass(frozen=True, slots=True)
 class OperatorAuthorizationPolicy:
-    """Pinned single-operator identity scope supplied by deployment config."""
+    """Pinned owner and explicit technician grants supplied by deployment config."""
 
     issuer: str
     tenant: str
@@ -109,6 +111,16 @@ class OperatorAuthorizationPolicy:
     client_id: str
     required_role: str = "viewer"
     maximum_session_age: timedelta = MAX_OPERATOR_SESSION_AGE
+    grants: tuple[OperatorGrant, ...] = ()
+
+    def admits(self, subject: str) -> bool:
+        return subject == self.subject or any(g.subject == subject for g in self.grants)
+
+    def permits(self, subject: str, endpoint: UUID | str, permission: str) -> bool:
+        return subject == self.subject or any(
+            g.subject == subject and g.permits(str(endpoint), permission)
+            for g in self.grants
+        )
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -266,8 +278,13 @@ class OperatorApplication:
                 limit=OPERATOR_ENDPOINT_PAGE_SIZE + 1,
             )
             has_more = len(page) > OPERATOR_ENDPOINT_PAGE_SIZE
-            endpoints = page[:OPERATOR_ENDPOINT_PAGE_SIZE]
-            next_after = endpoints[-1].endpoint_id if has_more else None
+            scanned = page[:OPERATOR_ENDPOINT_PAGE_SIZE]
+            endpoints = tuple(
+                e
+                for e in scanned
+                if self._policy.permits(principal.subject, e.endpoint_id, "view")
+            )
+            next_after = scanned[-1].endpoint_id if has_more else None
             body = render_endpoint_page(
                 self._store,
                 endpoints,
@@ -299,6 +316,8 @@ class OperatorApplication:
             )
             return _error(404, "not_found")
         try:
+            if not self._policy.permits(principal.subject, endpoint_id, "view"):
+                return _error(404, "not_found")
             body = render_endpoint_detail(self._store, endpoint_id, now=now).encode(
                 "utf-8"
             )
@@ -375,7 +394,7 @@ class OperatorApplication:
         if (
             principal.issuer != self._policy.issuer
             or principal.tenant != self._policy.tenant
-            or principal.subject != self._policy.subject
+            or not self._policy.admits(principal.subject)
             or principal.client_id != self._policy.client_id
         ):
             return "operator identity scope did not match policy"
@@ -470,8 +489,8 @@ def _headers(content_type: str) -> tuple[tuple[str, str], ...]:
         ("cache-control", "no-store"),
         (
             "content-security-policy",
-            "default-src 'none'; frame-ancestors 'none'; "
-            "base-uri 'none'; form-action 'none'",
+            "default-src 'none'; frame-src 'self'; frame-ancestors 'none'; "
+            f"base-uri 'none'; form-action 'none'; style-src {STYLE_SOURCE}",
         ),
         ("referrer-policy", "no-referrer"),
         ("x-content-type-options", "nosniff"),

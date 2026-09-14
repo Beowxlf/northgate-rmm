@@ -1,0 +1,33 @@
+[Unit]
+Description=NorthGate Wxlfgar signed capture jobs
+After=network-online.target
+
+[Service]
+Type=exec
+User=northgate-wxlfgar
+Group=northgate-wxlfgar
+ExecStart=/usr/local/libexec/northgate-wxlfgar/wulfgar --service
+Restart=on-failure
+RestartSec=5
+StateDirectory=northgate-wxlfgar
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_PACKET AF_NETLINK
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=32
+TimeoutStopSec=30
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

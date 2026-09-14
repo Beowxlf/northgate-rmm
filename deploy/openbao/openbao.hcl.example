@@ -1,0 +1,19 @@
+# Deployment template only. Install a reviewed OpenBao release and provision TLS
+# material and the service account before using this configuration.
+ui = false
+api_addr = "https://vault.rmm.internal:8200"
+cluster_addr = "https://127.0.0.1:8201"
+
+storage "raft" {
+  path = "/var/lib/openbao"
+  node_id = "rmm-vault-1"
+}
+
+listener "tcp" {
+  address = "127.0.0.1:8200"
+  cluster_address = "127.0.0.1:8201"
+  tls_disable = false
+  tls_cert_file = "/etc/openbao/tls/server.pem"
+  tls_key_file = "/etc/openbao/tls/server-key.pem"
+  tls_min_version = "tls12"
+}

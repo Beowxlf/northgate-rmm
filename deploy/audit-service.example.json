@@ -1,0 +1,15 @@
+{
+  "bind_address": "127.0.0.1",
+  "port": 8448,
+  "authority": "audit.rmm.internal:8448",
+  "allowed_client_sha256": [
+    "REPLACE_WITH_EXACT_CALLER_CERTIFICATE_SHA256"
+  ],
+  "client_ca_certificate": "/etc/northgate-rmm/tls/workload-ca.pem",
+  "server_certificate": "/etc/northgate-rmm/tls/audit-chain.pem",
+  "server_private_key": "/run/credentials/northgate-rmm-audit.service/server-key",
+  "ledger": "/var/lib/northgate-rmm-server/audit/ledger.sqlite",
+  "deployment_id": "REPLACE_WITH_DEPLOYMENT_UUID",
+  "checkpoint_directory": "/var/lib/northgate-rmm-checkpoints",
+  "checkpoint_private_key": "/run/credentials/northgate-rmm-audit.service/checkpoint-key"
+}

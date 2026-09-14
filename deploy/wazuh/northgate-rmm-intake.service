@@ -1,0 +1,26 @@
+[Unit]
+Description=Forward normalized Wazuh metadata to NorthGate RMM
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=wazuh
+Group=wazuh
+UMask=0077
+ExecStart=/usr/bin/python3 /var/ossec/integrations/custom-northgate-rmm --flush
+TimeoutStartSec=45
+Nice=10
+CPUQuota=10%
+MemoryMax=64M
+TasksMax=8
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/northgate-rmm-intake
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6

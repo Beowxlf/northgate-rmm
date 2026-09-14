@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/Beowxlf/northgate-rmm/agent/internal/platformfs"
 	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
 )
 
@@ -131,7 +132,11 @@ func Open(directory string) (*Store, error) {
 		}
 	}
 	openedInfo, err = root.Stat(".")
-	if err != nil || !privateDirectory(openedInfo) {
+	if protectErr := platformfs.Protect(root.Name()); protectErr != nil {
+		root.Close()
+		return nil, protectErr
+	}
+	if err != nil || !privateDirectory(openedInfo, root.Name()) {
 		root.Close()
 		return nil, errors.New("sequence directory permissions are not private")
 	}
@@ -292,7 +297,7 @@ func (store *Store) readLocked() (wireState, bool, error) {
 		switch entry.Name() {
 		case ".lock":
 			info, err := store.root.Lstat(entry.Name())
-			if err != nil || !info.Mode().IsRegular() || !privateFile(info) || info.Size() != 0 {
+			if err != nil || !info.Mode().IsRegular() || !privateFile(info, filepath.Join(store.root.Name(), ".lock")) || info.Size() != 0 {
 				return wireState{}, false, ErrCorrupt
 			}
 		case stateName:
@@ -305,7 +310,7 @@ func (store *Store) readLocked() (wireState, bool, error) {
 		return wireState{}, false, nil
 	}
 	info, err := store.root.Lstat(stateName)
-	if err != nil || !info.Mode().IsRegular() || !privateFile(info) || info.Size() < 1 || info.Size() > maxStateBytes {
+	if err != nil || !info.Mode().IsRegular() || !privateFile(info, filepath.Join(store.root.Name(), stateName)) || info.Size() < 1 || info.Size() > maxStateBytes {
 		return wireState{}, false, ErrCorrupt
 	}
 	file, err := store.root.Open(stateName)

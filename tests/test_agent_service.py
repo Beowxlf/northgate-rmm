@@ -222,7 +222,10 @@ def test_agent_service_verifies_schema_and_closes_listener(
             events.append("database_shutdown")
 
     class FakeListener:
-        def __init__(self, _listener: object, _store: object) -> None:
+        def __init__(
+            self, _listener: object, _store: object, *, renewal: object = None
+        ) -> None:
+            assert renewal is None
             events.append("construct")
 
         async def start(self) -> None:

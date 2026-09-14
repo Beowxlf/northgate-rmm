@@ -1,0 +1,19 @@
+[Unit]
+Description=NorthGate RMM retention
+After=network-online.target
+[Service]
+Type=oneshot
+User=northgate-rmm-retention
+Group=northgate-rmm-retention
+UMask=0077
+LoadCredential=database-dsn:/etc/northgate-rmm/secrets/retention-dsn
+ExecStart=/usr/libexec/northgate-rmm-server/northgate-rmm-retention --dsn-file /run/credentials/northgate-rmm-retention.service/database-dsn
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+TimeoutStartSec=3600
+MemoryMax=512M

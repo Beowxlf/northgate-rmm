@@ -122,6 +122,8 @@ func TestSnapshotQueuesPhaseOneCompatibleInventory(t *testing.T) {
 	ids := []string{
 		"123e4567-e89b-42d3-a456-426614174001",
 		"123e4567-e89b-42d3-a456-426614174002",
+		"123e4567-e89b-42d3-a456-426614174004",
+		"123e4567-e89b-42d3-a456-426614174005",
 	}
 	snapshotter.newID = func() (string, error) {
 		id := ids[0]
@@ -139,7 +141,7 @@ func TestSnapshotQueuesPhaseOneCompatibleInventory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
-	if queue.id != result.MessageID || result.Sequence != 1 || result.Bytes != len(queue.payload) || !result.Complete {
+	if queue.id != result.MessageID || result.Sequence != 2 || result.Bytes != len(queue.payload) || !result.Complete {
 		t.Fatalf("unexpected snapshot result: %#v", result)
 	}
 	var message map[string]any

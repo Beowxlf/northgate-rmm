@@ -176,11 +176,11 @@ def test_operator_list_uses_bounded_keyset_pages() -> None:
     )
 
     assert first.status == 200
-    assert first.body.count(b'<td><a href="/endpoints/') == 100
+    assert first.body.count(b'<a href="/endpoints/') == 100
     assert f"/endpoints?after={first_cursor}".encode() in first.body
     assert str(ordered[100].endpoint_id).encode() not in first.body
     assert second.status == 200
-    assert second.body.count(b'<td><a href="/endpoints/') == 2
+    assert second.body.count(b'<a href="/endpoints/') == 2
     assert str(ordered[100].endpoint_id).encode() in second.body
     assert str(ordered[101].endpoint_id).encode() in second.body
     assert b"Next page" not in second.body

@@ -161,8 +161,7 @@ def test_enrollment_grant_enforces_v1_scope_lifetime_and_consumption() -> None:
     assert consumed.consumed_identity_id == identity_id
     with pytest.raises(ValidationError, match="token_sha256"):
         grant(token_sha256="not-a-digest")  # noqa: S106 -- non-secret invalid input
-    with pytest.raises(ValidationError, match="Linux"):
-        grant(platform=Platform.WINDOWS)
+    assert grant(platform=Platform.WINDOWS).platform is Platform.WINDOWS
     with pytest.raises(ValidationError, match="amd64"):
         grant(architecture="arm64")
     with pytest.raises(ValidationError, match="lifetime"):

@@ -1,0 +1,20 @@
+[Unit]
+Description=Publish short-lived NorthGate RMM certificate status
+[Service]
+Type=oneshot
+User=northgate-rmm-status
+Group=northgate-rmm-status
+UMask=0022
+LoadCredential=registry:/etc/northgate-rmm/secrets/certificate-registry.json
+LoadCredential=signing-key:/etc/northgate-rmm/secrets/status-private.pem
+ExecStart=/usr/libexec/northgate-rmm-server/northgate-rmm-certificate-status --config /etc/northgate-rmm/certificate-status.json
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/northgate-rmm-status
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+TimeoutStartSec=20
+MemoryMax=128M

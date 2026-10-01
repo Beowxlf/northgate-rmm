@@ -98,7 +98,7 @@ func (runner *Runner) Run(ctx context.Context, source Source) (Result, error) {
 		Fields:       make(map[string]string),
 		Complete:     true,
 	}
-	if result.Platform != "linux" || result.Architecture == "" || len(result.Architecture) > 32 {
+	if (result.Platform != "linux" && result.Platform != "windows") || result.Architecture == "" || len(result.Architecture) > 32 {
 		return Result{}, ErrUnsupported
 	}
 	for _, item := range runner.collectors {
@@ -169,6 +169,14 @@ type OSReleaseCollector struct{}
 func (OSReleaseCollector) Name() string { return "os_release" }
 
 func (OSReleaseCollector) Collect(ctx context.Context, source Source) (map[string]string, error) {
+	if source.Platform() == "windows" {
+		if native, ok := source.(interface {
+			OSVersion(context.Context) (map[string]string, error)
+		}); ok {
+			return native.OSVersion(ctx)
+		}
+		return nil, ErrUnsupported
+	}
 	raw, err := source.ReadFile(ctx, "/etc/os-release", MaxSourceFileBytes)
 	if err != nil {
 		return nil, err
@@ -292,6 +300,21 @@ type BootCollector struct{}
 func (BootCollector) Name() string { return "boot" }
 
 func (BootCollector) Collect(ctx context.Context, source Source) (map[string]string, error) {
+	if source.Platform() == "windows" {
+		if native, ok := source.(interface {
+			BootID(context.Context) (string, error)
+		}); ok {
+			id, err := native.BootID(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if !uuidPattern.MatchString(id) {
+				return nil, ErrMalformed
+			}
+			return map[string]string{"boot.id": id}, nil
+		}
+		return nil, ErrUnsupported
+	}
 	raw, err := source.ReadFile(ctx, "/proc/sys/kernel/random/boot_id", 64)
 	if err != nil {
 		return nil, err

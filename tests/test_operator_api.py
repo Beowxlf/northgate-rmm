@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from typing import cast
+from uuid import UUID
 
 import pytest
 
 from northgate_rmm.control_plane import ControlPlane
-from northgate_rmm.domain import Platform
+from northgate_rmm.domain import Endpoint, Platform
 from northgate_rmm.errors import AuthorizationError, ValidationError
 from northgate_rmm.operator_api import (
     OperatorApplication,
@@ -68,11 +69,13 @@ class FailingAuditPlane(ControlPlane):
         super().__init__()
         self.list_called = False
 
-    def list_endpoint_page(self, **kwargs):  # type: ignore[no-untyped-def]
+    def list_endpoint_page(
+        self, *, after: UUID | None, limit: int
+    ) -> tuple[Endpoint, ...]:
         self.list_called = True
-        return super().list_endpoint_page(**kwargs)
+        return super().list_endpoint_page(after=after, limit=limit)
 
-    def record_operator_access(self, **_kwargs):  # type: ignore[no-untyped-def]
+    def record_operator_access(self, **_kwargs: object) -> None:
         raise RuntimeError("audit sink unavailable")
 
 
@@ -176,11 +179,11 @@ def test_operator_list_uses_bounded_keyset_pages() -> None:
     )
 
     assert first.status == 200
-    assert first.body.count(b'<td><a href="/endpoints/') == 100
+    assert first.body.count(b'<a href="/endpoints/') == 100
     assert f"/endpoints?after={first_cursor}".encode() in first.body
     assert str(ordered[100].endpoint_id).encode() not in first.body
     assert second.status == 200
-    assert second.body.count(b'<td><a href="/endpoints/') == 2
+    assert second.body.count(b'<a href="/endpoints/') == 2
     assert str(ordered[100].endpoint_id).encode() in second.body
     assert str(ordered[101].endpoint_id).encode() in second.body
     assert b"Next page" not in second.body
@@ -257,9 +260,11 @@ def test_native_external_verifier_failures_are_generic_and_audited(
     assert plane.audit_events[-1].decision == "rejected"
 
 
-def test_external_verifier_must_return_exact_validated_principal() -> None:
+def test_external_verifier_must_return_exact_validated_principal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     app, plane, verifier, _agent = application()
-    verifier.principal = cast(OperatorPrincipal, object())
+    monkeypatch.setattr(verifier, "principal", cast(OperatorPrincipal, object()))
 
     response = app.handle(
         OperatorRequest("GET", "/endpoints", AUTHORIZATION),

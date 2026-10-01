@@ -138,7 +138,7 @@ func validateEnvelope(envelope Envelope) error {
 }
 
 func validatePayload(payload InventoryPayload) error {
-	if payload.Platform != "linux" {
+	if payload.Platform != "linux" && payload.Platform != "windows" {
 		return errors.New("inventory platform is unsupported")
 	}
 	if payload.Architecture == "" || len(payload.Architecture) > 32 || !validText(payload.Architecture) {

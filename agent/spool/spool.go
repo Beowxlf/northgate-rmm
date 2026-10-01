@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Beowxlf/northgate-rmm/agent/internal/platformfs"
 	"github.com/Beowxlf/northgate-rmm/agent/internal/strictjson"
 )
 
@@ -162,6 +163,10 @@ func Open(directory string, maxBytes int64) (*Queue, error) {
 	if err != nil || !os.SameFile(info, openedInfo) {
 		root.Close()
 		return nil, errors.New("spool directory changed while opening")
+	}
+	if err := platformfs.Protect(root.Name()); err != nil {
+		root.Close()
+		return nil, err
 	}
 	if err := root.Chmod(".", 0o700); err != nil {
 		root.Close()
@@ -837,7 +842,7 @@ func (queue *Queue) inventoryLocked() (int64, []recordMetadata, uint64, int, err
 			return 0, nil, 0, 0, ErrCorrupt
 		}
 		info, err := queue.root.Lstat(name)
-		if err != nil || !info.Mode().IsRegular() || !privateRecord(info) ||
+		if err != nil || !info.Mode().IsRegular() || !privateRecord(info, filepath.Join(queue.root.Name(), name)) ||
 			info.Size() < 1 || info.Size() > maxRecordBytes {
 			return 0, nil, 0, 0, ErrCorrupt
 		}
@@ -898,7 +903,7 @@ func (queue *Queue) rolloverUsageLocked() ([]recordMetadata, map[uint64]struct{}
 			return nil, nil, 0, ErrCorrupt
 		}
 		info, err := queue.rollover.Lstat(name)
-		if err != nil || !info.Mode().IsRegular() || !privateRecord(info) ||
+		if err != nil || !info.Mode().IsRegular() || !privateRecord(info, filepath.Join(queue.rollover.Name(), name)) ||
 			info.Size() < 1 || info.Size() > maxRecordBytes {
 			return nil, nil, 0, ErrCorrupt
 		}
@@ -942,7 +947,7 @@ func (queue *Queue) rejectedUsageLocked() (int64, []recordMetadata, map[uint64]s
 			return 0, nil, nil, 0, ErrCorrupt
 		}
 		info, err := queue.rejected.Lstat(name)
-		if err != nil || !info.Mode().IsRegular() || !privateRecord(info) ||
+		if err != nil || !info.Mode().IsRegular() || !privateRecord(info, filepath.Join(queue.rejected.Name(), name)) ||
 			info.Size() < 1 || info.Size() > maxRecordBytes {
 			return 0, nil, nil, 0, ErrCorrupt
 		}

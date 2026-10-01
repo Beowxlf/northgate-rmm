@@ -23,6 +23,7 @@ from northgate_rmm.agent_service import (
     load_database_dsn,
 )
 from northgate_rmm.errors import ValidationError
+from northgate_rmm.fleet_access import load_grants
 from northgate_rmm.operator_api import OperatorApplication, OperatorAuthorizationPolicy
 from northgate_rmm.operator_listener import (
     OperatorListenerConfiguration,
@@ -65,6 +66,7 @@ _OPTIONAL_CONFIGURATION_FIELDS = frozenset(
         "request_timeout_seconds",
         "database_operation_timeout_seconds",
         "verifier_timeout_seconds",
+        "policy_operator_grants",
     }
 )
 
@@ -84,7 +86,7 @@ def load_operator_service_configuration(path: Path) -> OperatorServiceConfigurat
     encoded = _read_regular_file(
         path,
         label="operator service configuration",
-        maximum_bytes=MAX_SERVICE_CONFIGURATION_BYTES,
+        maximum_bytes=max(MAX_SERVICE_CONFIGURATION_BYTES, 512 * 1024),
         private=False,
     )
     try:
@@ -135,6 +137,7 @@ def load_operator_service_configuration(path: Path) -> OperatorServiceConfigurat
         ),
     )
     policy = OperatorAuthorizationPolicy(
+        grants=load_grants(value.get("policy_operator_grants", [])),
         issuer=_required_string(value, "policy_issuer"),
         tenant=_required_string(value, "policy_tenant"),
         subject=_required_string(value, "policy_subject"),

@@ -185,7 +185,7 @@ func (runtime *Runtime) deliver(ctx context.Context) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		message, err := protocol.DecodeInventory(payload)
+		message, err := protocol.DecodeMessage(payload)
 		if err != nil || message.Envelope.MessageID != id {
 			return false, ErrRuntimeFailed
 		}

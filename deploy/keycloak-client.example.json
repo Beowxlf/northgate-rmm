@@ -1,0 +1,66 @@
+{
+  "clientId": "northgate-rmm",
+  "enabled": false,
+  "protocol": "openid-connect",
+  "publicClient": false,
+  "standardFlowEnabled": true,
+  "directAccessGrantsEnabled": false,
+  "serviceAccountsEnabled": false,
+  "implicitFlowEnabled": false,
+  "redirectUris": ["https://rmm.internal/oauth2/callback"],
+  "webOrigins": ["https://rmm.internal"],
+  "attributes": {
+    "pkce.code.challenge.method": "S256"
+  },
+  "protocolMappers": [
+    {
+      "name": "amr",
+      "protocol": "openid-connect",
+      "protocolMapper": "northgate-amr-introspection",
+      "consentRequired": false,
+      "config": {
+        "access.token.claim": "true",
+        "id.token.claim": "true",
+        "introspection.token.claim": "true"
+      }
+    },
+    {
+      "name": "acr",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-acr-mapper",
+      "consentRequired": false,
+      "config": {
+        "access.token.claim": "true",
+        "id.token.claim": "true",
+        "introspection.token.claim": "true"
+      }
+    },
+    {
+      "name": "audience",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-audience-mapper",
+      "consentRequired": false,
+      "config": {
+        "access.token.claim": "true",
+        "id.token.claim": "true",
+        "introspection.token.claim": "true",
+        "included.client.audience": "northgate-rmm"
+      }
+    },
+    {
+      "name": "roles",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-client-role-mapper",
+      "consentRequired": false,
+      "config": {
+        "access.token.claim": "true",
+        "id.token.claim": "true",
+        "introspection.token.claim": "true",
+        "usermodel.clientRoleMapping.clientId": "northgate-rmm",
+        "claim.name": "resource_access.northgate-rmm.roles",
+        "jsonType.label": "String",
+        "multivalued": "true"
+      }
+    }
+  ]
+}

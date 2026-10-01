@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/url"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -36,21 +37,25 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-
 // Config contains only non-secret settings. Identity keys and enrollment
 // grants belong to a separate protected store.
 type Config struct {
-	EndpointID         string        `json:"endpoint_id"`
-	ControlPlaneURL    string        `json:"control_plane_url"`
-	StateDirectory     string        `json:"state_directory"`
-	CollectionInterval time.Duration `json:"-"`
-	RequestTimeout     time.Duration `json:"-"`
-	MaxSpoolBytes      int64         `json:"max_spool_bytes"`
+	ServerStatusURL       string        `json:"server_status_url"`
+	ServerStatusPublicKey string        `json:"server_status_public_key"`
+	EndpointID            string        `json:"endpoint_id"`
+	ControlPlaneURL       string        `json:"control_plane_url"`
+	StateDirectory        string        `json:"state_directory"`
+	CollectionInterval    time.Duration `json:"-"`
+	RequestTimeout        time.Duration `json:"-"`
+	MaxSpoolBytes         int64         `json:"max_spool_bytes"`
 }
 
 type wireConfig struct {
-	EndpointID         string `json:"endpoint_id"`
-	ControlPlaneURL    string `json:"control_plane_url"`
-	StateDirectory     string `json:"state_directory"`
-	CollectionInterval string `json:"collection_interval"`
-	RequestTimeout     string `json:"request_timeout"`
-	MaxSpoolBytes      int64  `json:"max_spool_bytes"`
+	ServerStatusURL       string `json:"server_status_url"`
+	ServerStatusPublicKey string `json:"server_status_public_key"`
+	EndpointID            string `json:"endpoint_id"`
+	ControlPlaneURL       string `json:"control_plane_url"`
+	StateDirectory        string `json:"state_directory"`
+	CollectionInterval    string `json:"collection_interval"`
+	RequestTimeout        string `json:"request_timeout"`
+	MaxSpoolBytes         int64  `json:"max_spool_bytes"`
 }
 
 // Decode accepts exactly one JSON object, rejects unknown fields, and enforces
@@ -90,6 +95,7 @@ func Decode(reader io.Reader) (Config, error) {
 		return Config{}, errors.New("request_timeout is invalid")
 	}
 	result := Config{
+		ServerStatusURL: wire.ServerStatusURL, ServerStatusPublicKey: wire.ServerStatusPublicKey,
 		EndpointID:         wire.EndpointID,
 		ControlPlaneURL:    wire.ControlPlaneURL,
 		StateDirectory:     wire.StateDirectory,
@@ -154,8 +160,8 @@ func (cfg Config) Validate() error {
 	if !utf8.ValidString(cfg.StateDirectory) {
 		return errors.New("state_directory contains invalid UTF-8")
 	}
-	if cfg.StateDirectory == "/" || !path.IsAbs(cfg.StateDirectory) || path.Clean(cfg.StateDirectory) != cfg.StateDirectory {
-		return errors.New("state_directory must be an absolute clean Linux path")
+	if !validStatePath(cfg.StateDirectory) {
+		return errors.New("state_directory must be an absolute clean local path")
 	}
 	if containsControl(cfg.StateDirectory) {
 		return errors.New("state_directory contains a control character")
@@ -173,6 +179,15 @@ func (cfg Config) Validate() error {
 		return errors.New("max_spool_bytes is outside the supported range")
 	}
 	return nil
+}
+
+func validStatePath(value string) bool {
+	if strings.Contains(value, `\`) || (len(value) >= 2 && value[1] == ':') {
+		return len(value) > 3 && value[1:3] == `:\` &&
+			((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) &&
+			!strings.ContainsAny(value[2:], ":/") && filepath.Clean(value) == value && filepath.IsAbs(value)
+	}
+	return value != "/" && path.IsAbs(value) && path.Clean(value) == value
 }
 
 func validControlPlaneHostname(hostname string) bool {

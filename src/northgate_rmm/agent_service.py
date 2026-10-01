@@ -55,7 +55,11 @@ _REQUIRED_CONFIGURATION_FIELDS = frozenset(
     }
 )
 _OPTIONAL_CONFIGURATION_FIELDS = frozenset(
-    {"request_timeout_seconds", "database_operation_timeout_seconds"}
+    {
+        "request_timeout_seconds",
+        "database_operation_timeout_seconds",
+        "renewal_configuration",
+    }
 )
 
 
@@ -66,6 +70,7 @@ class AgentServiceConfiguration:
     listener: AgentListenerConfiguration
     database_dsn_credential: Path
     database_operation_timeout_seconds: float
+    renewal_configuration: Path | None = None
 
 
 def load_agent_service_configuration(path: Path) -> AgentServiceConfiguration:
@@ -122,6 +127,9 @@ def load_agent_service_configuration(path: Path) -> AgentServiceConfiguration:
         listener=listener,
         database_dsn_credential=_absolute_path(value, "database_dsn_credential"),
         database_operation_timeout_seconds=database_timeout,
+        renewal_configuration=_absolute_path(value, "renewal_configuration")
+        if "renewal_configuration" in value
+        else None,
     )
 
 
@@ -206,7 +214,26 @@ async def run_agent_service(
         operation_timeout_seconds=configuration.database_operation_timeout_seconds,
     )
     store.verify_schema_state()
-    listener = AgentTLSListener(configuration.listener, store)
+    renewal = None
+    if configuration.renewal_configuration is not None:
+        from northgate_rmm.enrollment_service import (
+            load_endpoint_issuer_trust_root,
+            load_enrollment_service_configuration,
+        )
+        from northgate_rmm.issuer_client import MTLSIssuerClient
+        from northgate_rmm.renewal import RenewalService
+
+        enrollment_config = load_enrollment_service_configuration(
+            configuration.renewal_configuration
+        )
+        renewal = RenewalService(
+            store,
+            MTLSIssuerClient(enrollment_config.issuer),
+            load_endpoint_issuer_trust_root(
+                enrollment_config.endpoint_issuer_trust_root
+            ),
+        ).renew
+    listener = AgentTLSListener(configuration.listener, store, renewal=renewal)
     stopped = stop_event or asyncio.Event()
     loop = asyncio.get_running_loop()
     installed_signals: list[signal.Signals] = []

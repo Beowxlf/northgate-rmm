@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import ipaddress
+import logging
 import ssl
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Iterable
@@ -17,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -123,6 +124,8 @@ def create_agent_web_application(
     *,
     authority: str,
     request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    renewal: Callable[[bytes, VerifiedClientCertificate, datetime], dict[str, Any]]
+    | None = None,
 ) -> web.Application:
     """Create the agent-only aiohttp adapter without opening a socket."""
 
@@ -130,7 +133,7 @@ def create_agent_web_application(
     if not 1.0 <= request_timeout_seconds <= 30.0:
         raise ValidationError("listener request timeout is outside the supported range")
     adapter = _AgentTLSAdapter(
-        AgentMessageApplication(store),
+        AgentMessageApplication(store, renewal),
         authority=authority,
         request_timeout_seconds=request_timeout_seconds,
     )
@@ -207,12 +210,15 @@ class AgentTLSListener:
         self,
         configuration: AgentListenerConfiguration,
         store: AgentMessageStore,
+        renewal: Callable[[bytes, VerifiedClientCertificate, datetime], dict[str, Any]]
+        | None = None,
     ) -> None:
         self._configuration = configuration
         self._application = create_agent_web_application(
             store,
             authority=configuration.authority,
             request_timeout_seconds=configuration.request_timeout_seconds,
+            renewal=renewal,
         )
         self._runner: web.AppRunner | None = None
 
@@ -639,6 +645,8 @@ def _response(
     *,
     headers: Iterable[tuple[str, str]] = (),
 ) -> web.Response:
+    if status >= 400:
+        logging.getLogger(__name__).warning("agent_http_status=%d", status)
     response = web.Response(status=status, body=body, headers=headers)
     response.headers.setdefault("Content-Type", "application/json")
     response.headers.setdefault("Cache-Control", "no-store")
@@ -669,6 +677,8 @@ class _HardenedRequestHandler(RequestHandler):
         *,
         header_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
         connection_admission: _ConnectionAdmission,
+        connection_identity: Callable[[PeerCertificate | None], _IdentityQuotaKey]
+        | None = None,
         **kwargs: object,
     ) -> None:
         loop = cast(asyncio.AbstractEventLoop, kwargs["loop"])
@@ -694,17 +704,24 @@ class _HardenedRequestHandler(RequestHandler):
         self._header_timeout_seconds = header_timeout_seconds
         self._header_timeout_handle: asyncio.TimerHandle | None = None
         self._connection_admission = connection_admission
+        self._connection_identity = connection_identity
         self._admitted_identity_key: _IdentityQuotaKey | None = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         super().connection_made(transport)
-        ssl_object = cast(asyncio.Transport, transport).get_extra_info("ssl_object")
+        ssl_object = cast(
+            PeerCertificate | None,
+            cast(asyncio.Transport, transport).get_extra_info("ssl_object"),
+        )
         try:
-            peer = extract_verified_client_certificate(ssl_object)
+            if self._connection_identity is None:
+                peer = extract_verified_client_certificate(ssl_object)
+                identity_key = (peer.endpoint_id, peer.public_key_fingerprint)
+            else:
+                identity_key = self._connection_identity(ssl_object)
         except ValidationError:
             self.force_close()
             return
-        identity_key = (peer.endpoint_id, peer.public_key_fingerprint)
         if not self._connection_admission.acquire(identity_key):
             self.force_close()
             return

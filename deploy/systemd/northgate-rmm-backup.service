@@ -1,0 +1,21 @@
+[Unit]
+Description=NorthGate RMM backup
+After=network-online.target
+[Service]
+Type=oneshot
+User=northgate-rmm-backup
+Group=northgate-rmm-backup
+UMask=0077
+LoadCredential=database-dsn:/etc/northgate-rmm/secrets/backup-dsn
+LoadCredential=manifest-key:/etc/northgate-rmm/secrets/backup-signing.pem
+ExecStart=/usr/libexec/northgate-rmm-server/northgate-rmm-recovery --config /etc/northgate-rmm/recovery.json backup-auto /var/backups/northgate-rmm
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+TimeoutStartSec=3600
+MemoryMax=512M
+ReadWritePaths=/var/backups/northgate-rmm

@@ -41,8 +41,9 @@ var (
 // server trust roots. Loading and protecting these values belongs to the
 // separately qualified identity store; the sender accepts no key file paths.
 type Credentials struct {
-	Certificate tls.Certificate
-	ServerRoots *x509.CertPool
+	VerifyServer func(tls.ConnectionState) error
+	Certificate  tls.Certificate
+	ServerRoots  *x509.CertPool
 }
 
 // DeliveryError exposes a bounded diagnostic code and retry decision without
@@ -101,6 +102,7 @@ func NewMTLSSender(origin string, credentials Credentials, timeout time.Duration
 
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS13,
+		VerifyConnection:   credentials.VerifyServer,
 		ServerName:         parsed.Hostname(),
 		RootCAs:            credentials.ServerRoots.Clone(),
 		Certificates:       []tls.Certificate{credentials.Certificate},

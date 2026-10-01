@@ -1,0 +1,24 @@
+[Unit]
+Description=NorthGate OpenBao secret provider
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=openbao
+Group=openbao
+ExecStart=/usr/local/bin/bao server -config=/etc/openbao/openbao.hcl
+Restart=on-failure
+RestartSec=5
+LimitMEMLOCK=infinity
+CapabilityBoundingSet=CAP_IPC_LOCK
+AmbientCapabilities=CAP_IPC_LOCK
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/openbao /var/log/openbao
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

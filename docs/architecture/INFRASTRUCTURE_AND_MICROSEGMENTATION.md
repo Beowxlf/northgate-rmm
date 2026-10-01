@@ -1,5 +1,12 @@
 # RMM Infrastructure and Microsegmentation Specification
 
+For the Version 1.0 lab deployment, the
+[September 4 owner decision](../governance/authorizations/V1-SHARED-LAB-NETWORK-2026-09-04.md)
+supersedes the separate-VLAN/subnet and inter-zone isolation requirements below.
+RMM and its disposable test endpoints may share an existing private lab subnet.
+The remaining text preserves the original zoned design, not a mandatory lab
+deployment topology. Application identity and authorization checks still apply.
+
 ## Purpose and status
 
 This document defines the infrastructure required to operate NorthGate RMM and

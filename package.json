@@ -10,7 +10,7 @@
   },
   "scripts": {
     "audit:governance": "node scripts/audit-governance.mjs",
-    "audit:workflows": "node scripts/audit-workflows.mjs",
+    "audit:workflows": "node scripts/audit-workflows.mjs && node --test scripts/security-workflow.test.mjs",
     "audit:secrets-lite": "node scripts/audit-secrets-lite.mjs",
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.tools\" \"#.venv\" \"#.pytest_cache\" \"#.mypy_cache\" \"#.ruff_cache\"",
     "format:check": "prettier --check \".github/**/*.md\" \".github/**/*.{yml,yaml}\" \"docs/**/*.md\" \"governance/**/*.json\" \"scripts/**/*.mjs\" \"*.md\" package.json .markdownlint-cli2.jsonc --ignore-path .prettierignore",
@@ -24,5 +24,8 @@
     "js-yaml": "5.2.2",
     "markdownlint-cli2": "0.23.2",
     "prettier": "3.9.6"
+  },
+  "overrides": {
+    "smol-toml": "1.7.1"
   }
 }

@@ -1,0 +1,13 @@
+{
+  "deployment_id": "REPLACE_WITH_DEPLOYMENT_UUID",
+  "database_dsn_credential": "/run/credentials/northgate-rmm-backup.service/database-dsn",
+  "pg_dump": "/usr/bin/pg_dump",
+  "pg_restore": "/usr/bin/pg_restore",
+  "age": "/usr/bin/age",
+  "recipient": "REPLACE_WITH_INDEPENDENT_AGE_PUBLIC_RECIPIENT",
+  "maximum_dump_bytes": 10737418240,
+  "isolated_restore": false,
+  "recovery_identity": "/run/credentials/restore/age-identity",
+  "manifest_private_key": "/run/credentials/northgate-rmm-backup.service/manifest-key",
+  "manifest_public_key": "/etc/northgate-rmm/tls/backup-public.pem"
+}

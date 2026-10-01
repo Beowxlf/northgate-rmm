@@ -1,0 +1,7 @@
+<!-- Merge this block inside one existing ossec_config after backup/review.
+     No bearer or destination is placed in process arguments. -->
+<integration>
+  <name>custom-northgate-rmm</name>
+  <level>3</level>
+  <alert_format>json</alert_format>
+</integration>

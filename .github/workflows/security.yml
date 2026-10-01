@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 25
     env:
       DATABASE_URL: postgresql://postgres@127.0.0.1:5432/northgate_rmm_test
+      RMM_OPERATIONS_TEST_DSN: postgresql://postgres@127.0.0.1:5432/northgate_rmm_test
       GOTOOLCHAIN: local
     services:
       postgres:
@@ -45,16 +46,19 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Set up Node.js
+        if: ${{ !cancelled() }}
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
           package-manager-cache: false
       - name: Set up Go
+        if: ${{ !cancelled() }}
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: agent/go.mod
           cache: false
       - name: Audit locked npm dependencies
+        if: ${{ !cancelled() }}
         id: npm-audit
         continue-on-error: true
         run: |
@@ -86,23 +90,39 @@ jobs:
           done
           exit "$audit_status"
       - name: Set up Python
+        if: ${{ !cancelled() }}
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: "3.12"
           cache: ""
       - name: Install pinned Python audit tools
+        if: ${{ !cancelled() }}
         run: |
           python -m pip install --upgrade pip==26.2.1
-          python -m pip install zizmor==1.29.0 semgrep==1.175.0 pip-audit==2.10.1
-          python -m pip install --requirement requirements-dev.txt
+          python -m pip install zizmor==1.29.0 pip-audit==2.10.1
+          python -m venv "$RUNNER_TEMP/semgrep-venv"
+          "$RUNNER_TEMP/semgrep-venv/bin/python" -m pip install --upgrade pip==26.2.1
+          "$RUNNER_TEMP/semgrep-venv/bin/python" -m pip install semgrep==1.178.0
+          python -m pip install --requirement requirements-dev.txt --editable .
       - name: Audit Python tool dependencies
+        if: ${{ !cancelled() }}
         run: pip-audit --progress-spinner off
-      - name: Check Phase 1 Python quality and types
-        run: |
-          ruff format --check src tests server/packaging/launcher.py
-          ruff check src tests server/packaging/launcher.py
-          mypy src tests server/packaging/launcher.py
+      - name: Audit isolated Semgrep dependencies
+        if: ${{ !cancelled() }}
+        run: >-
+          pip-audit --progress-spinner off
+          --path "$RUNNER_TEMP/semgrep-venv/lib/python3.12/site-packages"
+      - name: Check Python formatting
+        if: ${{ !cancelled() }}
+        run: ruff format --check src tests server/packaging/launcher.py
+      - name: Lint Python
+        if: ${{ !cancelled() }}
+        run: ruff check src tests server/packaging/launcher.py
+      - name: Check Python types
+        if: ${{ !cancelled() }}
+        run: mypy src tests server/packaging/launcher.py
       - name: Test Phase 1 Python domain slice
+        if: ${{ !cancelled() }}
         run: >-
           pytest
           --cov=northgate_rmm
@@ -110,10 +130,12 @@ jobs:
           --cov-report=term-missing
           --cov-fail-under=90
       - name: Scan Phase 1 Python with Bandit
+        if: ${{ !cancelled() }}
         run: >-
           bandit --recursive src server/packaging/launcher.py
           --severity-level medium
       - name: Check Phase 2 Go agent
+        if: ${{ !cancelled() }}
         working-directory: agent
         run: |
           test -z "$(gofmt -l .)"
@@ -127,7 +149,14 @@ jobs:
           go test -run=^$ -fuzz=FuzzEmit -fuzztime=5s ./eventlog
           go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+      - name: Check Windows agent types and pointers
+        if: ${{ !cancelled() }}
+        working-directory: agent
+        run: |
+          GOOS=windows GOARCH=amd64 go vet ./...
+          GOOS=windows GOARCH=amd64 go build ./...
       - name: Build and test the Phase 2 Debian package in isolation
+        if: ${{ !cancelled() }}
         working-directory: agent
         run: |
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
@@ -153,6 +182,7 @@ jobs:
             northgate-rmm-debian-package-test:12 \
             sh /test-package.sh /packages/northgate-rmm-agent_0.2.0_amd64.deb
       - name: Build and test the server Debian package in isolation
+        if: ${{ !cancelled() }}
         run: |
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
           export SOURCE_DATE_EPOCH
@@ -175,9 +205,12 @@ jobs:
             --no-deps \
             --wheel-dir build/server/application-b \
             .
-          cmp \
-            build/server/application-a/northgate_rmm-0.1.0.dev0-py3-none-any.whl \
-            build/server/application-b/northgate_rmm-0.1.0.dev0-py3-none-any.whl
+          set -- build/server/application-a/*.whl
+          test "$#" -eq 1
+          application_wheel="$1"
+          wheel_name="$(basename "$application_wheel")"
+          application_version="$(python -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          cmp "$application_wheel" "build/server/application-b/$wheel_name"
           python -m pip download \
             --require-hashes \
             --only-binary=:all: \
@@ -188,20 +221,20 @@ jobs:
             --dest build/server/runtime \
             --requirement server/requirements-runtime.txt
           server/packaging/build-deb.sh \
-            0.1.0~dev0 \
-            build/server/application-a/northgate_rmm-0.1.0.dev0-py3-none-any.whl \
+            "$application_version" \
+            "$application_wheel" \
             build/server/runtime \
             build/server/package-a
           server/packaging/build-deb.sh \
-            0.1.0~dev0 \
-            build/server/application-a/northgate_rmm-0.1.0.dev0-py3-none-any.whl \
+            "$application_version" \
+            "$application_wheel" \
             build/server/runtime \
             build/server/package-b
           cmp \
-            build/server/package-a/northgate-rmm-server_0.1.0~dev0_amd64.deb \
-            build/server/package-b/northgate-rmm-server_0.1.0~dev0_amd64.deb
+            "build/server/package-a/northgate-rmm-server_${application_version}_amd64.deb" \
+            "build/server/package-b/northgate-rmm-server_${application_version}_amd64.deb"
           sha256sum \
-            build/server/package-a/northgate-rmm-server_0.1.0~dev0_amd64.deb
+            "build/server/package-a/northgate-rmm-server_${application_version}_amd64.deb"
           docker build --pull=false \
             --file server/packaging/debian/Dockerfile.test \
             --tag northgate-rmm-server-package-test:12 .
@@ -212,16 +245,23 @@ jobs:
             --volume "$PWD/server/packaging/debian/test-package.sh:/test-package.sh:ro" \
             northgate-rmm-server-package-test:12 \
             sh /test-package.sh \
-            /packages/northgate-rmm-server_0.1.0~dev0_amd64.deb \
-            /agent-packages/northgate-rmm-agent_0.2.0_amd64.deb
-      - name: Run Semgrep Community Edition
-        run: |
-          semgrep scan --config p/javascript --error scripts
-          semgrep scan --config p/python --error src tests server/packaging/launcher.py
-          semgrep scan --config p/golang --error agent
+            "/packages/northgate-rmm-server_${application_version}_amd64.deb" \
+            /agent-packages/northgate-rmm-agent_0.2.0_amd64.deb \
+            "$application_version"
+      - name: Run Semgrep JavaScript checks
+        if: ${{ !cancelled() }}
+        run: '"$RUNNER_TEMP/semgrep-venv/bin/semgrep" scan --config p/javascript --error scripts'
+      - name: Run Semgrep Python checks
+        if: ${{ !cancelled() }}
+        run: '"$RUNNER_TEMP/semgrep-venv/bin/semgrep" scan --config p/python --error src tests server/packaging/launcher.py'
+      - name: Run Semgrep Go checks
+        if: ${{ !cancelled() }}
+        run: '"$RUNNER_TEMP/semgrep-venv/bin/semgrep" scan --config p/golang --error agent'
       - name: Audit workflows with Zizmor
+        if: ${{ !cancelled() }}
         run: zizmor .github/workflows --pedantic
       - name: Install checksum-verified native audit tools
+        if: ${{ !cancelled() }}
         run: |
           curl --fail --location --silent --show-error \
             --output "$RUNNER_TEMP/gitleaks.tar.gz" \
@@ -244,10 +284,13 @@ jobs:
             --strip-components=1 \
             -C "$RUNNER_TEMP/lychee"
       - name: Scan for secrets with Gitleaks
+        if: ${{ !cancelled() }}
         run: '"$RUNNER_TEMP/gitleaks/gitleaks" dir . --redact --no-banner --verbose --config .gitleaks.toml'
       - name: Validate workflows with actionlint
+        if: ${{ !cancelled() }}
         run: '"$RUNNER_TEMP/actionlint/actionlint" -color'
       - name: Validate documentation links with Lychee
+        if: ${{ !cancelled() }}
         run: >-
           "$RUNNER_TEMP/lychee/lychee"
           --no-progress

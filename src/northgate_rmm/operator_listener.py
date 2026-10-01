@@ -16,6 +16,7 @@ from typing import Protocol
 
 from northgate_rmm.errors import ValidationError
 from northgate_rmm.operator_api import OperatorRequest, OperatorResponse
+from northgate_rmm.presentation import STYLE_SOURCE
 from northgate_rmm.secure_files import private_key_reference, regular_file_reference
 
 MAX_OPERATOR_HEADER_BYTES = 6_144
@@ -471,8 +472,8 @@ async def _write_raw(
         "content-type": "application/json",
         "cache-control": "no-store",
         "content-security-policy": (
-            "default-src 'none'; frame-ancestors 'none'; "
-            "base-uri 'none'; form-action 'none'"
+            "default-src 'none'; frame-src 'self'; frame-ancestors 'none'; "
+            f"base-uri 'none'; form-action 'none'; style-src {STYLE_SOURCE}"
         ),
         "referrer-policy": "no-referrer",
         "x-content-type-options": "nosniff",

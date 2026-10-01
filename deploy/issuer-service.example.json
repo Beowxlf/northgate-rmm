@@ -1,0 +1,14 @@
+{
+  "bind_address": "127.0.0.1",
+  "port": 8446,
+  "authority": "issuer.rmm.internal:8446",
+  "allowed_client_sha256": [
+    "REPLACE_WITH_EXACT_CALLER_CERTIFICATE_SHA256"
+  ],
+  "client_ca_certificate": "/etc/northgate-rmm/tls/workload-ca.pem",
+  "server_certificate": "/etc/northgate-rmm/tls/issuer-chain.pem",
+  "server_private_key": "/run/credentials/northgate-rmm-issuer.service/server-key",
+  "ledger": "/var/lib/northgate-rmm-server/issuer/ledger.sqlite",
+  "issuer_private_key": "/run/credentials/northgate-rmm-issuer.service/issuer-key",
+  "issuer_chain": "/run/credentials/northgate-rmm-issuer.service/issuer-chain"
+}

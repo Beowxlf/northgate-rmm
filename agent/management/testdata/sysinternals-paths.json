@@ -1,0 +1,4 @@
+{
+  "valid": ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "D:\\Ops files\\example.exe", "c:\\Ops\\évidence.exe"],
+  "invalid": ["", "powershell.exe", "C:powershell.exe", "\\Windows\\powershell.exe", "\\\\server\\share\\tool.exe", "\\\\?\\C:\\tool.exe", "\\\\.\\C:\\tool.exe", "C:/Windows/tool.exe", "C:\\", "C:\\Ops\\", "C:\\Ops\\..\\tool.exe", "C:\\Ops\\.\\tool.exe", "C:\\\\tool.exe", "C:\\Ops\\*.exe", "C:\\Ops\\a?.exe", "C:\\Ops\\tool.exe:secret", "C:\\Ops\\tool.exe -v\n", "C:\\Ops\\a\t.exe", "C:\\Ops\\a\u007f.exe", "C:\\Ops\\a\u0085.exe", "C:\\Ops\\tool.exe.", "C:\\Ops\\tool.exe ", "C:\\Ops\\CON", "C:\\Ops\\nul.exe", "C:\\Ops\\COM1.txt", "C:\\Ops\\lpt².log", "C:\\Ops\\CONOUT$.txt", "C:\\Ops\\a\".exe", "C:\\Ops\\a|b.exe", "C:\\Ops\\a<b.exe"]
+}

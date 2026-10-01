@@ -1,0 +1,17 @@
+{
+  "recovery_config": "/etc/northgate-rmm/recovery.json",
+  "database_dsn_credential": "/run/credentials/northgate-rmm-operations-backup.service/database-dsn",
+  "manifest_private_key": "/run/credentials/northgate-rmm-operations-backup.service/manifest-key",
+  "remote_key_credential": "/run/credentials/northgate-rmm-operations-backup.service/remote-key",
+  "remote_root": "/var/lib/northgate-rmm-remote",
+  "sqlite_sources": [
+    "management/management.sqlite3",
+    "captures/capture.sqlite3",
+    "inspection.sqlite3",
+    "remote-sessions.sqlite3",
+    "secrets.sqlite3"
+  ],
+  "credentials_file": "/run/credentials/northgate-rmm-operations-backup.service/remote-credentials",
+  "maximum_archive_bytes": 8589934592,
+  "isolated_restore": false
+}

@@ -1,5 +1,14 @@
 # Changelog
 
+## Version 1.0 implementation candidate - 2026-09-04
+
+- Added Linux/Windows renewal, fresh signed server certificate status, restricted
+  issuance, private owner-session introspection and browser proxy configuration.
+- Added independent audit delivery/reconciliation, signed encrypted backup and
+  isolated restore, bounded retention, service accounts and operational units.
+- Added Windows protected storage, recovery, build/sign/verify and lifecycle
+  scripts. This is source implementation, not a qualified or deployed release.
+
 All notable changes will be documented here. The project follows Keep a
 Changelog structure and will adopt semantic versioning before its first release.
 

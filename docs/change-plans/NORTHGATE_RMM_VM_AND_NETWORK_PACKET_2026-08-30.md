@@ -1,5 +1,11 @@
 # NorthGate RMM VM and Network Change Packet — 2026-08-30
 
+**Historical packet:** the owner subsequently approved lab deployment and
+[removed dedicated VLAN requirements](../governance/authorizations/V1-SHARED-LAB-NETWORK-2026-09-04.md).
+Do not execute this packet's VLAN 170/180 creation or trunk-extension steps.
+Use an existing private lab network for the RMM server and test endpoints.
+The original approval status and network flow matrix below are retained as history.
+
 Status: Plan only — not approved for execution  
 Candidate change: `NG-CHG-20260830-001`  
 Discovery authority: read-only NorthGate MCP and pinned OPNsense guest access  

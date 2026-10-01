@@ -1,0 +1,10 @@
+[Unit]
+Description=Send a bounded batch of normalized Wazuh alerts
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -49,7 +49,7 @@ install -d -o root -g root -m 0755 /etc/northgate-rmm
 install -d -o root -g root -m 0700 /etc/northgate-rmm/secrets
 install -d -o root -g root -m 0755 /etc/northgate-rmm/tls
 install -d -o root -g root -m 0755 /var/lib/northgate-rmm-server
-for service in agent enrollment operator; do
+for service in agent enrollment operator issuer oidc audit; do
   ensure_identity "northgate-rmm-$service" "/var/lib/northgate-rmm-server/$service"
   config="/etc/northgate-rmm/${service}-service.json"
   if [ -f "$config" ] && [ ! -L "$config" ]; then
@@ -58,13 +58,22 @@ for service in agent enrollment operator; do
   fi
 done
 
+ensure_identity northgate-rmm-backup /var/lib/northgate-rmm-server/backup
+ensure_identity northgate-rmm-retention /var/lib/northgate-rmm-server/retention
+ensure_identity northgate-rmm-export /var/lib/northgate-rmm-server/export
+ensure_identity northgate-rmm-status /var/lib/northgate-rmm-server/status
+
+install -d -o northgate-rmm-status -g northgate-rmm-status -m 0755 /var/lib/northgate-rmm-status
+install -d -o northgate-rmm-audit -g northgate-rmm-audit -m 0700 /var/lib/northgate-rmm-checkpoints
+install -d -o northgate-rmm-backup -g northgate-rmm-backup -m 0700 /var/backups/northgate-rmm
+
 rm -f -- /etc/northgate-rmm/.server-identities-revoked \
   /etc/northgate-rmm/.server-evidence-exported \
   /etc/northgate-rmm/.server-purge-approved
 
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload
-  for service in agent enrollment operator; do
+  for service in agent enrollment operator issuer oidc audit; do
     unit="northgate-rmm-${service}.service"
     if [ "$service" = "agent" ]; then
       unit=northgate-rmm-agent-ingress.service

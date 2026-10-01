@@ -3,6 +3,7 @@ set -eu
 
 package="${1:?package path is required}"
 agent_package="${2:?endpoint agent package path is required}"
+expected_application_version="${3:?expected application version is required}"
 
 awk -F: 'NR > 2 {gsub(/[[:space:]]/, "", $1); if ($1 != "lo") exit 1}' /proc/net/dev
 dpkg-deb --info "$package" >/dev/null
@@ -43,8 +44,9 @@ systemd-analyze verify \
 test -e /usr/libexec/northgate-rmm/northgate-rmm-agent
 test -e /usr/lib/systemd/system/northgate-rmm-agent.service
 
-python3 - <<'PY'
+python3 - "$expected_application_version" <<'PY'
 import importlib.metadata
+import sys
 
 expected = {
     "aiohappyeyeballs": "2.7.1",
@@ -56,7 +58,7 @@ expected = {
     "frozenlist": "1.8.0",
     "idna": "3.19",
     "multidict": "6.7.1",
-    "northgate-rmm": "0.1.0.dev0",
+    "northgate-rmm": sys.argv[1],
     "propcache": "0.5.2",
     "psycopg": "3.3.4",
     "psycopg-binary": "3.3.4",

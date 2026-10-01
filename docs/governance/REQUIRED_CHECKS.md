@@ -24,6 +24,12 @@ explicit bounded, classified audit is the only network-dependent npm audit gate.
 Its failure is retained while deterministic checks continue, then an always-run
 final enforcement step keeps the required security check failed.
 
+Independent security checks run even when an earlier check fails. Formatting,
+lint, typing, tests and scanners retain their own failing step outcomes; no
+continue-on-error is applied to them. Cancellation still stops remaining checks.
+The server package qualification derives its wheel and version from the current
+project and verifies that installed metadata matches that exact version.
+
 ## Python control-plane checks
 
 | Check                  | Free software             | Blocking rule                                                                    |

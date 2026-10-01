@@ -1,6 +1,8 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -9,6 +11,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from northgate_rmm.management import Management
 from northgate_rmm.management_store import ManagementStore
+from northgate_rmm.remote_gateway import RemoteGateway
 from northgate_rmm.tool_catalog import ToolCatalog
 
 
@@ -25,8 +28,10 @@ from northgate_rmm.tool_catalog import ToolCatalog
         "existing_invalid_replay",
     ],
 )
-def test_tool_dispatch_is_idempotent_scoped_and_csrf_bound(tmp_path, mode):
-    async def scenario():
+def test_tool_dispatch_is_idempotent_scoped_and_csrf_bound(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    async def scenario() -> None:
         endpoint, identity = uuid4(), uuid4()
         principal = SimpleNamespace(
             subject="owner",
@@ -35,18 +40,18 @@ def test_tool_dispatch_is_idempotent_scoped_and_csrf_bound(tmp_path, mode):
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
 
-        async def authenticate(*args, **kwargs):
+        async def authenticate(*args: object, **kwargs: object) -> SimpleNamespace:
             return principal
 
-        async def audit(*args):
+        async def audit(*args: object) -> None:
             pass
 
-        async def case_authorizer(*args):
+        async def case_authorizer(*args: object) -> None:
             if mode == "case_link_failed":
                 return
             raise web.HTTPForbidden(text="Case not in scope")
 
-        async def case_linker(*args):
+        async def case_linker(*args: object) -> None:
             raise web.HTTPBadRequest(text="Post-queue case link failed")
 
         gateway = SimpleNamespace(
@@ -64,12 +69,16 @@ def test_tool_dispatch_is_idempotent_scoped_and_csrf_bound(tmp_path, mode):
             ),
         )
         store = ManagementStore(tmp_path, bytes(16))
-        store.worker = lambda _: {
-            "ready": True,
-            "identity": str(identity),
-            "capabilities": {"features": {"tool_catalog": True}},
-        }
-        management = Management(gateway, store)
+        monkeypatch.setattr(
+            store,
+            "worker",
+            lambda _: {
+                "ready": True,
+                "identity": str(identity),
+                "capabilities": {"features": {"tool_catalog": True}},
+            },
+        )
+        management = Management(cast(RemoteGateway, gateway), store)
         catalog = ToolCatalog(
             management,
             case_authorizer=case_authorizer,

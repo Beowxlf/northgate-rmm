@@ -10,7 +10,7 @@ import (
 var trustDeviceName = regexp.MustCompile(`(?i)^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])$`)
 
 func validateWindowsTrustPath(path string) error {
-	invalid := errors.New("Select one absolute ordinary local Windows file")
+	invalid := errors.New("select one absolute ordinary local Windows file")
 	if len(path) < 4 || len(path) > 1024 || !((path[0] >= 'a' && path[0] <= 'z') || (path[0] >= 'A' && path[0] <= 'Z')) || path[1:3] != `:\` || strings.ContainsAny(path[2:], `:/*?"<>|`) || strings.ContainsFunc(path, unicode.IsControl) {
 		return invalid
 	}

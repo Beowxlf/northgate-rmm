@@ -7,10 +7,14 @@ import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+from uuid import UUID
+
+from northgate_rmm.remote_policy import RemoteLease
 
 
 class RemoteSessionStore:
-    def __init__(self, path: Path | str = ":memory:"):
+    def __init__(self, path: Path | str = ":memory:") -> None:
         self.lock = threading.RLock()
         if str(path) != ":memory:":
             path = Path(path)
@@ -37,9 +41,9 @@ class RemoteSessionStore:
                         (json.dumps(value), sid),
                     )
         if str(path) != ":memory:":
-            path.chmod(0o600)
+            Path(path).chmod(0o600)
 
-    def create(self, lease, method, case_id):
+    def create(self, lease: RemoteLease, method: str, case_id: str) -> None:
         value = {
             "id": str(lease.session_id),
             "endpoint_id": str(lease.endpoint_id),
@@ -65,7 +69,7 @@ class RemoteSessionStore:
                 ),
             )
 
-    def update(self, session_id, *, status, outcome):
+    def update(self, session_id: UUID | str, *, status: str, outcome: str) -> None:
         if status not in {"connected", "closed", "expired", "failed"}:
             raise ValueError("invalid session receipt state")
         if outcome not in {
@@ -95,7 +99,9 @@ class RemoteSessionStore:
                 (json.dumps(value), str(session_id)),
             )
 
-    def list(self, endpoint, identity, limit=100):
+    def list(
+        self, endpoint: UUID | str, identity: UUID | str, limit: int = 100
+    ) -> list[dict[str, Any]]:
         with self.lock:
             rows = self.db.execute(
                 "SELECT value FROM sessions WHERE endpoint=? AND identity=? "

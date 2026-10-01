@@ -19,7 +19,8 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from aiohttp import web
 
 from northgate_rmm.domain import Endpoint, EndpointIdentity, EndpointLifecycle
-from northgate_rmm.errors import NotFoundError
+from northgate_rmm.errors import NotFoundError, ValidationError
+from northgate_rmm.integration_auth import IntegrationEntry
 from northgate_rmm.management_protocol import SECRET_ACTIONS, TERMINAL
 from northgate_rmm.operations_models import (
     CASE_DISPOSITIONS,
@@ -54,7 +55,7 @@ MEDIA_TYPES = {
 class IntegrationActor:
     subject: str
     session_id: str
-    entry: dict[str, Any]
+    entry: IntegrationEntry
     snapshot_endpoints: frozenset[str] | None = None
 
 
@@ -975,7 +976,9 @@ class Operations:
         except (KeyError, ValueError):
             raise web.HTTPNotFound() from None
 
-    async def native_call(self, entry: Any, operation: str, args: Any) -> Any:
+    async def native_call(
+        self, entry: IntegrationEntry, operation: str, args: Any
+    ) -> dict[str, Any]:
         """Called only after NativeAPI authenticates its real service identity."""
         p = IntegrationActor("integration:" + entry["id"], "operations-native", entry)
         if operation not in {"state", "record"} and entry.get("read_only") is True:
@@ -1027,7 +1030,7 @@ class Operations:
             )
             if source is None:
                 raise ValueError("Unknown intake identity")
-        except (ValueError, KeyError, OSError, TypeError):
+        except (ValueError, KeyError, OSError, TypeError, ValidationError):
             raise web.HTTPUnauthorized() from None
         try:
             payload = await self.body(request)
@@ -1158,9 +1161,12 @@ class Operations:
 
     def device_name(self, endpoint: str) -> str:
         try:
-            return self.gateway.operation._store.get_endpoint(
+            name = self.gateway.operation._store.get_endpoint(
                 UUID(endpoint)
             ).display_name
+            if not isinstance(name, str):
+                raise ValueError("Invalid endpoint display name")
+            return name
         except (KeyError, NotFoundError, ValueError):
             return endpoint
 
@@ -1218,7 +1224,10 @@ class Operations:
                 existing["revision"],
                 "case.auto_updated",
             )
-            return existing["id"]
+            identifier = existing["id"]
+            if not isinstance(identifier, str):
+                raise ValueError("Invalid retained case identifier")
+            return identifier
         case_id = str(uuid4())
         device = self.device_name(endpoint)
         context = bounded_json(value.get("context", {}), 8192)

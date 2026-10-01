@@ -10,11 +10,12 @@ import pytest
 
 SOURCE = Path(__file__).parents[1] / "deploy/openbao/install-operations-backup-link.py"
 SPEC = importlib.util.spec_from_file_location("openbao_backup_installer", SOURCE)
+assert SPEC is not None and SPEC.loader is not None
 installer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(installer)
 
 
-def bundle(tmp_path, items):
+def bundle(tmp_path: Path, items: list[tuple[str, bytes, bytes]]) -> tuple[Path, str]:
     target = tmp_path / "reviewed.tgz"
     with tarfile.open(target, "w:gz") as archive:
         for name, data, kind in items:
@@ -25,14 +26,14 @@ def bundle(tmp_path, items):
     return target, hashlib.sha256(target.read_bytes()).hexdigest()
 
 
-def valid_items():
+def valid_items() -> list[tuple[str, bytes, bytes]]:
     return [
         (name, b"reviewed deployment asset\n", tarfile.REGTYPE)
         for name in installer.MEMBERS
     ]
 
 
-def test_exact_reviewed_bundle_reads_without_extracting_paths(tmp_path):
+def test_exact_reviewed_bundle_reads_without_extracting_paths(tmp_path: Path) -> None:
     path, sha = bundle(tmp_path, valid_items())
     assert set(installer.read_bundle(path, sha)) == installer.MEMBERS
     assert list(tmp_path.iterdir()) == [path]
@@ -41,7 +42,7 @@ def test_exact_reviewed_bundle_reads_without_extracting_paths(tmp_path):
 @pytest.mark.parametrize(
     "kind", ["hash", "missing", "duplicate", "traversal", "symlink", "oversized"]
 )
-def test_unreviewed_or_unsafe_bundle_is_rejected(tmp_path, kind):
+def test_unreviewed_or_unsafe_bundle_is_rejected(tmp_path: Path, kind: str) -> None:
     items = valid_items()
     if kind == "missing":
         items.pop()
@@ -58,7 +59,7 @@ def test_unreviewed_or_unsafe_bundle_is_rejected(tmp_path, kind):
         installer.read_bundle(path, "0" * 64 if kind == "hash" else sha)
 
 
-def test_installed_dropin_matches_reviewed_asset():
+def test_installed_dropin_matches_reviewed_asset() -> None:
     assert (
         SOURCE.parent / "20-vault-snapshot.conf"
     ).read_bytes() == installer.DROPIN_BYTES

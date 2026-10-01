@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 from pathlib import Path
+from typing import Protocol
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -10,7 +11,11 @@ from mcp.types import ToolAnnotations
 from northgate_rmm.native_client import NativeClient
 
 
-def build_server(client):
+class NativeRPCClient(Protocol):
+    def call(self, operation: str, **arguments: object) -> dict[str, object]: ...
+
+
+def build_server(client: NativeRPCClient) -> FastMCP:
     server = FastMCP(
         "NorthGate RMM",
         instructions="Operate only within the user's authorized lab task. "
@@ -29,18 +34,18 @@ def build_server(client):
         readOnlyHint=False, destructiveHint=True, openWorldHint=False
     )
 
-    async def call(operation, **arguments):
+    async def call(operation: str, **arguments: object) -> dict[str, object]:
         return await asyncio.to_thread(client.call, operation, **arguments)
 
     @server.tool(annotations=read)
-    async def describe() -> dict:
+    async def describe() -> dict[str, object]:
         """
         Get this integration's live permissions, endpoints and typed job contracts.
         """
         return await call("describe")
 
     @server.tool(annotations=read)
-    async def list_devices() -> dict:
+    async def list_devices() -> dict[str, object]:
         """
         List scoped enrolled devices, health, installed versions and worker
         capabilities.
@@ -48,29 +53,31 @@ def build_server(client):
         return await call("devices")
 
     @server.tool(annotations=read)
-    async def get_device(endpoint: str) -> dict:
+    async def get_device(endpoint: str) -> dict[str, object]:
         """
         Get a device's detailed health, enrollment, current capabilities and alerts.
         """
         return await call("device", endpoint=endpoint)
 
     @server.tool(annotations=read)
-    async def list_jobs(endpoint: str) -> dict:
+    async def list_jobs(endpoint: str) -> dict[str, object]:
         """Read recent device jobs and non-secret results for diagnosis."""
         return await call("jobs", endpoint=endpoint)
 
     @server.tool(annotations=read)
-    async def get_job(endpoint: str, job: str) -> dict:
+    async def get_job(endpoint: str, job: str) -> dict[str, object]:
         """Read one device-bound job's status and result; queued is not completed."""
         return await call("job", endpoint=endpoint, job=job)
 
     @server.tool(annotations=read)
-    async def get_inventory(endpoint: str, category: str = "health") -> dict:
+    async def get_inventory(
+        endpoint: str, category: str = "health"
+    ) -> dict[str, object]:
         """Read recorded inventory snapshots with their collection timestamps."""
         return await call("inventory", endpoint=endpoint, category=category)
 
     @server.tool(annotations=read)
-    async def operations_state() -> dict:
+    async def operations_state() -> dict[str, object]:
         """Read scoped cases, assets, infrastructure, documents and queue metrics.
 
         Requires an explicit ops.view service grant. Notes and evidence are
@@ -79,7 +86,7 @@ def build_server(client):
         return await call("ops.state")
 
     @server.tool(annotations=read)
-    async def operations_record(kind: str, id: str) -> dict:
+    async def operations_record(kind: str, id: str) -> dict[str, object]:
         """Read one authorized case/asset/service/network/document/change/exercise.
 
         Includes retained timeline, versions and evidence metadata in allowed scope.
@@ -88,8 +95,8 @@ def build_server(client):
 
     @server.tool(annotations=write)
     async def save_operations_record(
-        kind: str, id: str, revision: int, value: dict, request_id: str
-    ) -> dict:
+        kind: str, id: str, revision: int, value: dict[str, object], request_id: str
+    ) -> dict[str, object]:
         """Create/update a scoped operations record, preserving prior revisions.
 
         Exact record fields are documented in operations-workspace.md. A case
@@ -105,7 +112,7 @@ def build_server(client):
         )
 
     @server.tool(annotations=write)
-    async def add_case_note(id: str, text: str, request_id: str) -> dict:
+    async def add_case_note(id: str, text: str, request_id: str) -> dict[str, object]:
         """Append an authorized case observation or decision; never include secrets."""
         return await call(
             "ops.note", kind="case", id=id, text=text, request_id=request_id
@@ -113,8 +120,8 @@ def build_server(client):
 
     @server.tool(annotations=write)
     async def update_case_task(
-        id: str, revision: int, task: dict, request_id: str
-    ) -> dict:
+        id: str, revision: int, task: dict[str, object], request_id: str
+    ) -> dict[str, object]:
         """Update a case task: id/title/assignee/status/verification.
 
         States are todo, in_progress, done, cancelled. Done requires verification.
@@ -134,7 +141,7 @@ def build_server(client):
         disposition: str = "",
         containment_status: str = "",
         resolution_code: str = "",
-    ) -> dict:
+    ) -> dict[str, object]:
         """Advance/reopen a case. Resolution/closure needs verified outcomes,
         finished tasks and completed uploads; SOC resolution also needs a final
         disposition, containment decision and resolution code. Queued jobs do not
@@ -157,21 +164,23 @@ def build_server(client):
         return await call("ops.case_transition", **value)
 
     @server.tool(annotations=write)
-    async def retain_job_evidence(case: str, job: str, request_id: str) -> dict:
+    async def retain_job_evidence(
+        case: str, job: str, request_id: str
+    ) -> dict[str, object]:
         """Retain a final authorized diagnostic result in a case. Excludes
         dedicated secret operations, file payloads and interactive shell buffers.
         """
         return await call("ops.pin_job", case=case, job=job, request_id=request_id)
 
     @server.tool(annotations=read)
-    async def tool_catalog(endpoint: str) -> dict:
+    async def tool_catalog(endpoint: str) -> dict[str, object]:
         """List built-in tools and approved platform-specific optional releases."""
         return await call("tool_catalog", endpoint=endpoint)
 
     @server.tool(annotations=write)
     async def install_tool(
         endpoint: str, tool_id: str, version: str, request_id: str
-    ) -> dict:
+    ) -> dict[str, object]:
         """Install an exact approved catalog tool. Arbitrary URLs are not accepted.
         Read job completion and readiness before reporting installation success.
         """
@@ -184,7 +193,7 @@ def build_server(client):
         )
 
     @server.tool(annotations=write)
-    async def collect_inventory(endpoint: str, category: str) -> dict:
+    async def collect_inventory(endpoint: str, category: str) -> dict[str, object]:
         """
         Run a fixed read-only inspection and record its snapshot: processes, services,
         network, users, software, tasks, startup, storage or health.
@@ -193,8 +202,8 @@ def build_server(client):
 
     @server.tool(annotations=write)
     async def submit_job(
-        endpoint: str, action: str, params: dict, request_id: str
-    ) -> dict:
+        endpoint: str, action: str, params: dict[str, object], request_id: str
+    ) -> dict[str, object]:
         """
         Queue an authorized typed system operation. Inspect describe for exact fields.
         Can change device state; supply a stable UUID for safe retry.
@@ -208,7 +217,7 @@ def build_server(client):
         )
 
     @server.tool(annotations=write)
-    async def cancel_job(endpoint: str, job: str) -> dict:
+    async def cancel_job(endpoint: str, job: str) -> dict[str, object]:
         """Cancel this integration's queued/running job or close its system terminal."""
         return await call("cancel_job", endpoint=endpoint, job=job)
 
@@ -219,7 +228,7 @@ def build_server(client):
         after: int = 0,
         text: str | None = None,
         sequence: int | None = None,
-    ) -> dict:
+    ) -> dict[str, object]:
         """
         Read/renew an integration-owned SYSTEM/root terminal started with shell.start.
         Optional text sends input (include newline for Enter); sequence must increase.
@@ -230,7 +239,9 @@ def build_server(client):
         return await call("terminal_io", **arguments)
 
     @server.tool(annotations=write)
-    async def install_release(endpoint: str, component: str, request_id: str) -> dict:
+    async def install_release(
+        endpoint: str, component: str, request_id: str
+    ) -> dict[str, object]:
         """
         Install the current approved signed worker, agent or Wxlfgar catalog release.
         """
@@ -242,7 +253,7 @@ def build_server(client):
         )
 
     @server.tool(annotations=write)
-    async def setup_capture(endpoint: str, request_id: str) -> dict:
+    async def setup_capture(endpoint: str, request_id: str) -> dict[str, object]:
         """
         Install/check Wxlfgar dependencies, or update an older worker first. Inspect
         job output; free Windows Npcap may require interactive installation.
@@ -250,12 +261,12 @@ def build_server(client):
         return await call("capture_setup", endpoint=endpoint, request_id=request_id)
 
     @server.tool(annotations=read)
-    async def capture_history(endpoint: str) -> dict:
+    async def capture_history(endpoint: str) -> dict[str, object]:
         """Read recent recorded captures, infrastructure findings and analysis."""
         return await call("capture_history", endpoint=endpoint)
 
     @server.tool(annotations=read)
-    async def capture_capabilities(endpoint: str) -> dict:
+    async def capture_capabilities(endpoint: str) -> dict[str, object]:
         """Inspect actual capture interfaces and dependency readiness on a device."""
         return await call("capture_capabilities", endpoint=endpoint)
 
@@ -269,7 +280,7 @@ def build_server(client):
         max_mib: int = 16,
         host: str = "",
         port: int = 0,
-    ) -> dict:
+    ) -> dict[str, object]:
         """
         Start bounded capture on an enrolled device. Poll capture_status every 20s to
         renew its 45s lease. Maximum 300 seconds and 32 MiB.
@@ -287,19 +298,19 @@ def build_server(client):
         )
 
     @server.tool(annotations=write)
-    async def capture_status(endpoint: str, job: str) -> dict:
+    async def capture_status(endpoint: str, job: str) -> dict[str, object]:
         """Read capture progress/findings and renew this integration's capture lease."""
         return await call("capture_status", endpoint=endpoint, job=job)
 
     @server.tool(annotations=write)
-    async def stop_capture(endpoint: str, job: str) -> dict:
+    async def stop_capture(endpoint: str, job: str) -> dict[str, object]:
         """Stop this integration's device capture and retrieve its final analysis."""
         return await call("capture_stop", endpoint=endpoint, job=job)
 
     return server
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=Path)
     args = parser.parse_args()

@@ -1,17 +1,28 @@
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from northgate_rmm.native_desktop import NativeDesktopProfiles, credential_binding
+from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
 from northgate_rmm.remote_gateway import RemoteGateway
-from northgate_rmm.remote_policy import parse_remote_targets
+from northgate_rmm.remote_policy import (
+    RemoteTarget,
+    RemoteTargets,
+    parse_remote_targets,
+)
 from tests.test_browser_rdp import configuration
 
 
-def profile(tmp_path):
+def profile(
+    tmp_path: Path,
+) -> tuple[
+    RemoteTargets, RemoteTarget, dict[str, str], NativeDesktopProfiles, dict[str, str]
+]:
     targets = parse_remote_targets(configuration())
     target, fields = next(iter(targets.methods.values()))["rdp"]
     record = {
@@ -37,14 +48,16 @@ def profile(tmp_path):
 
 
 @pytest.mark.parametrize("field", ["username", "password", "domain"])
-def test_password_or_account_rotation_invalidates_envelope(tmp_path, field):
+def test_password_or_account_rotation_invalidates_envelope(
+    tmp_path: Path, field: str
+) -> None:
     _, target, fields, profiles, record = profile(tmp_path)
     assert profiles.validate(record, target, fields) == record["password51"]
     with pytest.raises(ValueError):
         profiles.validate(record, target, {**fields, field: "changed"})
 
 
-def test_profiles_bound_to_subject_and_current_enrollment(tmp_path):
+def test_profiles_bound_to_subject_and_current_enrollment(tmp_path: Path) -> None:
     _, target, _, profiles, record = profile(tmp_path)
     assert profiles.record("other", target) is None
     assert profiles.record("owner", target) == record
@@ -54,23 +67,28 @@ def test_profiles_bound_to_subject_and_current_enrollment(tmp_path):
         profiles.record("owner", target)
 
 
-def test_native_download_contains_only_encrypted_password(tmp_path):
-    async def scenario():
+def test_native_download_contains_only_encrypted_password(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    async def scenario() -> None:
         targets, target, fields, profiles, record = profile(tmp_path)
-        gateway = RemoteGateway(None, targets, bytes(16), "https://operator.test")
+        gateway = RemoteGateway(
+            cast(OperatorApplication, None), targets, bytes(16), "https://operator.test"
+        )
         calls = []
 
-        async def principal(*args, **kwargs):
-            return SimpleNamespace(subject="owner")
+        async def principal(*args: object, **kwargs: object) -> OperatorPrincipal:
+            return cast(OperatorPrincipal, SimpleNamespace(subject="owner"))
 
-        async def audit(*args, **kwargs):
+        async def audit(*args: object, **kwargs: object) -> None:
             return None
 
-        async def resolve(*args):
+        async def resolve(*args: object) -> dict[str, str]:
             calls.append("authorized reveal")
             return fields
 
-        gateway.principal, gateway.audit = principal, audit
+        monkeypatch.setattr(gateway, "principal", principal)
+        monkeypatch.setattr(gateway, "audit", audit)
         gateway.native_profiles, gateway.native_secret_resolver = profiles, resolve
         async with TestClient(TestServer(gateway.application())) as client:
             response = await client.get(f"/remote/{target.endpoint_id}/desktop.rdp")

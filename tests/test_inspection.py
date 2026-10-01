@@ -4,7 +4,9 @@ import asyncio
 import json
 import re
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -13,16 +15,20 @@ from aiohttp.test_utils import TestClient, TestServer
 from northgate_rmm.domain import EndpointHealth, Platform
 from northgate_rmm.errors import AuthorizationError
 from northgate_rmm.inspection import (
+    InspectionResult,
     InspectionStore,
     InspectionUI,
     compare,
     validate_result,
 )
+from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
 from northgate_rmm.remote_gateway import RemoteGateway
 from tests.test_remote_access import NOW, POLICY, PRINCIPAL, STATUS, TARGET
 
 
-def result(rows=None, status="ok"):
+def result(
+    rows: list[dict[str, str]] | None = None, status: str = "ok"
+) -> InspectionResult:
     return {
         "schema": 1,
         "category": "services",
@@ -37,7 +43,7 @@ def result(rows=None, status="ok"):
     }
 
 
-def test_comparison_detects_add_remove_change_and_preserves_duplicates():
+def test_comparison_detects_add_remove_change_and_preserves_duplicates() -> None:
     before = [{"id": "a", "state": "old"}, {"id": "gone"}]
     after = [{"id": "a", "state": "new"}, {"id": "new"}, {"id": "new"}]
     diff = compare(before, after)
@@ -47,7 +53,9 @@ def test_comparison_detects_add_remove_change_and_preserves_duplicates():
     assert not any(compare(after, list(reversed(after))).values())
 
 
-def test_baseline_survives_history_retention_and_rejects_other_identity(tmp_path):
+def test_baseline_survives_history_retention_and_rejects_other_identity(
+    tmp_path: Path,
+) -> None:
     store = InspectionStore(tmp_path / "inspection.db")
     id = store.add(
         TARGET.endpoint_id, TARGET.identity_id, "services", "owner", result()
@@ -57,17 +65,15 @@ def test_baseline_survives_history_retention_and_rejects_other_identity(tmp_path
         store.save_baseline(uuid4(), TARGET.identity_id, "services", id, "owner")
     for _ in range(101):
         store.add(TARGET.endpoint_id, TARGET.identity_id, "services", "owner", result())
-    assert (
-        store.baseline(TARGET.endpoint_id, TARGET.identity_id, "services")["run_id"]
-        == id
-    )
+    baseline = store.baseline(TARGET.endpoint_id, TARGET.identity_id, "services")
+    assert baseline is not None and baseline["run_id"] == id
     assert store.baseline(TARGET.endpoint_id, uuid4(), "services") is None
     with store.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 100
 
 
 @pytest.mark.parametrize("status", ["error", "partial"])
-def test_incomplete_result_cannot_become_baseline(tmp_path, status):
+def test_incomplete_result_cannot_become_baseline(tmp_path: Path, status: str) -> None:
     store = InspectionStore(tmp_path / "inspection.db")
     id = store.add(
         TARGET.endpoint_id,
@@ -91,23 +97,27 @@ def test_incomplete_result_cannot_become_baseline(tmp_path, status):
         {"collected_at": "2026-01-01"},
     ],
 )
-def test_rejects_malformed_collector_response(change):
+def test_rejects_malformed_collector_response(change: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         validate_result({**result(), **change}, "services")
 
 
-def test_inspection_http_authorization_csrf_baseline_and_offline_history(tmp_path):
+def test_inspection_http_authorization_csrf_baseline_and_offline_history(
+    tmp_path: Path,
+) -> None:
     class Operation:
         _policy = POLICY
         health = STATUS
-        _store = None
+        _store: SimpleNamespace
 
-        def _authenticate(self, authorization, **kwargs):
+        def _authenticate(
+            self, authorization: str, **kwargs: object
+        ) -> OperatorPrincipal:
             if authorization != "Bearer synthetic":
                 raise AuthorizationError("denied")
             return PRINCIPAL
 
-        def _audit(self, *args, **kwargs):
+        def _audit(self, *args: object, **kwargs: object) -> None:
             pass
 
     op = Operation()
@@ -119,13 +129,16 @@ def test_inspection_http_authorization_csrf_baseline_and_offline_history(tmp_pat
     )
     calls = []
 
-    async def runner(*args):
+    async def runner(*args: object) -> InspectionResult:
         calls.append(args[-1])
         return result([{"id": "<script>alert(1)</script>", "state": "running"}])
 
-    async def scenario():
+    async def scenario() -> None:
         gateway = RemoteGateway(
-            op, {TARGET.endpoint_id: (TARGET, {})}, bytes(16), "https://operator.test"
+            cast(OperatorApplication, op),
+            {TARGET.endpoint_id: (TARGET, {})},
+            bytes(16),
+            "https://operator.test",
         )
         store = InspectionStore(tmp_path / "http.db")
         ui = InspectionUI(gateway, store, runner)
@@ -147,7 +160,7 @@ def test_inspection_http_authorization_csrf_baseline_and_offline_history(tmp_pat
             assert "frame-ancestors 'none'" not in policy
             assert "default-src 'none'" in policy
             assert "form-action 'self'" in policy
-            nonce = re.search('name="nonce" value="([^"]+)"', await response.text())[1]
+            nonce = re.findall('name="nonce" value="([^"]+)"', await response.text())[0]
             response = await client.post(
                 path,
                 headers={**headers, "Origin": "https://evil.test"},
@@ -169,7 +182,7 @@ def test_inspection_http_authorization_csrf_baseline_and_offline_history(tmp_pat
             response = await client.get(path, headers=headers)
             html = await response.text()
             assert "&lt;script&gt;" in html and "<script>" not in html
-            nonce = re.search('name="nonce" value="([^"]+)"', html)[1]
+            nonce = re.findall('name="nonce" value="([^"]+)"', html)[0]
             id = store.history(TARGET.endpoint_id, TARGET.identity_id, "services")[0][
                 "id"
             ]
@@ -181,14 +194,11 @@ def test_inspection_http_authorization_csrf_baseline_and_offline_history(tmp_pat
                     allow_redirects=False,
                 )
             ).status == 303
-            assert (
-                json.loads(
-                    store.baseline(TARGET.endpoint_id, TARGET.identity_id, "services")[
-                        "payload"
-                    ]
-                )["status"]
-                == "ok"
+            baseline = store.baseline(
+                TARGET.endpoint_id, TARGET.identity_id, "services"
             )
+            assert baseline is not None
+            assert json.loads(baseline["payload"])["status"] == "ok"
             native = path + "&format=json"
             assert (await client.get(native)).status == 403
             response = await client.get(native, headers=headers)

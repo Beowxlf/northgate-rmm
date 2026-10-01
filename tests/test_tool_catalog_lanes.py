@@ -5,17 +5,25 @@ import base64
 import json
 import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 
+import pytest
+from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from northgate_rmm.management import Management
 from northgate_rmm.management_store import ManagementStore
+from northgate_rmm.operator_api import OperatorPrincipal
+from northgate_rmm.remote_gateway import RemoteGateway
 
 
-def test_diagnostic_lane_shell_mutation_and_independent_cancellation(tmp_path):
-    async def scenario():
+def test_diagnostic_lane_shell_mutation_and_independent_cancellation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    async def scenario() -> None:
         endpoint, identity = uuid4(), uuid4()
         actor = SimpleNamespace(
             subject="owner",
@@ -23,25 +31,32 @@ def test_diagnostic_lane_shell_mutation_and_independent_cancellation(tmp_path):
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         store = ManagementStore(tmp_path, bytes(range(16)))
-        management = Management(SimpleNamespace(key=bytes(range(16))), store)
+        management = Management(
+            cast(RemoteGateway, SimpleNamespace(key=bytes(range(16)))), store
+        )
 
-        async def peer(_):
+        async def peer(_: web.Request) -> tuple[SimpleNamespace, SimpleNamespace]:
             return SimpleNamespace(endpoint_id=endpoint), SimpleNamespace(
                 identity_id=identity
             )
 
-        async def authorize(_):
+        async def authorize(_: dict[str, Any]) -> None:
             pass
 
-        management.worker_identity = peer
-        management.authorize_job = authorize
+        monkeypatch.setattr(management, "worker_identity", peer)
+        monkeypatch.setattr(management, "authorize_job", authorize)
 
-        def add(action, params):
+        def add(action: str, params: dict[str, Any]) -> str:
             return store.add(
-                endpoint, identity, actor, action, params, "Bearer fixture"
+                endpoint,
+                identity,
+                cast(OperatorPrincipal, actor),
+                action,
+                params,
+                "Bearer fixture",
             )
 
-        def finish(job, state="completed"):
+        def finish(job: str, state: str = "completed") -> None:
             store.result(
                 endpoint,
                 identity,
@@ -63,7 +78,9 @@ def test_diagnostic_lane_shell_mutation_and_independent_cancellation(tmp_path):
         }
         async with TestClient(TestServer(management.worker_application())) as client:
 
-            async def poll(active="", diagnostic="", enabled=True):
+            async def poll(
+                active: str = "", diagnostic: str = "", enabled: bool = True
+            ) -> dict[str, Any]:
                 response = await client.post(
                     "/v1/management/poll",
                     json={
@@ -74,7 +91,10 @@ def test_diagnostic_lane_shell_mutation_and_independent_cancellation(tmp_path):
                     },
                 )
                 assert response.status == 200, await response.text()
-                return json.loads(base64.b64decode((await response.json())["payload"]))
+                return cast(
+                    dict[str, Any],
+                    json.loads(base64.b64decode((await response.json())["payload"])),
+                )
 
             shell = add("shell.start", {"columns": 100, "rows": 30})
             management.shell_leases[shell] = time.time() + 300

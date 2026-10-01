@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 import time
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from aiohttp import web
@@ -16,18 +17,23 @@ from northgate_rmm.capture_ui import signing_key
 from northgate_rmm.management_protocol import TERMINAL, validate_action
 from northgate_rmm.secure_files import regular_file_reference
 
+if TYPE_CHECKING:
+    from northgate_rmm.management import Management
+
 
 class CaptureSetup:
-    def __init__(self, management):
+    def __init__(self, management: Management) -> None:
         self.m = management
-        self.busy = set()
-        self.tokens = {}
+        self.busy: set[UUID] = set()
+        self.tokens: dict[tuple[str, str, str], str] = {}
 
-    def register(self, app):
+    def register(self, app: web.Application) -> None:
         app.router.add_get("/remote/{endpoint}/capture/setup", self.status)
         app.router.add_post("/remote/{endpoint}/capture/setup", self.start)
 
-    def release(self, platform, component="wxlfgar", installed=None):
+    def release(
+        self, platform: str, component: str = "wxlfgar", installed: str | None = None
+    ) -> dict[str, Any] | None:
         entries = []
         for path in sorted(self.m.extended.catalog.glob("*.json"))[:100]:
             with regular_file_reference(
@@ -69,7 +75,9 @@ class CaptureSetup:
             )
         return max(entries, key=lambda item: item[0])[1] if entries else None
 
-    def current(self, endpoint, identity, subject):
+    def current(
+        self, endpoint: UUID, identity: UUID, subject: str
+    ) -> dict[str, Any] | None:
         return next(
             (
                 j
@@ -84,7 +92,7 @@ class CaptureSetup:
             None,
         )
 
-    async def status(self, request):
+    async def status(self, request: web.Request) -> web.Response:
         endpoint, p, e = await self.m.context(request)
         permitted = self.m.gateway.operation._policy.permits(
             p.subject, endpoint, "patch"
@@ -156,7 +164,7 @@ class CaptureSetup:
             headers=self.m.headers(),
         )
 
-    async def start(self, request):
+    async def start(self, request: web.Request) -> web.Response:
         endpoint, p, e = await self.m.context(request, online=True)
         value = await self.m.body(request)
         self.m.csrf(request, p, endpoint, value.get("csrf"))
@@ -238,13 +246,15 @@ class CaptureSetup:
             self.busy.discard(endpoint)
         return web.json_response({"job": job}, status=202, headers=self.m.headers())
 
-    def worker_release(self, platform, worker):
+    def worker_release(
+        self, platform: str, worker: dict[str, Any]
+    ) -> dict[str, Any] | None:
         entry = self.release(platform, "worker")
         if entry is None:
             return None
         current = worker.get("capabilities", {}).get("version", "")
 
-        def parts(value):
+        def parts(value: str) -> tuple[int, ...]:
             match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-lab\.(\d+))?", value)
             return (
                 tuple(int(x) if x is not None else 2147483647 for x in match.groups())

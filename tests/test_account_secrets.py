@@ -1,19 +1,22 @@
 import asyncio
-from types import SimpleNamespace
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from aiohttp.test_utils import make_mocked_request
 
 from northgate_rmm.secrets_api import validate_fields
 from tests.test_secrets_api import fixture
 
 
-def test_account_password_is_stored_and_revealed_without_remote_binding(tmp_path):
-    async def scenario():
+def test_account_password_is_stored_and_revealed_without_remote_binding(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
         endpoint, identity, config, _, gateway, provider, api = fixture(tmp_path)
         identifier = str(uuid4())
         fields = {"username": "lab-fixture", "password": "synthetic-only"}
-        request = SimpleNamespace()
+        request = make_mocked_request("POST", "/")
         await api.perform(
             request,
             endpoint,
@@ -29,6 +32,7 @@ def test_account_password_is_stored_and_revealed_without_remote_binding(tmp_path
             },
         )
         record = api.state.get("records", identifier)
+        assert record is not None
         assert record["kind"] == "account" and not record["use_for_remote"]
         assert "password" not in record
         assert provider.read(record["path"]) == fields
@@ -46,7 +50,9 @@ def test_account_password_is_stored_and_revealed_without_remote_binding(tmp_path
                     "use_for_remote": True,
                 },
             )
-        assert not api.state.get("records", identifier)["use_for_remote"]
+        saved_record = api.state.get("records", identifier)
+        assert saved_record is not None
+        assert not saved_record["use_for_remote"]
 
     asyncio.run(scenario())
 
@@ -59,6 +65,8 @@ def test_account_password_is_stored_and_revealed_without_remote_binding(tmp_path
         {"username": "lab", "password": "synthetic", "host": "other"},
     ],
 )
-def test_account_password_schema_rejects_missing_and_unexpected_fields(fields):
+def test_account_password_schema_rejects_missing_and_unexpected_fields(
+    fields: dict[str, str],
+) -> None:
     with pytest.raises(ValueError):
         validate_fields("account", fields)

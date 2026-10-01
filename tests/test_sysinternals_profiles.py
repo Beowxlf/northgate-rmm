@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ CASES = json.loads(
 )
 
 
-def run(profile, inputs, platform="windows"):
+def run(profile: str, inputs: Mapping[str, object], platform: str = "windows") -> None:
     validate_action(
         "tool.run",
         {
@@ -26,18 +27,18 @@ def run(profile, inputs, platform="windows"):
 
 
 @pytest.mark.parametrize("path", CASES["valid"])
-def test_trust_accepts_one_explicit_local_file(path):
+def test_trust_accepts_one_explicit_local_file(path: str) -> None:
     run("trust", {"path": path})
 
 
 @pytest.mark.parametrize("path", CASES["invalid"] + ["C:\\" + "x" * 1025, 1, None])
-def test_trust_rejects_unsafe_or_untyped_paths(path):
+def test_trust_rejects_unsafe_or_untyped_paths(path: object) -> None:
     with pytest.raises(ValueError):
         run("trust", {"path": path})
 
 
 @pytest.mark.parametrize("profile", ["startup", "trust"])
-def test_empty_inputs_remain_compatible(profile):
+def test_empty_inputs_remain_compatible(profile: str) -> None:
     run(profile, {})
 
 
@@ -45,12 +46,14 @@ def test_empty_inputs_remain_compatible(profile):
 @pytest.mark.parametrize(
     "inputs", [{"flags": "-a *"}, {"path": r"C:\Ops\app.exe", "flags": "-v"}]
 )
-def test_extra_switches_cannot_be_supplied(profile, inputs):
+def test_extra_switches_cannot_be_supplied(
+    profile: str, inputs: dict[str, str]
+) -> None:
     with pytest.raises(ValueError):
         run(profile, inputs)
 
 
-def test_explicit_path_is_trust_only_and_windows_only():
+def test_explicit_path_is_trust_only_and_windows_only() -> None:
     with pytest.raises(ValueError):
         run("startup", {"path": r"C:\Ops\app.exe"})
     with pytest.raises(ValueError):

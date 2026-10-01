@@ -1,5 +1,6 @@
 import base64
 import copy
+from typing import Any
 
 import pytest
 
@@ -7,7 +8,7 @@ from northgate_rmm.management_protocol import validate_action
 from northgate_rmm.tool_catalog_models import manifest_bytes, validate_manifest
 
 
-def manifest():
+def manifest() -> dict[str, Any]:
     return {
         "schema": 1,
         "id": "osquery",
@@ -31,7 +32,7 @@ def manifest():
     }
 
 
-def test_valid_signed_contract_and_malformed_metadata():
+def test_valid_signed_contract_and_malformed_metadata() -> None:
     value = manifest()
     validate_manifest(value)
     validate_action(
@@ -73,7 +74,9 @@ def test_valid_signed_contract_and_malformed_metadata():
         ("yara-x", "scan", {"path": "-whatever"}),
     ],
 )
-def test_untyped_or_unbounded_invocation_rejected(tool, profile, inputs):
+def test_untyped_or_unbounded_invocation_rejected(
+    tool: str, profile: str, inputs: dict[str, str]
+) -> None:
     with pytest.raises(ValueError):
         validate_action(
             "tool.run",
@@ -82,7 +85,7 @@ def test_untyped_or_unbounded_invocation_rejected(tool, profile, inputs):
         )
 
 
-def test_chunks_and_platforms():
+def test_chunks_and_platforms() -> None:
     validate_action(
         "tool.artifact.read",
         {
@@ -111,7 +114,7 @@ def test_chunks_and_platforms():
 
 
 @pytest.mark.parametrize("case", [None, 1, True, {}, []])
-def test_case_context_has_a_strict_type(case):
+def test_case_context_has_a_strict_type(case: object) -> None:
     with pytest.raises(ValueError):
         validate_action(
             "tool.run",

@@ -20,6 +20,21 @@ var credentialGetServer = credentialNetAPI.NewProc("NetServerGetInfo")
 var credentialFree = credentialNetAPI.NewProc("NetApiBufferFree")
 var credentialLogon = windows.NewLazySystemDLL("advapi32.dll").NewProc("LogonUserW")
 
+// NetAPI owns these buffers. Keep them as pointers until NetApiBufferFree;
+// retaining an address in uintptr loses Go's pointer lifetime guarantees.
+type credentialServerInfo101 struct {
+	Platform           uint32
+	Name               *uint16
+	Major, Minor, Type uint32
+	Comment            *uint16
+}
+
+type credentialUserInfo23 struct {
+	Name, FullName, Comment *uint16
+	Flags                   uint32
+	SID                     *windows.SID
+}
+
 func credentialAccount(ctx context.Context, c Config) (*uint16, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -27,34 +42,23 @@ func credentialAccount(ctx context.Context, c Config) (*uint16, error) {
 	if !validCredentialAccount(c) {
 		return nil, errors.New("unmanaged credential account")
 	}
-	var server uintptr
+	var server *credentialServerInfo101
 	r, _, _ := credentialGetServer.Call(0, 101, uintptr(unsafe.Pointer(&server)))
-	if r != 0 {
+	if r != 0 || server == nil {
 		return nil, errors.New("local server identity unavailable")
 	}
-	defer credentialFree.Call(server)
-	s := (*struct {
-		Platform           uint32
-		Name               *uint16
-		Major, Minor, Type uint32
-		Comment            *uint16
-	})(unsafe.Pointer(server))
-	if s.Type&(0x8|0x10) != 0 {
+	defer credentialFree.Call(uintptr(unsafe.Pointer(server)))
+	if server.Type&(0x8|0x10) != 0 {
 		return nil, errors.New("domain controllers are excluded")
 	}
 	name, _ := windows.UTF16PtrFromString(c.CredentialAccount.Username)
-	var user uintptr
+	var user *credentialUserInfo23
 	r, _, _ = credentialGetUser.Call(0, uintptr(unsafe.Pointer(name)), 23, uintptr(unsafe.Pointer(&user)))
-	if r != 0 {
+	if r != 0 || user == nil {
 		return nil, errors.New("local account unavailable")
 	}
-	defer credentialFree.Call(user)
-	u := (*struct {
-		Name, FullName, Comment *uint16
-		Flags                   uint32
-		SID                     *windows.SID
-	})(unsafe.Pointer(user))
-	if u.SID == nil || u.SID.String() != c.CredentialAccount.SID || !strings.EqualFold(windows.UTF16PtrToString(u.Name), c.CredentialAccount.Username) || u.Flags&0x200 == 0 || u.Flags&(0x2|0x10|0x800|0x1000|0x2000) != 0 {
+	defer credentialFree.Call(uintptr(unsafe.Pointer(user)))
+	if user.SID == nil || user.SID.String() != c.CredentialAccount.SID || !strings.EqualFold(windows.UTF16PtrToString(user.Name), c.CredentialAccount.Username) || user.Flags&0x200 == 0 || user.Flags&(0x2|0x10|0x800|0x1000|0x2000) != 0 {
 		return nil, errors.New("managed account identity or status changed")
 	}
 	if err := credentialNotServiceAccount(ctx, c.CredentialAccount.Username); err != nil {

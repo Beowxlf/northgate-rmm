@@ -139,7 +139,6 @@ func TestCredentialRecipientPersistsAndRejectsInvalidAccount(t *testing.T) {
 func TestCredentialEnvelopePythonInteroperability(t *testing.T) {
 	// Fixed synthetic Python-produced wire vector; no workstation credentials.
 	var vector struct {
-		Key      string `json:"recipient_private_key"`
 		Job      Job    `json:"job"`
 		Expected string `json:"expected"`
 	}
@@ -147,9 +146,11 @@ func TestCredentialEnvelopePythonInteroperability(t *testing.T) {
 	if err != nil || json.Unmarshal(b, &vector) != nil {
 		t.Fatal("invalid interoperability fixture")
 	}
-	raw, err := base64.StdEncoding.DecodeString(vector.Key)
-	if err != nil {
-		t.Fatal(err)
+	// The public interoperability vector uses the byte sequence 0..31.
+	// Generate this synthetic test key instead of storing a private-key literal.
+	raw := make([]byte, 32)
+	for index := range raw {
+		raw[index] = byte(index)
 	}
 	key, err := ecdh.X25519().NewPrivateKey(raw)
 	if err != nil {

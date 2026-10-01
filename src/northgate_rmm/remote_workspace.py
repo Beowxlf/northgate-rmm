@@ -10,13 +10,27 @@ import json
 import re
 import secrets
 import tempfile
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from html import escape
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from aiohttp import web
+from aiohttp import BodyPartReader, web
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+from northgate_rmm.operator_api import OperatorPrincipal
+from northgate_rmm.remote_policy import RemoteTarget
+
+if TYPE_CHECKING:
+    from northgate_rmm.remote_gateway import RemoteGateway
+
+
+Credentials = dict[UUID, tuple[UUID, str, str]]
+UploadSender = Callable[
+    [RemoteTarget, dict[str, str], str, Path, str, str], Awaitable[dict[str, Any]]
+]
 
 MAX_UPLOAD = 20 * 1024 * 1024
 UPLOAD_REQUEST_LIMIT = MAX_UPLOAD + 65536
@@ -54,20 +68,20 @@ def credential_key(key: bytes) -> bytes:
     return hmac.digest(key, b"northgate-rmm-remote-credentials-v1", "sha256")
 
 
-def seal_credentials(key: bytes, values: list[dict]) -> bytes:
+def seal_credentials(key: bytes, values: list[dict[str, str]]) -> bytes:
     nonce = secrets.token_bytes(12)
     return nonce + AESGCM(credential_key(key)).encrypt(
         nonce, json.dumps(values).encode(), b"rmm-credentials-v1"
     )
 
 
-def open_credentials(key: bytes, blob: bytes) -> dict:
+def open_credentials(key: bytes, blob: bytes) -> Credentials:
     if not 28 <= len(blob) <= 16 * 1024 * 1024:
         raise ValueError("Invalid credential envelope")
     values = json.loads(
         AESGCM(credential_key(key)).decrypt(blob[:12], blob[12:], b"rmm-credentials-v1")
     )
-    result = {}
+    result: Credentials = {}
     if not isinstance(values, list) or len(values) > 4096:
         raise ValueError("Invalid credentials")
     for value in values:
@@ -92,8 +106,13 @@ def safe_filename(name: str) -> str:
 
 
 async def send_upload(
-    target, parameters, platform, source: Path, name: str, digest: str
-) -> dict:
+    target: RemoteTarget,
+    parameters: dict[str, str],
+    platform: str,
+    source: Path,
+    name: str,
+    digest: str,
+) -> dict[str, Any]:
     username = parameters.get("username", "")
     pin = parameters.get("host-key", "")
     key = parameters.get("private-key", "")
@@ -183,6 +202,8 @@ async def send_upload(
         )
         try:
             async with asyncio.timeout(90):
+                if proc.stdin is None or proc.stdout is None:
+                    raise ValueError("Upload subprocess pipes unavailable")
                 proc.stdin.write(header)
                 proc.stdin.close()
                 output = await proc.stdout.read(4097)
@@ -193,7 +214,8 @@ async def send_upload(
                     )
                 result = json.loads(output.decode("utf-8-sig"))
                 if (
-                    result.get("name") != name
+                    not isinstance(result, dict)
+                    or result.get("name") != name
                     or result.get("sha256") != digest
                     or result.get("size") != source.stat().st_size
                 ):
@@ -206,17 +228,22 @@ async def send_upload(
 
 
 class RemoteWorkspace:
-    def __init__(self, gateway, credentials=None, sender=send_upload):
+    def __init__(
+        self,
+        gateway: RemoteGateway,
+        credentials: Credentials | None = None,
+        sender: UploadSender = send_upload,
+    ) -> None:
         self.gateway, self.credentials, self.sender = gateway, credentials or {}, sender
-        self.forms = {}
-        self.busy = set()
+        self.forms: dict[str, tuple[str, str, UUID, str, datetime]] = {}
+        self.busy: set[UUID] = set()
 
-    def register(self, app):
+    def register(self, app: web.Application) -> None:
         app.router.add_get("/remote/{endpoint}/workspace", self.workspace)
         app.router.add_get("/remote/{endpoint}/tools", self.tools)
         app.router.add_post("/remote/{endpoint}/tools", self.tools)
 
-    async def workspace(self, request):
+    async def workspace(self, request: web.Request) -> web.Response:
         try:
             endpoint = UUID(request.match_info["endpoint"])
         except ValueError:
@@ -244,7 +271,7 @@ class RemoteWorkspace:
             f'<iframe title="SSH terminal" name="ssh-terminal" src="/remote/{endpoint}"></iframe>'  # noqa: E501 - HTML and fixed command literals
         )
 
-    def nonce(self, principal, endpoint, action):
+    def nonce(self, principal: OperatorPrincipal, endpoint: UUID, action: str) -> str:
         now = datetime.now(UTC)
         self.forms = {k: v for k, v in self.forms.items() if v[4] > now}
         if len(self.forms) >= 128:
@@ -259,7 +286,9 @@ class RemoteWorkspace:
         )
         return value
 
-    def consume(self, value, principal, endpoint, action):
+    def consume(
+        self, value: str, principal: OperatorPrincipal, endpoint: UUID, action: str
+    ) -> None:
         entry = self.forms.pop(value, None)
         if (
             entry is None
@@ -270,7 +299,7 @@ class RemoteWorkspace:
                 text="Form expired. Refresh the tools section and try again."
             )
 
-    async def tools(self, request):
+    async def tools(self, request: web.Request) -> web.Response:
         try:
             endpoint = UUID(request.match_info["endpoint"])
         except ValueError:
@@ -338,17 +367,27 @@ class RemoteWorkspace:
             "Refresh files & access</a>"
         )
 
-    async def upload(self, request, principal, target, parameters):
+    async def upload(
+        self,
+        request: web.Request,
+        principal: OperatorPrincipal,
+        target: RemoteTarget,
+        parameters: dict[str, str],
+    ) -> str:
         reader = await request.multipart()
         part = await reader.next()
-        if part is None or part.name != "nonce":
+        if not isinstance(part, BodyPartReader) or part.name != "nonce":
             raise web.HTTPBadRequest(text="Missing upload form token")
         nonce = await part.read_chunk(8192)
         if not part.at_eof() or len(nonce) > 128:
             raise web.HTTPBadRequest()
         self.consume(nonce.decode(), principal, target.endpoint_id, "upload")
         part = await reader.next()
-        if part is None or part.name != "file" or not part.filename:
+        if (
+            not isinstance(part, BodyPartReader)
+            or part.name != "file"
+            or not part.filename
+        ):
             raise web.HTTPBadRequest(text="Choose a file")
         try:
             name = safe_filename(part.filename)

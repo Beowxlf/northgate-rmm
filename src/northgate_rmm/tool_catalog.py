@@ -6,13 +6,19 @@ import base64
 import json
 import secrets
 import time
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING, TypedDict, cast
 from uuid import UUID, uuid4
 
 from aiohttp import web
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from northgate_rmm.management_protocol import validate_action
+from northgate_rmm.operator_api import OperatorPrincipal
+
+if TYPE_CHECKING:
+    from northgate_rmm.management import Management
 from northgate_rmm.secure_files import regular_file_reference
 from northgate_rmm.tool_catalog_models import (
     ACTION_GUIDANCE,
@@ -26,26 +32,51 @@ from northgate_rmm.tool_catalog_models import (
 )
 
 
+class ToolManifest(TypedDict):
+    schema: int
+    id: str
+    revision: int
+    version: str
+    platform: str
+    arch: str
+    sha256: str
+    size: int
+    entrypoint: str
+    license: str
+    source: str
+    privilege: str
+    budget: dict[str, int]
+
+
+class CatalogEntry(TypedDict):
+    manifest: ToolManifest
+    signature: str
+
+
 class ToolCatalog:
     def __init__(
         self,
-        management,
+        management: Management,
         root: Path | None = None,
         *,
-        case_authorizer=None,
-        case_linker=None,
-    ):
+        case_authorizer: Callable[[OperatorPrincipal, UUID, str], Awaitable[None]]
+        | None = None,
+        case_linker: Callable[[OperatorPrincipal, UUID, str, str], Awaitable[object]]
+        | None = None,
+    ) -> None:
         self.m = management
         self.root = root or management.store.root / "tool-catalog"
         self.case_authorizer = case_authorizer
         self.case_linker = case_linker
 
-    def register(self, app):
+    def register(self, app: web.Application) -> None:
         app.router.add_get("/remote/{endpoint}/tool-catalog", self.state)
         app.router.add_post("/remote/{endpoint}/tool-catalog/action", self.action)
 
-    def entries(self, platform, architecture=None):
-        result = []
+    def entries(
+        self, platform: str, architecture: str | None = None
+    ) -> list[CatalogEntry]:
+        result: list[CatalogEntry] = []
         for path in sorted(self.root.glob("*.json"))[:128]:
             with regular_file_reference(
                 path, label="approved tool manifest", maximum_bytes=16384, private=True
@@ -70,12 +101,12 @@ class ToolCatalog:
             if manifest["platform"] == platform and (
                 architecture is None or manifest["arch"] == architecture
             ):
-                result.append(entry)
+                result.append(cast(CatalogEntry, entry))
         return sorted(
             result, key=lambda entry: entry["manifest"]["revision"], reverse=True
         )
 
-    async def state(self, request):
+    async def state(self, request: web.Request) -> web.Response:
         endpoint, principal, device = await self.m.context(request)
         entries = self.entries(
             device.platform.value, getattr(device, "architecture", "amd64")
@@ -153,7 +184,9 @@ class ToolCatalog:
             headers=self.m.headers(),
         )
 
-    def validation_rejection(self, value, message):
+    def validation_rejection(
+        self, value: Mapping[str, object], message: str
+    ) -> web.HTTPBadRequest:
         """Mark only requests rejected before queuing and without a prior job.
 
         An old request replayed after validation rules change may already exist.
@@ -161,7 +194,10 @@ class ToolCatalog:
         """
         headers = self.m.headers()
         try:
-            identifier = str(UUID(value["request_id"]))
+            request_id = value["request_id"]
+            if not isinstance(request_id, str):
+                raise ValueError("Invalid request identifier")
+            identifier = str(UUID(request_id))
         except (ValueError, TypeError, KeyError):
             no_prior_job = True
         else:
@@ -175,7 +211,7 @@ class ToolCatalog:
             headers["X-NorthGate-Request-Outcome"] = "rejected-before-queue"
         return web.HTTPBadRequest(text=message, headers=headers)
 
-    async def action(self, request):
+    async def action(self, request: web.Request) -> web.Response:
         endpoint, principal, device = await self.m.context(request, online=True)
         value = await self.m.body(request)
         self.m.csrf(request, principal, endpoint, value.get("csrf"))
@@ -213,6 +249,7 @@ class ToolCatalog:
             principal.subject, endpoint, permission
         ):
             raise web.HTTPForbidden(text="Tool operation is outside your permissions")
+        params: dict[str, object]
         try:
             if action in {"tool.install", "tool.update"}:
                 entry = next(
@@ -231,7 +268,7 @@ class ToolCatalog:
                     raise ValueError("Choose an approved tool version")
                 params = {
                     "manifest": base64.b64encode(
-                        manifest_bytes(entry["manifest"])
+                        manifest_bytes(dict(entry["manifest"]))
                     ).decode(),
                     "signature": entry["signature"],
                 }
@@ -255,6 +292,8 @@ class ToolCatalog:
                 value, "A UUID request_id is required for safe retries"
             ) from None
         case_id = params.get("case_id", "")
+        if not isinstance(case_id, str):
+            raise self.validation_rejection(value, "Invalid case identifier")
         if case_id:
             if self.case_authorizer is None:
                 raise web.HTTPConflict(text="Case authorization is not configured")
@@ -262,7 +301,7 @@ class ToolCatalog:
         await self.m.gateway.audit(
             principal, endpoint, "tools.job.requested." + action, UUID(identifier)
         )
-        job = self.m.store.add(
+        queued_job = self.m.store.add(
             endpoint,
             device.identity_id,
             principal,
@@ -274,5 +313,7 @@ class ToolCatalog:
             identifier=identifier,
         )
         if case_id and self.case_linker:
-            await self.case_linker(principal, endpoint, case_id, job)
-        return web.json_response({"job": job}, status=202, headers=self.m.headers())
+            await self.case_linker(principal, endpoint, case_id, queued_job)
+        return web.json_response(
+            {"job": queued_job}, status=202, headers=self.m.headers()
+        )

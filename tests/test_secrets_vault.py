@@ -5,6 +5,9 @@ import json
 import ssl
 import urllib.error
 from datetime import UTC, datetime, timedelta
+from email.message import Message
+from pathlib import Path
+from typing import cast
 
 import pytest
 from cryptography import x509
@@ -15,7 +18,7 @@ from cryptography.x509.oid import NameOID
 from northgate_rmm.secrets_vault import NoRedirect, OpenBaoKV, VaultError
 
 
-def client(tmp_path):
+def client(tmp_path: Path) -> OpenBaoKV:
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Synthetic provider CA")])
     now = datetime.now(UTC)
@@ -46,8 +49,8 @@ def client(tmp_path):
 
 
 def test_provider_pins_ca_sends_token_only_to_exact_origin_and_disallows_redirect(
-    tmp_path,
-):
+    tmp_path: Path,
+) -> None:
     provider = client(tmp_path)
     assert provider.context.verify_mode == ssl.CERT_REQUIRED
     assert provider.context.check_hostname
@@ -56,20 +59,20 @@ def test_provider_pins_ca_sends_token_only_to_exact_origin_and_disallows_redirec
     requests = []
 
     class Opener:
-        def open(self, request, timeout):
+        def open(self, request: urllib.request.Request, timeout: float) -> io.BytesIO:
             requests.append(request)
             assert timeout == 15
             return io.BytesIO(json.dumps({"data": {"version": 1}}).encode())
 
-    provider.opener = Opener()
+    provider.opener = cast(urllib.request.OpenerDirector, Opener())
     assert provider.write("northgate-rmm/one", {"token": "synthetic"}, cas=0) == 1
     request = requests[0]
     assert request.full_url == "https://vault.test:8200/v1/rmm/data/northgate-rmm/one"
     assert request.get_header("X-vault-token") == "synthetic-token"
-    assert json.loads(request.data)["options"]["cas"] == 0
+    assert json.loads(cast(bytes, request.data))["options"]["cas"] == 0
     with pytest.raises(VaultError):
         NoRedirect().redirect_request(
-            request, None, 302, "Found", {}, "https://other.test/"
+            request, io.BytesIO(), 302, "Found", Message(), "https://other.test/"
         )
     provider.token_file.write_text("next-synthetic-token")
     provider.write("northgate-rmm/one", {"token": "synthetic"}, cas=1)
@@ -80,41 +83,43 @@ def test_provider_pins_ca_sends_token_only_to_exact_origin_and_disallows_redirec
     assert len(requests) == 2
 
 
-def test_health_does_not_send_auth_and_sealed_provider_remains_readable(tmp_path):
+def test_health_does_not_send_auth_and_sealed_provider_remains_readable(
+    tmp_path: Path,
+) -> None:
     provider = client(tmp_path)
     provider.token_file.unlink()
 
     class Opener:
-        def open(self, request, timeout):
+        def open(self, request: urllib.request.Request, timeout: float) -> io.BytesIO:
             assert not request.get_header("X-vault-token")
             raise urllib.error.HTTPError(
                 request.full_url,
                 503,
                 "Sealed",
-                {},
+                Message(),
                 io.BytesIO(b'{"initialized":true,"sealed":true}'),
             )
 
-    provider.opener = Opener()
+    provider.opener = cast(urllib.request.OpenerDirector, Opener())
     assert provider.health() == {"initialized": True, "sealed": True, "standby": False}
 
 
 @pytest.mark.parametrize(
     "body", [b"[]", b'{"data":null}', b'{"data":{"version":"bad"}}']
 )
-def test_invalid_provider_response_is_sanitized(tmp_path, body):
+def test_invalid_provider_response_is_sanitized(tmp_path: Path, body: bytes) -> None:
     provider = client(tmp_path)
 
     class Opener:
-        def open(self, request, timeout):
+        def open(self, request: urllib.request.Request, timeout: float) -> io.BytesIO:
             return io.BytesIO(body)
 
-    provider.opener = Opener()
+    provider.opener = cast(urllib.request.OpenerDirector, Opener())
     with pytest.raises(VaultError, match="Secret provider request failed"):
         provider.write("northgate-rmm/one", {"token": "synthetic"}, cas=0)
 
 
-def test_missing_ca_is_sanitized(tmp_path):
+def test_missing_ca_is_sanitized(tmp_path: Path) -> None:
     with pytest.raises(VaultError, match="Secret provider request failed"):
         OpenBaoKV(
             {

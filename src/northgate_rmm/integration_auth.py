@@ -13,20 +13,46 @@ import json
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TypedDict, cast
 from uuid import UUID
 
 from northgate_rmm.management_protocol import canonical, derive
 from northgate_rmm.operator_api import OperatorPrincipal
 from northgate_rmm.secure_files import regular_file_reference
 
+
+class IntegrationEntry(TypedDict):
+    id: str
+    token_sha256: str
+    enabled: bool
+    endpoints: dict[str, str]
+    actions: list[str]
+
+
+class JobPayload(TypedDict):
+    authorization: str
+    params: dict[str, object]
+
+
+class IntegrationJob(TypedDict):
+    id: str
+    payload: JobPayload
+    created: float
+    session: str
+    subject: str
+    endpoint: str
+    identity: str
+    action: str
+
+
 PREFIX = "RMM-Integration-Job "
 
 
 class IntegrationAuth:
-    def __init__(self, path: Path, key: bytes):
+    def __init__(self, path: Path, key: bytes) -> None:
         self.path, self.key = path, derive(key, "integration-jobs")
 
-    def entries(self):
+    def entries(self) -> dict[str, IntegrationEntry]:
         with regular_file_reference(
             self.path, label="integration registry", maximum_bytes=65536, private=True
         ) as ref:
@@ -36,7 +62,7 @@ class IntegrationAuth:
         entries = value.get("clients")
         if not isinstance(entries, list) or len(entries) > 32:
             raise ValueError("Invalid integration clients")
-        result = {}
+        result: dict[str, IntegrationEntry] = {}
         for entry in entries:
             if not isinstance(entry, dict) or set(entry) != {
                 "id",
@@ -46,17 +72,26 @@ class IntegrationAuth:
                 "actions",
             }:
                 raise ValueError("Invalid integration entry")
-            if not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", entry["id"]):
+            if not isinstance(entry["id"], str) or not re.fullmatch(
+                r"[a-z][a-z0-9_-]{0,47}", entry["id"]
+            ):
                 raise ValueError("Invalid integration identity")
             if entry["id"] in result or type(entry["enabled"]) is not bool:
                 raise ValueError("Duplicate or invalid integration")
-            if not re.fullmatch(r"[a-f0-9]{64}", entry["token_sha256"]):
+            if not isinstance(entry["token_sha256"], str) or not re.fullmatch(
+                r"[a-f0-9]{64}", entry["token_sha256"]
+            ):
                 raise ValueError("Invalid integration token hash")
             endpoints = entry["endpoints"]
             if not isinstance(endpoints, dict) or not 1 <= len(endpoints) <= 256:
                 raise ValueError("Explicit enrollment scope required")
             for endpoint, identity in endpoints.items():
-                if str(UUID(endpoint)) != endpoint or str(UUID(identity)) != identity:
+                if (
+                    not isinstance(endpoint, str)
+                    or not isinstance(identity, str)
+                    or str(UUID(endpoint)) != endpoint
+                    or str(UUID(identity)) != identity
+                ):
                     raise ValueError("Invalid integration enrollment")
             actions = entry["actions"]
             if (
@@ -68,10 +103,10 @@ class IntegrationAuth:
                 )
             ):
                 raise ValueError("Invalid integration actions")
-            result[entry["id"]] = entry
+            result[entry["id"]] = cast(IntegrationEntry, entry)
         return result
 
-    def authenticate(self, authorization: str):
+    def authenticate(self, authorization: str) -> IntegrationEntry:
         match = re.fullmatch(r"Bearer ([A-Za-z0-9_-]{43,128})", authorization)
         if match is None:
             raise ValueError("Integration authentication required")
@@ -81,7 +116,7 @@ class IntegrationAuth:
                 return entry
         raise ValueError("Integration authentication rejected")
 
-    def current(self, entry):
+    def current(self, entry: IntegrationEntry) -> IntegrationEntry:
         live = self.entries().get(entry["id"])
         if (
             not live
@@ -92,7 +127,7 @@ class IntegrationAuth:
         return live
 
     @staticmethod
-    def principal(entry, session):
+    def principal(entry: IntegrationEntry, session: str) -> OperatorPrincipal:
         now = datetime.now(UTC)
         return OperatorPrincipal(
             issuer="urn:northgate:rmm:integration",
@@ -106,7 +141,16 @@ class IntegrationAuth:
             mfa=False,
         )
 
-    def ticket(self, entry, job, endpoint, identity, action, params, expires):
+    def ticket(
+        self,
+        entry: IntegrationEntry,
+        job: str,
+        endpoint: UUID | str,
+        identity: UUID | str,
+        action: str,
+        params: dict[str, object],
+        expires: float,
+    ) -> str:
         claims = dict(
             client=entry["id"],
             credential=entry["token_sha256"],
@@ -125,7 +169,7 @@ class IntegrationAuth:
             + hmac.digest(self.key, payload.encode(), "sha256").hex()
         )
 
-    def verify_job(self, job):
+    def verify_job(self, job: IntegrationJob) -> IntegrationEntry:
         ticket = job["payload"]["authorization"]
         if not ticket.startswith(PREFIX) or len(ticket) > 4096:
             raise ValueError("Invalid integration ticket")

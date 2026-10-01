@@ -80,7 +80,7 @@ def test_io_failure_preserves_previous_assertion_and_allows_retry(
     assert certificate_status.main(["--config", str(config)]) == 0
     result = destination / ("a" * 64 + ".json")
     before = result.read_bytes()
-    with patch.object(certificate_status.os, operation, side_effect=OSError("fault")):
+    with patch.object(os, operation, side_effect=OSError("fault")):
         assert certificate_status.main(["--config", str(config)]) == 1
     assert result.read_bytes() == before
     assert list(destination.glob("*.pending")) == []

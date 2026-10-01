@@ -7,21 +7,31 @@ import json
 import ssl
 import urllib.error
 import urllib.request
+from email.message import Message
 from pathlib import Path
+from typing import IO, Any, NoReturn
 from urllib.parse import urlsplit
 
 from northgate_rmm.secure_files import regular_file_reference
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: Message,
+        newurl: str,
+    ) -> NoReturn:
         raise ValueError(
             "RMM redirected the native request; credentials were not forwarded"
         )
 
 
 class NativeClient:
-    def __init__(self, configuration: Path):
+    def __init__(self, configuration: Path) -> None:
         with regular_file_reference(
             configuration,
             label="native configuration",
@@ -46,7 +56,7 @@ class NativeClient:
         self.context = ssl.create_default_context(cafile=config["ca_file"])
         self.context.minimum_version = ssl.TLSVersion.TLSv1_2
 
-    def call(self, operation: str, **arguments):
+    def call(self, operation: str, **arguments: object) -> dict[str, Any]:
         with regular_file_reference(
             self.token_file, label="native credential", maximum_bytes=256, private=True
         ) as ref:
@@ -78,7 +88,10 @@ class NativeClient:
                     raise ValueError("Native response exceeds 8 MiB")
                 if response.headers.get_content_type() != "application/json":
                     raise ValueError("Unexpected native response type")
-                return json.loads(body)
+                value = json.loads(body)
+                if not isinstance(value, dict):
+                    raise ValueError("Native response must be an object")
+                return value
         except urllib.error.HTTPError as error:
             raise RuntimeError(
                 "RMM rejected the request (HTTP "
@@ -88,7 +101,7 @@ class NativeClient:
             ) from None
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Native NorthGate RMM client")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("operation")

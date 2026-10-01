@@ -157,7 +157,7 @@ func parseLinux(category, output string) []map[string]string {
 		if len(f) == 0 {
 			continue
 		}
-		r := map[string]string{}
+		var r map[string]string
 		switch category {
 		case "processes":
 			if len(f) < 4 {

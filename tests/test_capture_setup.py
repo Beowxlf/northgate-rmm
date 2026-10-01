@@ -4,7 +4,9 @@ import asyncio
 import base64
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -14,6 +16,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from northgate_rmm.capture_setup import CaptureSetup
 from northgate_rmm.management import Management
 from northgate_rmm.management_store import ManagementStore
+from northgate_rmm.remote_gateway import RemoteGateway
 
 
 @pytest.mark.parametrize(
@@ -31,8 +34,10 @@ from northgate_rmm.management_store import ManagementStore
         "token",
     ],
 )
-def test_capture_install_dispatch(tmp_path, failure):
-    async def scenario():
+def test_capture_install_dispatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: str
+) -> None:
+    async def scenario() -> None:
         endpoint, identity = uuid4(), uuid4()
         principal = SimpleNamespace(
             subject="owner",
@@ -41,10 +46,10 @@ def test_capture_install_dispatch(tmp_path, failure):
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
 
-        async def authenticate(*args, **kwargs):
+        async def authenticate(*args: object, **kwargs: object) -> SimpleNamespace:
             return principal
 
-        async def audit(*args):
+        async def audit(*args: object) -> None:
             pass
 
         gateway = SimpleNamespace(
@@ -62,21 +67,26 @@ def test_capture_install_dispatch(tmp_path, failure):
             ),
         )
         store = ManagementStore(tmp_path, bytes(16))
-        store.worker = lambda _: dict(
-            ready=failure != "offline",
-            identity=str(uuid4() if failure == "enrollment" else identity),
-            capabilities={
-                "version": "1.1.0-lab.2",
-                "features": {
-                    "capture_installer": failure not in {"old_worker", "upgrade_worker"}
+        monkeypatch.setattr(
+            store,
+            "worker",
+            lambda _: dict(
+                ready=failure != "offline",
+                identity=str(uuid4() if failure == "enrollment" else identity),
+                capabilities={
+                    "version": "1.1.0-lab.2",
+                    "features": {
+                        "capture_installer": failure
+                        not in {"old_worker", "upgrade_worker"}
+                    },
                 },
-            },
+            ),
         )
-        management = Management(gateway, store)
+        management = Management(cast(RemoteGateway, gateway), store)
         setup = CaptureSetup(management)
         if failure != "catalog":
             management.extended.catalog.mkdir()
-            entry = {
+            entry: dict[str, Any] = {
                 "manifest": {
                     "component": "wxlfgar",
                     "platform": "linux",

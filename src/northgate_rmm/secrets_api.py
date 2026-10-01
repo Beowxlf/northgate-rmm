@@ -13,15 +13,123 @@ import re
 import secrets
 import sqlite3
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import (
+    TYPE_CHECKING,
+    Literal,
+    NotRequired,
+    ParamSpec,
+    Protocol,
+    TypedDict,
+    TypeVar,
+    cast,
+    overload,
+)
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from aiohttp import web
 
 from northgate_rmm.errors import ValidationError
-from northgate_rmm.secrets_vault import OpenBaoKV, VaultError, relative_path
+from northgate_rmm.operator_api import OperatorPrincipal
+from northgate_rmm.remote_policy import RemoteTarget
+
+if TYPE_CHECKING:
+    from northgate_rmm.management import Management
+    from northgate_rmm.remote_gateway import RemoteGateway
+from northgate_rmm.secrets_vault import (
+    OpenBaoKV,
+    VaultConfiguration,
+    VaultError,
+    VaultProvider,
+    relative_path,
+)
 from northgate_rmm.secure_files import regular_file_reference
+
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
+class SecretGrant(TypedDict):
+    subject: str
+    endpoints: dict[str, str]
+    permissions: list[str]
+
+
+class SecretsConfiguration(TypedDict):
+    schema: int
+    provider: VaultConfiguration
+    prefix: str
+    grants: list[SecretGrant]
+
+
+class SecretRecord(TypedDict):
+    id: str
+    endpoint_id: str
+    identity_id: str
+    label: str
+    kind: str
+    retired: bool
+    use_for_remote: bool
+    path: str
+    managed_remote: NotRequired[bool]
+    source_job: NotRequired[str]
+    source_action: NotRequired[str]
+    expires_at: NotRequired[str]
+
+
+class SecretRotation(TypedDict):
+    id: str
+    secret_id: str
+    status: str
+    job_id: str
+    created_at: str
+    expected_version: int
+    stage_path: str
+    executor_binding: NotRequired[dict[str, object]]
+    version: NotRequired[int]
+
+
+class SecretRequest(TypedDict, total=False):
+    action: str
+    request_id: str
+    secret_id: str
+    job_id: str
+    rotation_id: str
+    label: str
+    kind: str
+    fields: object
+    use_for_remote: bool
+    version: int
+    expected_version: int
+    nonce: str
+
+
+class RotationExecutor(Protocol):
+    async def apply(
+        self,
+        *,
+        record: dict[str, object],
+        rotation_id: str,
+        fields: dict[str, str],
+        principal: OperatorPrincipal,
+        request: web.Request,
+        rotation: dict[str, object],
+    ) -> dict[str, object]: ...
+
+    async def check(
+        self,
+        *,
+        record: dict[str, object],
+        rotation_id: str,
+        job_id: str,
+        principal: OperatorPrincipal,
+        request: web.Request,
+        rotation: dict[str, object],
+        fields: dict[str, str],
+    ) -> dict[str, object]: ...
+
 
 PERMISSIONS = {"metadata", "use", "reveal", "rotate", "admin"}
 KINDS = {
@@ -41,7 +149,7 @@ HEADERS = {
 class SecretState:
     """Stores references and workflow state only, never credential values."""
 
-    def __init__(self, path):
+    def __init__(self, path: Path | str) -> None:
         path = Path(path)
         if path.is_symlink():
             raise ValueError("Secret state must not be a symbolic link")
@@ -59,7 +167,17 @@ class SecretState:
         self.db.commit()
         path.chmod(0o600)
 
-    def get(self, table, identifier):
+    @overload
+    def get(
+        self, table: Literal["records"], identifier: str
+    ) -> SecretRecord | None: ...
+
+    @overload
+    def get(
+        self, table: Literal["rotations"], identifier: str
+    ) -> SecretRotation | None: ...
+
+    def get(self, table: str, identifier: str) -> SecretRecord | SecretRotation | None:
         if table not in {"records", "rotations"}:
             raise ValueError("Invalid state table")
         with self.lock:
@@ -68,9 +186,9 @@ class SecretState:
                 "rotations": "SELECT value FROM rotations WHERE id=?",
             }[table]
             row = self.db.execute(query, (str(identifier),)).fetchone()
-        return json.loads(row[0]) if row else None
+        return cast(SecretRecord | SecretRotation, json.loads(row[0])) if row else None
 
-    def save_record(self, record):
+    def save_record(self, record: SecretRecord) -> None:
         with self.lock, self.db:
             self.db.execute(
                 "INSERT INTO records VALUES(?,?,?,?) "
@@ -83,7 +201,7 @@ class SecretState:
                 ),
             )
 
-    def records(self, endpoint, identity):
+    def records(self, endpoint: UUID, identity: UUID) -> list[SecretRecord]:
         with self.lock:
             rows = self.db.execute(
                 "SELECT value FROM records WHERE endpoint=? AND identity=? "
@@ -92,7 +210,7 @@ class SecretState:
             ).fetchall()
         return [json.loads(r[0]) for r in rows]
 
-    def save_rotation(self, rotation):
+    def save_rotation(self, rotation: SecretRotation) -> None:
         with self.lock, self.db:
             self.db.execute(
                 "INSERT INTO rotations VALUES(?,?,?) "
@@ -100,7 +218,7 @@ class SecretState:
                 (rotation["id"], rotation["secret_id"], json.dumps(rotation)),
             )
 
-    def rotations(self, secret_id):
+    def rotations(self, secret_id: str) -> list[SecretRotation]:
         with self.lock:
             rows = self.db.execute(
                 "SELECT value FROM rotations WHERE secret=? "
@@ -110,7 +228,7 @@ class SecretState:
         return [json.loads(r[0]) for r in rows]
 
 
-def load_config(path):
+def load_config(path: Path | str) -> SecretsConfiguration:
     with regular_file_reference(
         Path(path),
         label="secret integration configuration",
@@ -150,10 +268,10 @@ def load_config(path):
             or not set(grant["permissions"]) <= PERMISSIONS
         ):
             raise ValueError("Invalid secret permissions")
-    return value
+    return cast(SecretsConfiguration, value)
 
 
-def validate_fields(kind, fields):
+def validate_fields(kind: str, fields: object) -> dict[str, str]:
     if (
         kind not in KINDS
         or not isinstance(fields, dict)
@@ -180,14 +298,14 @@ def validate_fields(kind, fields):
 class SecretsAPI:
     def __init__(
         self,
-        gateway,
-        config_path,
+        gateway: RemoteGateway,
+        config_path: Path | str,
         *,
-        state_path,
-        rotation_executor=None,
-        management=None,
-        provider_factory=OpenBaoKV,
-    ):
+        state_path: Path | str,
+        rotation_executor: RotationExecutor | None = None,
+        management: Management | None = None,
+        provider_factory: Callable[[VaultConfiguration], VaultProvider] = OpenBaoKV,
+    ) -> None:
         self.gateway = gateway
         self.config_path = Path(config_path)
         load_config(self.config_path)
@@ -195,7 +313,7 @@ class SecretsAPI:
         self.rotation_executor = rotation_executor
         self.management = management
         self.provider_factory = provider_factory
-        self.forms = {}
+        self.forms: dict[str, tuple[str, str, str, datetime]] = {}
         self.slots = asyncio.Semaphore(4)
         self.mutation_lock = asyncio.Lock()
         gateway.secret_resolver = self.resolve_remote
@@ -205,7 +323,14 @@ class SecretsAPI:
         if rotation_executor is not None and hasattr(rotation_executor, "bind"):
             rotation_executor.bind(self)
 
-    async def authorize(self, request, endpoint, permission, *, fresh=False):
+    async def authorize(
+        self,
+        request: web.Request,
+        endpoint: UUID,
+        permission: str,
+        *,
+        fresh: bool = False,
+    ) -> tuple[OperatorPrincipal, SecretsConfiguration, UUID]:
         principal = await self.gateway.principal(
             request, endpoint, require_online=False
         )
@@ -214,7 +339,14 @@ class SecretsAPI:
         )
         return principal, config, identity
 
-    def check_grant(self, principal, endpoint, permission, *, fresh=False):
+    def check_grant(
+        self,
+        principal: OperatorPrincipal,
+        endpoint: UUID,
+        permission: str,
+        *,
+        fresh: bool = False,
+    ) -> tuple[SecretsConfiguration, UUID]:
         if (
             not principal.mfa
             or principal.subject.startswith("integration:")
@@ -244,7 +376,7 @@ class SecretsAPI:
             raise web.HTTPForbidden(text="This secret permission has not been granted")
         return config, identity
 
-    def token(self, principal, endpoint):
+    def token(self, principal: OperatorPrincipal, endpoint: UUID) -> str:
         now = datetime.now(UTC)
         self.forms = {k: v for k, v in self.forms.items() if v[3] > now}
         if len(self.forms) >= 256:
@@ -258,8 +390,10 @@ class SecretsAPI:
         )
         return nonce
 
-    def consume(self, nonce, principal, endpoint):
-        item = self.forms.pop(nonce, None)
+    def consume(
+        self, nonce: str | None, principal: OperatorPrincipal, endpoint: UUID
+    ) -> None:
+        item = self.forms.pop(nonce, None) if nonce is not None else None
         if (
             not item
             or item[:3] != (principal.subject, principal.session_id, str(endpoint))
@@ -267,19 +401,21 @@ class SecretsAPI:
         ):
             raise web.HTTPForbidden(text="Refresh the secrets panel before retrying")
 
-    async def audit(self, principal, endpoint, action, identifier):
+    async def audit(
+        self, principal: OperatorPrincipal, endpoint: UUID, action: str, identifier: str
+    ) -> None:
         await self.gateway.audit(
             principal, endpoint, "secret." + action, UUID(identifier)
         )
 
-    async def provider_call(self, provider, name, *args, **kwargs):
+    async def provider_call(
+        self, operation: Callable[P, T], *args: P.args, **kwargs: P.kwargs
+    ) -> T:
         async with asyncio.timeout(20):
             await self.slots.acquire()
-        task = asyncio.create_task(
-            asyncio.to_thread(getattr(provider, name), *args, **kwargs)
-        )
+        task = asyncio.create_task(asyncio.to_thread(operation, *args, **kwargs))
 
-        def completed(result):
+        def completed(result: asyncio.Task[T]) -> None:
             self.slots.release()
             if not result.cancelled():
                 result.exception()
@@ -287,7 +423,7 @@ class SecretsAPI:
         task.add_done_callback(completed)
         return await asyncio.shield(task)
 
-    def record(self, identifier, endpoint, identity):
+    def record(self, identifier: str, endpoint: UUID, identity: UUID) -> SecretRecord:
         try:
             identifier = str(UUID(identifier))
         except (ValueError, TypeError):
@@ -300,13 +436,16 @@ class SecretsAPI:
             raise web.HTTPNotFound()
         return item
 
-    async def summary(self, provider, record):
+    async def summary(
+        self, provider: VaultProvider | None, record: SecretRecord
+    ) -> dict[str, object]:
         result = {
-            k: record[k] for k in ("id", "label", "kind", "retired", "use_for_remote")
+            k: dict(record)[k]
+            for k in ("id", "label", "kind", "retired", "use_for_remote")
         }
         result.update(
             {
-                k: record[k]
+                k: dict(record)[k]
                 for k in ("source_job", "source_action", "expires_at")
                 if k in record
             }
@@ -314,7 +453,7 @@ class SecretsAPI:
         try:
             if provider is None:
                 raise VaultError()
-            metadata = await self.provider_call(provider, "metadata", record["path"])
+            metadata = await self.provider_call(provider.metadata, record["path"])
             result.update(
                 available=True,
                 current_version=metadata.get("current_version", 0),
@@ -347,7 +486,7 @@ class SecretsAPI:
         ]
         return result
 
-    async def get_state(self, request):
+    async def get_state(self, request: web.Request) -> web.Response:
         endpoint = self.endpoint(request)
         principal, config, identity = await self.authorize(
             request, endpoint, "metadata"
@@ -361,7 +500,7 @@ class SecretsAPI:
         provider = None
         try:
             provider = self.provider(config)
-            health = await self.provider_call(provider, "health")
+            health = await self.provider_call(provider.health)
         except (VaultError, TimeoutError):
             health = {"available": False, "sealed": True, "initialized": False}
             provider = None
@@ -425,13 +564,13 @@ class SecretsAPI:
         )
 
     @staticmethod
-    def endpoint(request):
+    def endpoint(request: web.Request) -> UUID:
         try:
             return UUID(request.match_info["endpoint"])
         except ValueError:
             raise web.HTTPNotFound() from None
 
-    async def action(self, request):
+    async def action(self, request: web.Request) -> web.Response:
         endpoint = self.endpoint(request)
         if request.headers.get("Origin") != self.gateway.origin:
             raise web.HTTPForbidden()
@@ -449,7 +588,10 @@ class SecretsAPI:
             body = json.loads(data)
             if not isinstance(body, dict):
                 raise ValueError()
+            body = cast(SecretRequest, body)
             action = body.get("action")
+            if not isinstance(action, str):
+                raise ValueError("Invalid secret action")
             permission = {
                 "create": "admin",
                 "edit": "admin",
@@ -517,8 +659,15 @@ class SecretsAPI:
             ) from None
 
     async def perform(
-        self, request, endpoint, identity, principal, config, action, body
-    ):
+        self,
+        request: web.Request,
+        endpoint: UUID,
+        identity: UUID,
+        principal: OperatorPrincipal,
+        config: SecretsConfiguration,
+        action: str,
+        body: SecretRequest,
+    ) -> dict[str, object]:
         provider = self.provider(config)
         if action == "import_recovery":
             return await self.import_recovery(
@@ -535,7 +684,7 @@ class SecretsAPI:
             label = self.label(body["label"])
             kind = body["kind"]
             fields = validate_fields(kind, body["fields"])
-            record = {
+            record: SecretRecord = {
                 "id": identifier,
                 "endpoint_id": str(endpoint),
                 "identity_id": str(identity),
@@ -551,10 +700,10 @@ class SecretsAPI:
             # Persist reference first: uncertain network results remain discoverable.
             self.state.save_record(record)
             await self.provider_call(
-                provider, "configure_metadata", record["path"], label, kind
+                provider.configure_metadata, record["path"], label, kind
             )
             version = await self.provider_call(
-                provider, "write", record["path"], fields, cas=0
+                provider.write, record["path"], fields, cas=0
             )
             await self.audit(principal, endpoint, "created", identifier)
             return {
@@ -587,19 +736,21 @@ class SecretsAPI:
                 principal, endpoint, "metadata_update_requested", identifier
             )
             await self.provider_call(
-                provider, "configure_metadata", record["path"], label, record["kind"]
+                provider.configure_metadata, record["path"], label, record["kind"]
             )
             record.update(
-                label=label,
-                use_for_remote=enabled,
-                retired=False,
-                managed_remote=record.get("managed_remote", False) or enabled,
+                {
+                    "label": label,
+                    "use_for_remote": enabled,
+                    "retired": False,
+                    "managed_remote": record.get("managed_remote", False) or enabled,
+                }
             )
             self.state.save_record(record)
             return {"message": "Secret metadata updated"}
         if action == "retire":
             await self.audit(principal, endpoint, "retired", identifier)
-            record.update(retired=True, use_for_remote=False)
+            record.update({"retired": True, "use_for_remote": False})
             self.state.save_record(record)
             return {
                 "message": "Reference retired; provider versions retained for recovery"
@@ -607,7 +758,7 @@ class SecretsAPI:
         if action == "reveal":
             await self.audit(principal, endpoint, "reveal_requested", identifier)
             fields = await self.provider_call(
-                provider, "read", record["path"], body.get("version")
+                provider.read, record["path"], body.get("version")
             )
             validate_fields(record["kind"], fields)
             await self.authorize(request, endpoint, "reveal", fresh=True)
@@ -617,7 +768,7 @@ class SecretsAPI:
             fields = validate_fields(record["kind"], body["fields"])
             await self.audit(principal, endpoint, "vault_version_requested", identifier)
             version = await self.provider_call(
-                provider, "write", record["path"], fields, cas=body["expected_version"]
+                provider.write, record["path"], fields, cas=body["expected_version"]
             )
             return {
                 "id": identifier,
@@ -629,8 +780,7 @@ class SecretsAPI:
         if action in {"delete_version", "restore_version"}:
             await self.audit(principal, endpoint, action, identifier)
             await self.provider_call(
-                provider,
-                "versions",
+                provider.versions,
                 record["path"],
                 "delete" if action == "delete_version" else "undelete",
                 [body["version"]],
@@ -643,7 +793,7 @@ class SecretsAPI:
         raise ValueError()
 
     @staticmethod
-    def label(value):
+    def label(value: object) -> str:
         if (
             not isinstance(value, str)
             or not 1 <= len(value.strip()) <= 120
@@ -653,8 +803,16 @@ class SecretsAPI:
         return value.strip()
 
     async def rotate(
-        self, request, principal, endpoint, record, provider, config, body, action
-    ):
+        self,
+        request: web.Request,
+        principal: OperatorPrincipal,
+        endpoint: UUID,
+        record: SecretRecord,
+        provider: VaultProvider,
+        config: SecretsConfiguration,
+        body: SecretRequest,
+        action: str,
+    ) -> dict[str, object]:
         if self.rotation_executor is None:
             raise web.HTTPConflict(
                 text=(
@@ -675,7 +833,7 @@ class SecretsAPI:
                     text="Resolve this credential's existing rotation first"
                 )
             fields = validate_fields(record["kind"], body["fields"])
-            current = await self.provider_call(provider, "metadata", record["path"])
+            current = await self.provider_call(provider.metadata, record["path"])
             if (
                 type(body.get("expected_version")) is not int
                 or body["expected_version"] != current["current_version"]
@@ -692,12 +850,15 @@ class SecretsAPI:
             }
             if hasattr(self.rotation_executor, "prepare"):
                 rotation["executor_binding"] = await self.rotation_executor.prepare(
-                    record=record, fields=fields, principal=principal, request=request
+                    record=dict(record),
+                    fields=fields,
+                    principal=principal,
+                    request=request,
                 )
             self.state.save_rotation(rotation)
             await self.audit(principal, endpoint, "rotation_staging", rid)
             await self.provider_call(
-                provider, "write", rotation["stage_path"], fields, cas=0
+                provider.write, rotation["stage_path"], fields, cas=0
             )
             rotation["status"] = "staged"
             self.state.save_rotation(rotation)
@@ -705,7 +866,7 @@ class SecretsAPI:
             raise web.HTTPNotFound()
         if rotation["status"] == "completed":
             return {"id": rid, "status": "completed", "version": rotation["version"]}
-        fields = await self.provider_call(provider, "read", rotation["stage_path"])
+        fields = await self.provider_call(provider.read, rotation["stage_path"])
         await self.authorize(request, endpoint, "rotate", fresh=True)
         if rotation["status"] in {"preparing", "staged"}:
             rotation["status"] = "dispatching"
@@ -713,12 +874,12 @@ class SecretsAPI:
             await self.audit(principal, endpoint, "rotation_dispatching", rid)
             try:
                 result = await self.rotation_executor.apply(
-                    record=record,
+                    record=dict(record),
                     rotation_id=rid,
                     fields=fields,
                     principal=principal,
                     request=request,
-                    rotation=rotation,
+                    rotation=dict(rotation),
                 )
             except Exception:
                 rotation["status"] = "unknown"
@@ -734,12 +895,12 @@ class SecretsAPI:
         else:
             try:
                 result = await self.rotation_executor.check(
-                    record=record,
+                    record=dict(record),
                     rotation_id=rid,
                     job_id=rotation["job_id"],
                     principal=principal,
                     request=request,
-                    rotation=rotation,
+                    rotation=dict(rotation),
                     fields=fields,
                 )
             except Exception:
@@ -750,7 +911,8 @@ class SecretsAPI:
                     "status": "unknown",
                     "message": "Rotation status unavailable; no retry was dispatched",
                 }
-        if not isinstance(result, dict) or result.get("status") not in {
+        status = result.get("status") if isinstance(result, dict) else None
+        if not isinstance(status, str) or status not in {
             "pending",
             "verified",
             "failed",
@@ -760,22 +922,21 @@ class SecretsAPI:
         job_id = str(result.get("job_id", ""))
         if job_id:
             job_id = str(UUID(job_id))
-        rotation.update(job_id=job_id, status=result["status"])
+        rotation.update({"job_id": job_id, "status": status})
         self.state.save_rotation(rotation)
         if result["status"] == "verified":
             await self.authorize(request, endpoint, "rotate", fresh=True)
-            metadata = await self.provider_call(provider, "metadata", record["path"])
+            metadata = await self.provider_call(provider.metadata, record["path"])
             if metadata["current_version"] == rotation["expected_version"]:
                 version = await self.provider_call(
-                    provider,
-                    "write",
+                    provider.write,
                     record["path"],
                     fields,
                     cas=rotation["expected_version"],
                 )
             elif (
                 metadata["current_version"] == rotation["expected_version"] + 1
-                and await self.provider_call(provider, "read", record["path"]) == fields
+                and await self.provider_call(provider.read, record["path"]) == fields
             ):
                 version = metadata["current_version"]
             else:
@@ -789,12 +950,14 @@ class SecretsAPI:
                         "preserve staged credentials and reconcile"
                     ),
                 }
-            rotation.update(status="completed", version=version)
+            rotation.update({"status": "completed", "version": version})
             self.state.save_rotation(rotation)
             await self.audit(principal, endpoint, "rotation_completed", rid)
-        return {k: rotation[k] for k in ("id", "status", "job_id")}
+        return {k: dict(rotation)[k] for k in ("id", "status", "job_id")}
 
-    async def resolve_native_export(self, request, principal, target):
+    async def resolve_native_export(
+        self, request: web.Request, principal: OperatorPrincipal, target: RemoteTarget
+    ) -> dict[str, str]:
         # A retained workstation envelope requires reveal as well as remote use.
         await self.authorize(request, target.endpoint_id, "reveal")
         fields = await self.resolve_remote(request, principal, target, "rdp")
@@ -809,7 +972,13 @@ class SecretsAPI:
         )
         return fields
 
-    async def resolve_remote(self, request, principal, target, method):
+    async def resolve_remote(
+        self,
+        request: web.Request,
+        principal: OperatorPrincipal,
+        target: RemoteTarget,
+        method: str,
+    ) -> dict[str, str]:
         configured = self.state.records(target.endpoint_id, target.identity_id)
         records = [
             r
@@ -831,15 +1000,20 @@ class SecretsAPI:
         await self.audit(
             principal, target.endpoint_id, "remote_use_requested", record["id"]
         )
-        fields = await self.provider_call(self.provider(config), "read", record["path"])
+        fields = await self.provider_call(self.provider(config).read, record["path"])
         validate_fields(method, fields)
         await self.authorize(request, target.endpoint_id, "use")
         await self.audit(principal, target.endpoint_id, "remote_used", record["id"])
         return {**fields, "__rmm_secret_id": record["id"]}
 
     async def authorize_remote_use(
-        self, request, endpoint, secret_id, *, principal=None
-    ):
+        self,
+        request: web.Request,
+        endpoint: UUID,
+        secret_id: str,
+        *,
+        principal: OperatorPrincipal | None = None,
+    ) -> None:
         if principal is None:
             _, _, identity = await self.authorize(request, endpoint, "use")
         else:
@@ -848,7 +1022,7 @@ class SecretsAPI:
         if record["retired"] or not record["use_for_remote"]:
             raise web.HTTPForbidden(text="This remote credential binding was revoked")
 
-    async def guard_legacy_reveal(self, target):
+    async def guard_legacy_reveal(self, target: RemoteTarget) -> None:
         if any(
             r["kind"] == "rdp" and (r.get("managed_remote") or r["use_for_remote"])
             for r in self.state.records(target.endpoint_id, target.identity_id)
@@ -860,13 +1034,15 @@ class SecretsAPI:
                 )
             )
 
-    def provider(self, config):
+    def provider(self, config: SecretsConfiguration) -> VaultProvider:
         try:
             return self.provider_factory(config["provider"])
         except (ValidationError, OSError, ValueError, KeyError, TypeError):
             raise VaultError() from None
 
-    async def recovery_context(self, request, endpoint, identity):
+    async def recovery_context(
+        self, request: web.Request, endpoint: UUID, identity: UUID
+    ) -> OperatorPrincipal:
         if self.management is None:
             raise web.HTTPConflict(text="Recovery import is not configured")
         actual_endpoint, principal, current = await self.management.context(request)
@@ -884,9 +1060,18 @@ class SecretsAPI:
         return principal
 
     async def import_recovery(
-        self, request, endpoint, identity, principal, config, provider, body
-    ):
+        self,
+        request: web.Request,
+        endpoint: UUID,
+        identity: UUID,
+        principal: OperatorPrincipal,
+        config: SecretsConfiguration,
+        provider: VaultProvider,
+        body: SecretRequest,
+    ) -> dict[str, object]:
         await self.recovery_context(request, endpoint, identity)
+        if self.management is None:
+            raise web.HTTPConflict(text="Recovery import is not configured")
         await self.authorize(request, endpoint, "admin", fresh=True)
         job_id = str(UUID(body["job_id"]))
         label = self.label(body["label"])
@@ -920,9 +1105,7 @@ class SecretsAPI:
             ):
                 raise web.HTTPConflict(text="Recovery import identity conflict")
             try:
-                metadata = await self.provider_call(
-                    provider, "metadata", existing["path"]
-                )
+                metadata = await self.provider_call(provider.metadata, existing["path"])
                 if metadata["current_version"] > 0:
                     return {
                         "id": identifier,
@@ -1009,7 +1192,7 @@ class SecretsAPI:
             fields = validate_fields(kind, {"key": json.dumps({"volumes": volumes})})
         await self.recovery_context(request, endpoint, identity)
         await self.authorize(request, endpoint, "admin", fresh=True)
-        record = existing or {
+        record: SecretRecord = existing or {
             "id": identifier,
             "endpoint_id": str(endpoint),
             "identity_id": str(identity),
@@ -1019,15 +1202,16 @@ class SecretsAPI:
             "use_for_remote": False,
             "source_job": job_id,
             "source_action": job["action"],
-            **extra,
             "path": f"{config['prefix']}/endpoints/{endpoint}/{identity}/{identifier}",
         }
+        if not existing and "expires_at" in extra:
+            record["expires_at"] = extra["expires_at"]
         self.state.save_record(record)
         await self.provider_call(
-            provider, "configure_metadata", record["path"], record["label"], kind
+            provider.configure_metadata, record["path"], record["label"], kind
         )
         version = await self.provider_call(
-            provider, "write", record["path"], fields, cas=0
+            provider.write, record["path"], fields, cas=0
         )
         await self.audit(principal, endpoint, "recovery_imported", job_id)
         return {
@@ -1039,7 +1223,7 @@ class SecretsAPI:
             ),
         }
 
-    async def ui(self, request):
+    async def ui(self, request: web.Request) -> web.Response:
         await self.authorize(request, self.endpoint(request), "metadata")
         return web.Response(
             text=Path(__file__)
@@ -1057,7 +1241,7 @@ class SecretsAPI:
             },
         )
 
-    async def asset(self, request):
+    async def asset(self, request: web.Request) -> web.Response:
         await self.authorize(request, self.endpoint(request), "metadata")
         kind = request.match_info["asset"]
         if kind not in {"js", "css"}:
@@ -1070,7 +1254,7 @@ class SecretsAPI:
             headers=HEADERS,
         )
 
-    def register(self, app):
+    def register(self, app: web.Application) -> None:
         app.router.add_get("/remote/{endpoint}/secrets/ui", self.ui)
         app.router.add_get("/remote/{endpoint}/secrets/assets.{asset}", self.asset)
         app.router.add_get("/remote/{endpoint}/secrets/state", self.get_state)

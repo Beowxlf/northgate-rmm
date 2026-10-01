@@ -6,7 +6,10 @@ import argparse
 import asyncio
 import json
 import os
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 from aiohttp import web
 
@@ -15,9 +18,10 @@ from northgate_rmm.capture_store import CaptureStore
 from northgate_rmm.capture_ui import CaptureUI
 from northgate_rmm.fleet import Fleet
 from northgate_rmm.inspection import InspectionStore, InspectionUI
+from northgate_rmm.integration_auth import IntegrationEntry
 from northgate_rmm.management import Management
 from northgate_rmm.management_store import ManagementStore
-from northgate_rmm.operator_api import OperatorApplication
+from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
 from northgate_rmm.operator_service import load_operator_service_configuration
 from northgate_rmm.operator_verifier import MTLSOperatorSessionVerifier
 from northgate_rmm.persistence import PostgresControlPlane
@@ -140,7 +144,9 @@ def main() -> None:
         )
         ssl_context = build_server_ssl_context(listener)
 
-        async def management_lifecycle(application):
+        async def management_lifecycle(
+            application: web.Application,
+        ) -> AsyncIterator[None]:
             runner = web.AppRunner(management.worker_application(), access_log=None)
             await runner.setup()
             site = web.TCPSite(
@@ -224,10 +230,12 @@ def main() -> None:
             operations=ops,
         )
         native.register(app)
-    from northgate_rmm.service_runbooks import ServiceRunbooks
+    from northgate_rmm.service_runbooks import RunbookPlan, ServiceRunbooks
     from northgate_rmm.tool_catalog import ToolCatalog
 
-    async def case_authorizer(principal, endpoint, case_id):
+    async def case_authorizer(
+        principal: OperatorPrincipal, endpoint: UUID, case_id: str
+    ) -> None:
         if ops is None:
             raise web.HTTPConflict(text="Operations workspace is not configured")
         record = await asyncio.to_thread(
@@ -240,11 +248,18 @@ def main() -> None:
 
     gateway.case_authorizer = case_authorizer
 
-    async def case_linker(principal, endpoint, case_id, job):
+    async def case_linker(
+        principal: OperatorPrincipal,
+        endpoint: UUID,
+        case_id: str,
+        job: dict[str, Any] | str,
+    ) -> None:
         from uuid import NAMESPACE_URL, uuid5
 
         job_id = job["id"] if isinstance(job, dict) else str(job)
         await case_authorizer(principal, endpoint, case_id)
+        if ops is None:
+            raise web.HTTPConflict(text="Operations workspace is not configured")
         await asyncio.to_thread(
             ops.dispatch,
             principal,
@@ -265,7 +280,9 @@ def main() -> None:
         management, case_authorizer=case_authorizer, case_linker=case_linker
     ).register(app)
 
-    async def retain_runbook_result(entry, case_id, job_id):
+    async def retain_runbook_result(
+        entry: IntegrationEntry, case_id: str, job_id: str
+    ) -> dict[str, Any]:
         if ops is None:
             raise ValueError("Linked case evidence requires operations workspace")
         from uuid import NAMESPACE_URL, uuid5
@@ -282,7 +299,9 @@ def main() -> None:
             },
         )
 
-    async def authorize_runbook_case(entry, plan):
+    async def authorize_runbook_case(
+        entry: IntegrationEntry, plan: RunbookPlan
+    ) -> None:
         if ops is None:
             raise ValueError("Linked case execution requires operations workspace")
         if not {"ops.view", "case.manage", "evidence.manage"}.issubset(

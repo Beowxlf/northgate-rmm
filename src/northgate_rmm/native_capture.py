@@ -1,16 +1,31 @@
 """Signed capture operations for an explicitly granted integration identity."""
 
+from __future__ import annotations
+
 import hashlib
 import ipaddress
 import json
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from northgate_rmm.capture_ui import PRESETS, TERMINAL, validate_job
+from northgate_rmm.domain import Endpoint
+from northgate_rmm.integration_auth import IntegrationEntry
 from northgate_rmm.management_protocol import canonical
 
+if TYPE_CHECKING:
+    from northgate_rmm.native_api import NativeAPI
 
-async def call_capture(api, entry, endpoint, device, operation, args):
+
+async def call_capture(
+    api: NativeAPI,
+    entry: IntegrationEntry,
+    endpoint: UUID,
+    device: Endpoint,
+    operation: str,
+    args: dict[str, Any],
+) -> dict[str, Any]:
     ui = api.capture
     if operation == "capture_history":
         await api.audit(entry, endpoint, "capture.history")
@@ -33,7 +48,7 @@ async def call_capture(api, entry, endpoint, device, operation, args):
     async with api.lock:
         if operation == "capture_start":
             identifier = str(UUID(args["request_id"]))
-            fields = dict(
+            fields: dict[str, Any] = dict(
                 interface=str(args["interface"]),
                 preset=args.get("preset", "dns"),
                 seconds=args.get("seconds", 60),
@@ -65,6 +80,8 @@ async def call_capture(api, entry, endpoint, device, operation, args):
             )
             if row:
                 old = json.loads(row["payload"])
+                if not isinstance(old, dict):
+                    raise ValueError("Invalid stored capture")
                 if old.get("native_request_digest") != digest:
                     raise ValueError("Capture request identifier conflict")
                 return old

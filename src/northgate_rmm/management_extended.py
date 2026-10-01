@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from northgate_rmm.management import Management
-
 import asyncio
 import hashlib
 import ipaddress
@@ -17,6 +16,7 @@ from uuid import UUID, uuid4
 
 from aiohttp import web
 
+from northgate_rmm.errors import ValidationError
 from northgate_rmm.management_protocol import seal, unseal
 from northgate_rmm.secure_files import regular_file_reference
 
@@ -71,7 +71,7 @@ class ExtendedManagement:
                 data = await asyncio.to_thread(ref.read_bytes)
             if hashlib.sha256(data).hexdigest() != digest:
                 raise ValueError("Release integrity failure")
-        except (OSError, ValueError):
+        except (OSError, ValueError, ValidationError):
             raise web.HTTPNotFound() from None
         return web.Response(
             body=data,

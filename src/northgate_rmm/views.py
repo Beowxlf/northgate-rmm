@@ -47,8 +47,8 @@ def render_endpoint_page(
 ) -> str:
     """Render one already-bounded endpoint page and an opaque next cursor."""
 
-    rows = []
-    history_rows = []
+    rows: list[str] = []
+    history_rows: list[str] = []
     counts = {"online": 0, "stale": 0, "offline": 0}
     for endpoint in endpoints:
         status = reader.endpoint_status(endpoint.endpoint_id, now=now)

@@ -1,4 +1,9 @@
-"""Contract tests for the standalone Python 3.10 Wazuh integration."""
+"""Contract tests for the standalone Python 3.10 Wazuh integration.
+
+All identities and secret strings are synthetic. Addresses use TEST-NET-1 and
+hostnames use the reserved .invalid namespace. The transport test uses a fake
+connection; these fixtures do not identify or contact operational infrastructure.
+"""
 
 import copy
 import importlib.machinery
@@ -7,7 +12,9 @@ import json
 import os
 import re
 import ssl
+from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -21,7 +28,7 @@ LOADER.exec_module(forwarder)
 
 
 @pytest.fixture
-def config(tmp_path):
+def config(tmp_path: Path) -> dict[str, Any]:
     root = tmp_path / "private"
     root.mkdir(mode=0o700)
     token = root / "bearer"
@@ -32,8 +39,8 @@ def config(tmp_path):
     ca.chmod(0o600)
     return {
         "schema": 1,
-        "url": "https://operator.rmm.internal/remote/ops/intake/wazuh",
-        "connect_address": "10.10.150.22",
+        "url": "https://operator.example.invalid/remote/ops/intake/wazuh",
+        "connect_address": "192.0.2.22",
         "token_file": str(token.resolve()),
         "ca_file": str(ca.resolve()),
         "queue_file": str(root / "queue.sqlite3"),
@@ -43,11 +50,11 @@ def config(tmp_path):
 
 
 @pytest.fixture
-def alert():
+def alert() -> dict[str, Any]:
     return {
         "id": "1788987654.321",
         "timestamp": "2026-09-10T11:34:14.123+0000",
-        "agent": {"id": "020", "name": "CANARY", "ip": "10.10.150.99"},
+        "agent": {"id": "020", "name": "CANARY", "ip": "192.0.2.99"},
         "rule": {
             "id": "550",
             "level": 7,
@@ -60,7 +67,9 @@ def alert():
     }
 
 
-def test_strict_metadata_contract_and_redaction(config, alert):
+def test_strict_metadata_contract_and_redaction(
+    config: dict[str, Any], alert: dict[str, Any]
+) -> None:
     alert["rule"]["description"] = "Changed password=super-secret\x00\nfield"
     result = forwarder.normalize(alert, config)
     assert set(result) == {"id", "timestamp", "agent", "rule"}
@@ -71,7 +80,9 @@ def test_strict_metadata_contract_and_redaction(config, alert):
     assert "full_log" not in json.dumps(result)
 
 
-def test_skip_unmapped_and_below_filter(config, alert):
+def test_skip_unmapped_and_below_filter(
+    config: dict[str, Any], alert: dict[str, Any]
+) -> None:
     alert["agent"]["id"] = "000"
     assert forwarder.enqueue(alert, config) == "filtered"
     assert not Path(config["queue_file"]).exists()
@@ -85,18 +96,22 @@ def test_skip_unmapped_and_below_filter(config, alert):
     [("+0000", "+00:00"), ("-0530", "-05:30"), ("+05:30", "+05:30"), ("Z", "+00:00")],
 )
 def test_wazuh_timestamp_is_compatible_with_python310(
-    config, alert, monkeypatch, offset, expected
-):
+    config: dict[str, Any],
+    alert: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    offset: str,
+    expected: str,
+) -> None:
     actual_datetime = forwarder.datetime
 
     class Python310ISOParser:
         @staticmethod
-        def fromisoformat(value):
+        def fromisoformat(value: str) -> datetime:
             # Preserve Python 3.10's parser restriction when tests run with a
             # newer interpreter that otherwise masks this live incompatibility.
             if re.search(r"[+-]\d{4}$", value):
                 raise ValueError("Python 3.10 requires a colon in the UTC offset")
-            return actual_datetime.fromisoformat(value)
+            return cast(datetime, actual_datetime.fromisoformat(value))
 
     monkeypatch.setattr(forwarder, "datetime", Python310ISOParser)
     alert["timestamp"] = "2026-09-10T15:48:50.695" + offset
@@ -108,7 +123,9 @@ def test_wazuh_timestamp_is_compatible_with_python310(
 @pytest.mark.parametrize(
     "stamp", ["2026-09-10T15:48:50.695", "not-a-timestamp", "2026-09-10T15:48:50+9999"]
 )
-def test_malformed_or_naive_wazuh_timestamp_is_rejected(config, alert, stamp):
+def test_malformed_or_naive_wazuh_timestamp_is_rejected(
+    config: dict[str, Any], alert: dict[str, Any], stamp: str
+) -> None:
     alert["timestamp"] = stamp
     with pytest.raises((ValueError, forwarder.IntakeError)):
         forwarder.normalize(alert, config)
@@ -117,13 +134,17 @@ def test_malformed_or_naive_wazuh_timestamp_is_rejected(config, alert, stamp):
 @pytest.mark.parametrize(
     "field,value", [("level", True), ("level", 17), ("groups", ["x"] * 33)]
 )
-def test_reject_bad_rule(config, alert, field, value):
+def test_reject_bad_rule(
+    config: dict[str, Any], alert: dict[str, Any], field: str, value: object
+) -> None:
     alert["rule"][field] = value
     with pytest.raises(forwarder.IntakeError):
         forwarder.normalize(alert, config)
 
 
-def test_queue_deduplicates_and_persists_retry(config, alert):
+def test_queue_deduplicates_and_persists_retry(
+    config: dict[str, Any], alert: dict[str, Any]
+) -> None:
     assert forwarder.enqueue(alert, config) == "queued"
     assert forwarder.enqueue(alert, config) == "duplicate"
     result = forwarder.flush(config, lambda *_: 503)
@@ -137,7 +158,7 @@ def test_queue_deduplicates_and_persists_retry(config, alert):
         db.commit()
     captured = []
 
-    def receipt(payload, _):
+    def receipt(payload: bytes, _: object) -> int:
         captured.append(json.loads(payload))
         return 202
 
@@ -146,7 +167,9 @@ def test_queue_deduplicates_and_persists_retry(config, alert):
     assert captured == [forwarder.normalize(alert, config)]
 
 
-def test_queue_conflict_and_hard_capacity(config, alert, monkeypatch):
+def test_queue_conflict_and_hard_capacity(
+    config: dict[str, Any], alert: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
     forwarder.enqueue(alert, config)
     changed = copy.deepcopy(alert)
     changed["rule"]["level"] = 8
@@ -159,7 +182,9 @@ def test_queue_conflict_and_hard_capacity(config, alert, monkeypatch):
 
 
 @pytest.mark.parametrize("code", [400, 409, 413, 422])
-def test_rejection_retained_without_retry_loop(config, alert, code):
+def test_rejection_retained_without_retry_loop(
+    config: dict[str, Any], alert: dict[str, Any], code: int
+) -> None:
     forwarder.enqueue(alert, config)
     assert forwarder.flush(config, lambda *_: code)["rejected"] == 1
     assert forwarder.status(config)["rejected"] == 1
@@ -169,20 +194,24 @@ def test_rejection_retained_without_retry_loop(config, alert, code):
     )
 
 
-def test_local_reenrollment_never_reassigns_queued_old_alert(config, alert):
+def test_local_reenrollment_never_reassigns_queued_old_alert(
+    config: dict[str, Any], alert: dict[str, Any]
+) -> None:
     forwarder.enqueue(alert, config)
     config["agents"]["020"]["identity"] = str(uuid4())
     result = forwarder.flush(config, lambda *_: pytest.fail("old enrollment was sent"))
     assert result["rejected"] == 1
 
 
-def test_configuration_rejects_unsafe_destination(config, tmp_path):
+def test_configuration_rejects_unsafe_destination(
+    config: dict[str, Any], tmp_path: Path
+) -> None:
     path = tmp_path / "config.json"
     for url in [
-        "http://operator.rmm.internal/remote/ops/intake/wazuh",
-        "https://user:pass@operator.rmm.internal/remote/ops/intake/wazuh",
-        "https://operator.rmm.internal/somewhere-else",
-        "https://operator.rmm.internal/remote/ops/intake/wazuh?key=abc",
+        "http://operator.example.invalid/remote/ops/intake/wazuh",
+        "https://user:pass@operator.example.invalid/remote/ops/intake/wazuh",
+        "https://operator.example.invalid/somewhere-else",
+        "https://operator.example.invalid/remote/ops/intake/wazuh?key=abc",
     ]:
         config["url"] = url
         path.write_text(json.dumps(config))
@@ -192,8 +221,8 @@ def test_configuration_rejects_unsafe_destination(config, tmp_path):
 
 
 def test_https_bearer_ca_fixed_address_and_receipt_validation(
-    config, alert, monkeypatch
-):
+    config: dict[str, Any], alert: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
     requests = []
     tls = ssl.create_default_context()
     monkeypatch.setattr(forwarder.ssl, "create_default_context", lambda **_: tls)
@@ -202,21 +231,23 @@ def test_https_bearer_ca_fixed_address_and_receipt_validation(
         status = 202
         body = json.dumps({"alert": str(uuid4()), "duplicate": False}).encode()
 
-        def __init__(self, host, address, context):
-            assert host == "operator.rmm.internal"
-            assert address == "10.10.150.22"
+        def __init__(self, host: str, address: str, context: ssl.SSLContext) -> None:
+            assert host == "operator.example.invalid"
+            assert address == "192.0.2.22"
             assert context.check_hostname
 
-        def request(self, method, path, payload, headers):
+        def request(
+            self, method: str, path: str, payload: bytes, headers: dict[str, str]
+        ) -> None:
             requests.append((method, path, payload, headers))
 
-        def getresponse(self):
+        def getresponse(self) -> "Connection":
             return self
 
-        def read(self, maximum):
+        def read(self, maximum: int) -> bytes:
             return self.body[:maximum]
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     monkeypatch.setattr(forwarder, "PinnedHTTPS", Connection)
@@ -231,7 +262,9 @@ def test_https_bearer_ca_fixed_address_and_receipt_validation(
     assert len(requests) == 3  # No redirect request.
 
 
-def test_invalid_input_never_logs_raw_data(config, tmp_path, capsys):
+def test_invalid_input_never_logs_raw_data(
+    config: dict[str, Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config))
     config_path.chmod(0o600)
@@ -244,7 +277,9 @@ def test_invalid_input_never_logs_raw_data(config, tmp_path, capsys):
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Linux deployment permissions")
-def test_queue_rejects_symlink_or_public_directory(config, tmp_path):
+def test_queue_rejects_symlink_or_public_directory(
+    config: dict[str, Any], tmp_path: Path
+) -> None:
     directory = Path(config["queue_file"]).parent
     directory.chmod(0o755)
     with pytest.raises(forwarder.IntakeError, match="unsafe_queue_directory"):

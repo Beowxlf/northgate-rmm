@@ -7,17 +7,23 @@ import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
+from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from northgate_rmm.domain import EndpointHealth, EndpointLifecycle, EndpointStatus
 from northgate_rmm.errors import AuthorizationError, ValidationError
-from northgate_rmm.operator_api import OperatorAuthorizationPolicy, OperatorPrincipal
+from northgate_rmm.operator_api import (
+    OperatorApplication,
+    OperatorAuthorizationPolicy,
+    OperatorPrincipal,
+)
 from northgate_rmm.remote_gateway import COOKIE, RemoteGateway, encrypt_connection
 from northgate_rmm.remote_policy import RemoteLease, RemoteTarget, authorize_remote
 
@@ -53,7 +59,7 @@ STATUS = EndpointStatus(
         {"authenticated_at": NOW + timedelta(seconds=1)},
     ],
 )
-def test_remote_access_rejects_wrong_human_scope(change):
+def test_remote_access_rejects_wrong_human_scope(change: dict[str, Any]) -> None:
     with pytest.raises(AuthorizationError):
         authorize_remote(
             replace(PRINCIPAL, **change),
@@ -74,7 +80,7 @@ def test_remote_access_rejects_wrong_human_scope(change):
         {"endpoint_id": uuid4()},
     ],
 )
-def test_remote_access_rejects_unavailable_endpoint(change):
+def test_remote_access_rejects_unavailable_endpoint(change: dict[str, Any]) -> None:
     with pytest.raises(AuthorizationError):
         authorize_remote(
             PRINCIPAL,
@@ -86,7 +92,7 @@ def test_remote_access_rejects_unavailable_endpoint(change):
         )
 
 
-def test_remote_access_requires_current_cryptographic_identity():
+def test_remote_access_requires_current_cryptographic_identity() -> None:
     authorize_remote(PRINCIPAL, POLICY, TARGET, STATUS, TARGET.identity_id, now=NOW)
     with pytest.raises(AuthorizationError):
         authorize_remote(PRINCIPAL, POLICY, TARGET, STATUS, uuid4(), now=NOW)
@@ -95,12 +101,14 @@ def test_remote_access_requires_current_cryptographic_identity():
 @pytest.mark.parametrize(
     "address", ["127.0.0.1", "169.254.169.254", "8.8.8.8", "example.test"]
 )
-def test_remote_targets_do_not_allow_browser_style_arbitrary_destinations(address):
+def test_remote_targets_do_not_allow_browser_style_arbitrary_destinations(
+    address: str,
+) -> None:
     with pytest.raises(ValidationError):
         replace(TARGET, address=address)
 
 
-def test_lease_cannot_be_reused_after_login_change_or_expiry():
+def test_lease_cannot_be_reused_after_login_change_or_expiry() -> None:
     lease = RemoteLease(
         uuid4(),
         TARGET.endpoint_id,
@@ -117,22 +125,22 @@ def test_lease_cannot_be_reused_after_login_change_or_expiry():
         lease.check(PRINCIPAL, TARGET, now=NOW + timedelta(minutes=10))
 
 
-def decrypt(key, ciphertext):
+def decrypt(key: bytes, ciphertext: str | bytes) -> dict[str, Any]:
     decryptor = Cipher(algorithms.AES(key), modes.CBC(bytes(16))).decryptor()
     padded = decryptor.update(base64.b64decode(ciphertext)) + decryptor.finalize()
     unpadder = padding.PKCS7(128).unpadder()
     signed = unpadder.update(padded) + unpadder.finalize()
     assert hmac.compare_digest(signed[:32], hmac.digest(key, signed[32:], "sha256"))
-    return json.loads(signed[32:])
+    return cast(dict[str, Any], json.loads(signed[32:]))
 
 
-def test_guacamole_format_is_signed_then_encrypted_and_expires():
+def test_guacamole_format_is_signed_then_encrypted_and_expires() -> None:
     key = bytes(range(16))
     value = {"username": "test", "expires": 123456, "connections": {}}
     assert decrypt(key, encrypt_connection(key, value)) == value
 
 
-def test_connect_requires_csrf_and_issues_only_the_exact_target():
+def test_connect_requires_csrf_and_issues_only_the_exact_target() -> None:
     class Operation:
         _policy = POLICY
         _store = SimpleNamespace(
@@ -142,17 +150,19 @@ def test_connect_requires_csrf_and_issues_only_the_exact_target():
             endpoint_status=lambda endpoint, now: STATUS,
         )
 
-        def _authenticate(self, authorization, **kwargs):
+        def _authenticate(
+            self, authorization: str, **kwargs: object
+        ) -> OperatorPrincipal:
             if authorization != "Bearer synthetic":
                 raise AuthorizationError("invalid")
             return PRINCIPAL
 
-        def _audit(self, *args, **kwargs):
+        def _audit(self, *args: object, **kwargs: object) -> None:
             pass
 
-    async def scenario():
+    async def scenario() -> None:
         gateway = RemoteGateway(
-            Operation(),
+            cast(OperatorApplication, Operation()),
             {
                 TARGET.endpoint_id: (
                     TARGET,
@@ -236,7 +246,7 @@ def test_connect_requires_csrf_and_issues_only_the_exact_target():
     asyncio.run(scenario())
 
 
-def test_browser_asset_burst_keeps_verifier_connections_bounded():
+def test_browser_asset_burst_keeps_verifier_connections_bounded() -> None:
     import threading
     import time
 
@@ -253,7 +263,9 @@ def test_browser_asset_burst_keeps_verifier_connections_bounded():
         peak = 0
         calls = 0
 
-        def _authenticate(self, authorization, **kwargs):
+        def _authenticate(
+            self, authorization: str, **kwargs: object
+        ) -> OperatorPrincipal:
             with self.lock:
                 self.active += 1
                 self.calls += 1
@@ -265,17 +277,20 @@ def test_browser_asset_burst_keeps_verifier_connections_bounded():
                 with self.lock:
                     self.active -= 1
 
-    async def scenario():
+    async def scenario() -> None:
         operation = Operation()
         gateway = RemoteGateway(
-            operation,
+            cast(OperatorApplication, operation),
             {TARGET.endpoint_id: (TARGET, {})},
             bytes(16),
             "https://operator.test",
         )
         request = SimpleNamespace(remote="127.0.0.1", headers={})
         results = await asyncio.gather(
-            *(gateway.principal(request, TARGET.endpoint_id) for _ in range(12))
+            *(
+                gateway.principal(cast(web.Request, request), TARGET.endpoint_id)
+                for _ in range(12)
+            )
         )
         assert results == [PRINCIPAL] * 12
         assert operation.calls == 12
@@ -284,20 +299,22 @@ def test_browser_asset_burst_keeps_verifier_connections_bounded():
     asyncio.run(scenario())
 
 
-def test_guacamole_route_change_revalidates_only_its_lease_token(monkeypatch):
+def test_guacamole_route_change_revalidates_only_its_lease_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from aiohttp import web
 
     from northgate_rmm import remote_gateway
     from northgate_rmm.remote_gateway import LeaseState
 
-    async def scenario():
+    async def scenario() -> None:
         received = []
 
-        async def authenticate(request):
+        async def authenticate(request: web.Request) -> web.Response:
             received.append(dict(await request.post()))
             return web.json_response({"authToken": "synthetic-bound-token"})
 
-        async def tree(request):
+        async def tree(request: web.Request) -> web.Response:
             assert "Content-Type" not in request.headers
             assert await request.read() == b""
             assert request.headers["Guacamole-Token"] == "synthetic-bound-token"
@@ -309,16 +326,16 @@ def test_guacamole_route_change_revalidates_only_its_lease_token(monkeypatch):
         async with TestServer(upstream) as server:
             monkeypatch.setattr(remote_gateway, "UPSTREAM", str(server.make_url("")))
             gateway = RemoteGateway(
-                None,
+                cast(OperatorApplication, None),
                 {TARGET.endpoint_id: (TARGET, {})},
                 bytes(16),
                 "https://operator.test",
             )
 
-            async def principal(*args, **kwargs):
+            async def principal(*args: object, **kwargs: object) -> OperatorPrincipal:
                 return PRINCIPAL
 
-            gateway.principal = principal
+            monkeypatch.setattr(gateway, "principal", principal)
             gateway.leases["synthetic-cookie"] = LeaseState(
                 RemoteLease(
                     uuid4(),

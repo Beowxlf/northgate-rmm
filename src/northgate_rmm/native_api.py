@@ -7,13 +7,20 @@ import base64
 import json
 import time
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
 from aiohttp import web
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from northgate_rmm.capture_setup import CaptureSetup
-from northgate_rmm.integration_auth import IntegrationAuth
+from northgate_rmm.domain import Endpoint
+from northgate_rmm.integration_auth import (
+    IntegrationAuth,
+    IntegrationEntry,
+    IntegrationJob,
+)
 from northgate_rmm.management_protocol import (
     ACTIONS,
     SECRET_ACTIONS,
@@ -23,13 +30,27 @@ from northgate_rmm.management_protocol import (
 )
 from northgate_rmm.management_store import QueueFull
 
+if TYPE_CHECKING:
+    from northgate_rmm.capture_ui import CaptureUI
+    from northgate_rmm.fleet import Fleet
+    from northgate_rmm.inspection import InspectionUI
+    from northgate_rmm.management import Management
+    from northgate_rmm.operations import Operations
+
 MAX_NATIVE_BODY = 2 * 1024 * 1024
 
 
 class NativeAPI:
     def __init__(
-        self, management, fleet, capture, inspection, registry, *, operations=None
-    ):
+        self,
+        management: Management,
+        fleet: Fleet,
+        capture: CaptureUI,
+        inspection: InspectionUI,
+        registry: Path,
+        *,
+        operations: Operations | None = None,
+    ) -> None:
         self.m, self.fleet, self.capture, self.inspection = (
             management,
             fleet,
@@ -43,10 +64,16 @@ class NativeAPI:
         self.lock = asyncio.Lock()
         self.m.integration = self
 
-    def register(self, app):
+    def register(self, app: web.Application) -> None:
         app.router.add_post("/native/v1/rpc", self.handle)
 
-    def endpoint(self, entry, identifier, permission="observe", online=False):
+    def endpoint(
+        self,
+        entry: IntegrationEntry,
+        identifier: str,
+        permission: str = "observe",
+        online: bool = False,
+    ) -> tuple[UUID, Endpoint]:
         entry = self.auth.current(entry)
         endpoint = UUID(identifier)
         if (
@@ -70,14 +97,20 @@ class NativeAPI:
             raise web.HTTPConflict(text="Endpoint enrollment changed or unavailable")
         return endpoint, device
 
-    def authorize_job(self, job):
-        entry = self.auth.verify_job(job)
+    def authorize_job(self, job: dict[str, Any]) -> None:
+        entry = self.auth.verify_job(cast(IntegrationJob, job))
         self.endpoint(entry, job["endpoint"], job["action"])
         self.authorize_case(
             entry, job["endpoint"], job["action"], job["payload"]["params"]
         )
 
-    def authorize_case(self, entry, endpoint, action, params):
+    def authorize_case(
+        self,
+        entry: IntegrationEntry,
+        endpoint: UUID | str,
+        action: str,
+        params: dict[str, Any],
+    ) -> None:
         if action not in {"tool.run", "tool.artifact.read"}:
             return
         case_id = params.get("case_id")
@@ -104,7 +137,13 @@ class NativeAPI:
                 text="Reopen the case before starting a tool operation"
             )
 
-    async def audit(self, entry, endpoint, action, correlation=None):
+    async def audit(
+        self,
+        entry: IntegrationEntry,
+        endpoint: UUID | str,
+        action: str,
+        correlation: UUID | None = None,
+    ) -> None:
         await self.m.gateway.audit(
             self.auth.principal(entry, str(correlation or uuid4())),
             UUID(str(endpoint)),
@@ -112,7 +151,7 @@ class NativeAPI:
             correlation or uuid4(),
         )
 
-    async def handle(self, request):
+    async def handle(self, request: web.Request) -> web.Response:
         if request.remote not in {"127.0.0.1", "::1"} or request.headers.get("Origin"):
             raise web.HTTPForbidden(text="Native clients only")
         try:
@@ -141,6 +180,8 @@ class NativeAPI:
             value = json.loads(raw)
             if not isinstance(value, dict) or set(value) != {"operation", "arguments"}:
                 raise ValueError("Expected operation and arguments")
+            if not isinstance(value["operation"], str):
+                raise ValueError("Operation must be a string")
             if not isinstance(value["arguments"], dict):
                 raise ValueError("Arguments must be an object")
             async with asyncio.timeout(190), self.slots:
@@ -160,7 +201,9 @@ class NativeAPI:
                 text="Endpoint operation could not be confirmed"
             ) from None
 
-    async def call(self, entry, operation, args):
+    async def call(
+        self, entry: IntegrationEntry, operation: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
         if isinstance(operation, str) and operation.startswith("ops."):
             if self.operations is None:
                 raise web.HTTPServiceUnavailable(
@@ -249,7 +292,7 @@ class NativeAPI:
                 "tool.install",
                 {
                     "manifest": base64.b64encode(
-                        manifest_bytes(selected["manifest"])
+                        manifest_bytes(dict(selected["manifest"]))
                     ).decode(),
                     "signature": selected["signature"],
                 },
@@ -314,7 +357,7 @@ class NativeAPI:
                 raise ValueError("Unknown inventory category")
             await self.audit(entry, endpoint, "inventory.collect")
             target, parameters = self.m.gateway.targets[endpoint]
-            result = await run_inspection(
+            inspection_result = await run_inspection(
                 target, parameters, device.platform.value, category
             )
             self.endpoint(entry, str(endpoint), "inspection.collect")
@@ -323,9 +366,9 @@ class NativeAPI:
                 device.identity_id,
                 category,
                 "integration:" + entry["id"],
-                result,
+                inspection_result,
             )
-            return {"snapshot": identifier, "result": result}
+            return {"snapshot": identifier, "result": inspection_result}
         if operation == "submit_job":
             action, params = args["action"], args.get("params", {})
             if action in SECRET_ACTIONS | {
@@ -346,6 +389,7 @@ class NativeAPI:
                 component = args.get("component", "worker")
                 if component not in {"worker", "agent", "wxlfgar"}:
                     raise ValueError("Invalid release component")
+            release: dict[str, Any] | None
             upgrade = self.setup.worker_release(device.platform.value, worker)
             if operation == "capture_setup" and upgrade:
                 release, action = upgrade, "update.install"
@@ -435,7 +479,15 @@ class NativeAPI:
             return await call_capture(self, entry, endpoint, device, operation, args)
         raise ValueError("Unknown operation")
 
-    async def submit(self, entry, endpoint, device, action, params, request_id):
+    async def submit(
+        self,
+        entry: IntegrationEntry,
+        endpoint: UUID,
+        device: Endpoint,
+        action: str,
+        params: dict[str, Any],
+        request_id: str,
+    ) -> dict[str, Any]:
         if action in SECRET_ACTIONS:
             raise web.HTTPForbidden(text="Recovery secrets require a human session")
         self.endpoint(entry, str(endpoint), action, online=True)

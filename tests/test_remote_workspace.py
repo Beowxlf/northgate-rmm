@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -12,7 +14,9 @@ from aiohttp.test_utils import TestClient, TestServer
 from cryptography.exceptions import InvalidTag
 
 from northgate_rmm.errors import AuthorizationError
+from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
 from northgate_rmm.remote_gateway import RemoteGateway
+from northgate_rmm.remote_policy import RemoteTarget
 from northgate_rmm.remote_workspace import (
     RemoteWorkspace,
     open_credentials,
@@ -22,7 +26,7 @@ from northgate_rmm.remote_workspace import (
 from tests.test_remote_access import POLICY, PRINCIPAL, STATUS, TARGET
 
 
-def test_saved_credentials_authenticated_encryption():
+def test_saved_credentials_authenticated_encryption() -> None:
     values = [
         {
             "endpoint_id": str(TARGET.endpoint_id),
@@ -47,16 +51,18 @@ def test_saved_credentials_authenticated_encryption():
 @pytest.mark.parametrize(
     "name", ["../escape", r"C:\escape", "-option", ".hidden", "a\nb", "a.", "x" * 101]
 )
-def test_upload_rejects_path_and_command_injection(name):
+def test_upload_rejects_path_and_command_injection(name: str) -> None:
     with pytest.raises(ValueError):
         safe_filename(name)
 
 
-def test_unique_upload_names():
+def test_unique_upload_names() -> None:
     assert safe_filename("tool.zip") != safe_filename("tool.zip")
 
 
-def test_workspace_credentials_and_upload_authorization(monkeypatch):
+def test_workspace_credentials_and_upload_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from northgate_rmm import remote_workspace
 
     class Operation:
@@ -68,28 +74,37 @@ def test_workspace_credentials_and_upload_authorization(monkeypatch):
             endpoint_status=lambda _, now: STATUS,
         )
 
-        def __init__(self):
-            self.events = []
+        def __init__(self) -> None:
+            self.events: list[object] = []
 
-        def _authenticate(self, authorization, **kwargs):
+        def _authenticate(
+            self, authorization: str, **kwargs: object
+        ) -> OperatorPrincipal:
             if authorization != "Bearer synthetic":
                 raise AuthorizationError("invalid")
             return PRINCIPAL
 
-        def _audit(self, *args, **kwargs):
+        def _audit(self, *args: object, **kwargs: object) -> None:
             self.events.append(kwargs["action"])
 
-    async def scenario():
+    async def scenario() -> None:
         operation = Operation()
         gateway = RemoteGateway(
-            operation,
+            cast(OperatorApplication, operation),
             {TARGET.endpoint_id: (TARGET, {})},
             bytes(16),
             "https://operator.test",
         )
         received = []
 
-        async def sender(target, parameters, platform, source, name, digest):
+        async def sender(
+            target: RemoteTarget,
+            parameters: dict[str, str],
+            platform: str,
+            source: Path,
+            name: str,
+            digest: str,
+        ) -> dict[str, Any]:
             data = source.read_bytes()
             received.append(data)
             assert digest == hashlib.sha256(data).hexdigest()
@@ -169,8 +184,8 @@ def test_workspace_credentials_and_upload_authorization(monkeypatch):
     ],
 )
 def test_upload_transport_preserves_binary_data(
-    monkeypatch, tmp_path, platform, algorithm
-):
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, platform: str, algorithm: str
+) -> None:
     import json
 
     from northgate_rmm.remote_workspace import send_upload
@@ -185,17 +200,17 @@ def test_upload_transport_preserves_binary_data(
     commands = []
 
     class Writer:
-        def write(self, value):
+        def write(self, value: bytes) -> None:
             writes.append(value)
 
-        async def drain(self):
+        async def drain(self) -> None:
             pass
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     class Output:
-        async def read(self, count):
+        async def read(self, count: int) -> bytes:
             return json.dumps(
                 {"name": name, "size": len(payload), "sha256": digest}
             ).encode()
@@ -205,14 +220,14 @@ def test_upload_transport_preserves_binary_data(
         stdout = Output()
         returncode = 0
 
-        async def communicate(self, value):
+        async def communicate(self, value: bytes) -> tuple[None, None]:
             batches.append(value)
             return (None, None)
 
-        async def wait(self):
+        async def wait(self) -> int:
             return 0
 
-    async def create(*args, **kwargs):
+    async def create(*args: object, **kwargs: object) -> Process:
         commands.append(args)
         assert "StrictHostKeyChecking=yes" in args
         return Process()

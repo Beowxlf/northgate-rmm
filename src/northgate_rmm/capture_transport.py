@@ -9,14 +9,21 @@ import json
 import re
 import tempfile
 from pathlib import Path
+from typing import Any
+
+from northgate_rmm.remote_policy import RemoteTarget
 
 MAX_ARTIFACT = 33 * 1024 * 1024
 ARTIFACTS = {"capture.pcap", "report.json", "summary.txt", "manifest.json"}
 
 
 async def request_tool(
-    target, parameters, platform, envelope, destination: Path | None = None
-):
+    target: RemoteTarget,
+    parameters: dict[str, str],
+    platform: str,
+    envelope: dict[str, str],
+    destination: Path | None = None,
+) -> dict[str, Any]:
     username = parameters.get("username", "")
     pin = parameters.get("host-key", "")
     private = parameters.get("private-key", "")
@@ -75,6 +82,8 @@ async def request_tool(
         )
         try:
             async with asyncio.timeout(180 if destination else 20):
+                if proc.stdin is None or proc.stdout is None:
+                    raise ValueError("Capture subprocess pipes unavailable")
                 proc.stdin.write(json.dumps(envelope).encode() + b"\n")
                 await proc.stdin.drain()
                 proc.stdin.close()

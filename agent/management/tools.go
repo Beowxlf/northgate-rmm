@@ -446,7 +446,7 @@ func extractToolArchive(path, root string, maximum int64) (map[string]string, er
 	}
 	defer z.Close()
 	if len(z.File) > 512 {
-		return nil, errors.New("Tool bundle file limit exceeded")
+		return nil, errors.New("tool bundle file limit exceeded")
 	}
 	files := map[string]string{}
 	seen := map[string]bool{}
@@ -455,11 +455,11 @@ func extractToolArchive(path, root string, maximum int64) (map[string]string, er
 		name := entry.Name
 		clean := filepath.FromSlash(name)
 		if name == "" || strings.ContainsAny(name, "\\:\x00") || filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") || filepath.Clean(clean) != strings.TrimSuffix(clean, string(filepath.Separator)) || strings.EqualFold(name, "installed.json") || entry.Mode()&os.ModeSymlink != 0 {
-			return nil, errors.New("Unsafe tool archive path")
+			return nil, errors.New("unsafe tool archive path")
 		}
 		fold := strings.ToLower(clean)
 		if seen[fold] {
-			return nil, errors.New("Duplicate tool archive path")
+			return nil, errors.New("duplicate tool archive path")
 		}
 		seen[fold] = true
 		if entry.FileInfo().IsDir() {
@@ -467,7 +467,7 @@ func extractToolArchive(path, root string, maximum int64) (map[string]string, er
 		}
 		total += int64(entry.UncompressedSize64)
 		if total > maximum {
-			return nil, errors.New("Tool bundle disk budget exceeded")
+			return nil, errors.New("tool bundle disk budget exceeded")
 		}
 		destination := filepath.Join(root, clean)
 		if e = os.MkdirAll(filepath.Dir(destination), 0700); e != nil {
@@ -487,7 +487,7 @@ func extractToolArchive(path, root string, maximum int64) (map[string]string, er
 		src.Close()
 		closeErr := dst.Close()
 		if copyErr != nil || closeErr != nil || n != int64(entry.UncompressedSize64) {
-			return nil, errors.New("Invalid tool archive member")
+			return nil, errors.New("invalid tool archive member")
 		}
 		files[clean] = hex.EncodeToString(h.Sum(nil))
 	}
@@ -519,13 +519,13 @@ func toolArguments(j Job, c Config, m ToolManifest) ([]string, error) {
 			return nil, e
 		}
 		if within(c.Root, p) || within(filepath.Dir(c.IdentityFile), p) {
-			return nil, errors.New("Select a file outside worker identity/state")
+			return nil, errors.New("select a file outside worker identity/state")
 		}
 		return []string{"-accepteula", "-nobanner", "-r", "-c", "-h", "-e", p}, nil
 	case "yara-x":
 		p, _ := v["path"].(string)
 		if !filepath.IsAbs(p) || filepath.Clean(p) != p || within(c.Root, p) || within(filepath.Dir(c.IdentityFile), p) {
-			return nil, errors.New("Select an absolute scan path outside worker identity/state")
+			return nil, errors.New("select an absolute scan path outside worker identity/state")
 		}
 		return []string{"scan", "--timeout", fmt.Sprint(m.Budget.Seconds), "--threads", "1", "--skip-larger", "16777216", "--output-format", "ndjson", "--disable-console-logs", filepath.Join(base, "rules.yar"), p}, nil
 	case "velociraptor":
@@ -537,7 +537,7 @@ func toolArguments(j Job, c Config, m ToolManifest) ([]string, error) {
 	case "nmap":
 		return []string{"-sT", "-Pn", "-n", "--max-retries", "1", "--host-timeout", "30s", "--max-rate", "20", "-p", v["ports"].(string), v["host"].(string)}, nil
 	}
-	return nil, errors.New("Tool recipe unsupported")
+	return nil, errors.New("tool recipe unsupported")
 }
 
 func toolFileHash(path string, maximum int64) (string, error) {

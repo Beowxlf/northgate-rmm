@@ -5,14 +5,17 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from northgate_rmm.operator_api import OperatorPrincipal
+
 
 class CaptureStore:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path) -> None:
         self.root = root
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
         if root.is_symlink():
@@ -35,7 +38,7 @@ class CaptureStore:
         self.path.chmod(0o600)
 
     @contextmanager
-    def connect(self):
+    def connect(self) -> Iterator[sqlite3.Connection]:
         db = sqlite3.connect(self.path, timeout=5)
         db.row_factory = sqlite3.Row
         try:
@@ -44,11 +47,17 @@ class CaptureStore:
         finally:
             db.close()
 
-    def prune(self):
+    def prune(self) -> None:
         with self.connect() as db:
             db.execute("DELETE FROM jobs WHERE created < ?", (time.time() - 7 * 86400,))
 
-    def add(self, endpoint, identity, principal, job):
+    def add(
+        self,
+        endpoint: UUID | str,
+        identity: UUID | str,
+        principal: OperatorPrincipal,
+        job: dict[str, Any],
+    ) -> None:
         self.prune()
         with self.connect() as db:
             if db.execute("SELECT count(*) FROM jobs").fetchone()[0] >= 2000:
@@ -67,7 +76,7 @@ class CaptureStore:
                 ),
             )
 
-    def update(self, job):
+    def update(self, job: dict[str, Any]) -> None:
         with self.connect() as db:
             db.execute(
                 "UPDATE jobs SET payload=?, updated=? WHERE id=?",
@@ -99,6 +108,6 @@ class CaptureStore:
                 )
             ]
 
-    def delete(self, job_id):
+    def delete(self, job_id: str) -> None:
         with self.connect() as db:
             db.execute("DELETE FROM jobs WHERE id=?", (job_id,))

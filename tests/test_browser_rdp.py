@@ -4,7 +4,9 @@ import asyncio
 import base64
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
+from typing import TypedDict, cast
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
@@ -14,14 +16,23 @@ from aiohttp.test_utils import TestClient, TestServer
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from northgate_rmm.operator_api import OperatorPrincipal
+from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
 from northgate_rmm.remote_gateway import COOKIE, LeaseState, RemoteGateway
 from northgate_rmm.remote_policy import RemoteLease, parse_remote_targets
 from northgate_rmm.remote_sessions import RemoteSessionStore
 from northgate_rmm.remote_workspace import open_credentials, seal_credentials
 
 
-def configuration():
+class TargetConfiguration(TypedDict):
+    endpoint_id: str
+    identity_id: str
+    address: str
+    protocol: str
+    port: int
+    parameters: dict[str, str]
+
+
+def configuration() -> list[TargetConfiguration]:
     endpoint, identity = str(uuid4()), str(uuid4())
     return [
         {
@@ -44,7 +55,9 @@ def configuration():
 
 
 @pytest.mark.parametrize("change", ["duplicate", "identity", "host", "nla", "bypass"])
-def test_multi_method_targets_reject_cross_enrollment_and_weakened_rdp(change):
+def test_multi_method_targets_reject_cross_enrollment_and_weakened_rdp(
+    change: str,
+) -> None:
     entries = configuration()
     if change == "duplicate":
         entries.append(entries[0])
@@ -61,15 +74,17 @@ def test_multi_method_targets_reject_cross_enrollment_and_weakened_rdp(change):
 
 
 @pytest.mark.parametrize("security", ["nla", "tls"])
-def test_browser_rdp_uses_own_target_pins_case_and_csrf(tmp_path, security):
-    async def scenario():
+def test_browser_rdp_uses_own_target_pins_case_and_csrf(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, security: str
+) -> None:
+    async def scenario() -> None:
         entries = configuration()
         entries[1]["parameters"]["security"] = security
         targets = parse_remote_targets(entries)
         endpoint = next(iter(targets))
         assert targets[endpoint][0].protocol == "ssh"
         gateway = RemoteGateway(
-            None,
+            cast(OperatorApplication, None),
             targets,
             bytes(16),
             "https://operator.test",
@@ -87,20 +102,23 @@ def test_browser_rdp_uses_own_target_pins_case_and_csrf(tmp_path, security):
             now + timedelta(hours=1),
             True,
         )
-        gateway.operation = SimpleNamespace(
-            _store=SimpleNamespace(
-                get_endpoint=lambda _: SimpleNamespace(display_name="Workstation")
-            )
+        gateway.operation = cast(
+            OperatorApplication,
+            SimpleNamespace(
+                _store=SimpleNamespace(
+                    get_endpoint=lambda _: SimpleNamespace(display_name="Workstation")
+                )
+            ),
         )
 
-        async def principal(*args, **kwargs):
+        async def principal(*args: object, **kwargs: object) -> OperatorPrincipal:
             return p
 
-        async def audit(*args, **kwargs):
+        async def audit(*args: object, **kwargs: object) -> None:
             return None
 
-        gateway.principal = principal
-        gateway.audit = audit
+        monkeypatch.setattr(gateway, "principal", principal)
+        monkeypatch.setattr(gateway, "audit", audit)
         gateway.case_authorizer = audit
         async with TestClient(TestServer(gateway.application())) as client:
             path = f"/remote/{endpoint}/desktop"
@@ -161,7 +179,7 @@ def test_browser_rdp_uses_own_target_pins_case_and_csrf(tmp_path, security):
     asyncio.run(scenario())
 
 
-def test_session_store_marks_restart_and_filters_enrollment(tmp_path):
+def test_session_store_marks_restart_and_filters_enrollment(tmp_path: Path) -> None:
     path = tmp_path / "session.sqlite"
     now = datetime.now(UTC)
     lease = RemoteLease(
@@ -177,7 +195,7 @@ def test_session_store_marks_restart_and_filters_enrollment(tmp_path):
     )
 
 
-def test_legacy_saved_credentials_support_more_than_eight():
+def test_legacy_saved_credentials_support_more_than_eight() -> None:
     entries = [
         {
             "endpoint_id": str(uuid4()),
@@ -190,13 +208,15 @@ def test_legacy_saved_credentials_support_more_than_eight():
     assert len(open_credentials(bytes(16), seal_credentials(bytes(16), entries))) == 12
 
 
-def test_browser_disconnect_closes_upstream_websocket(monkeypatch):
+def test_browser_disconnect_closes_upstream_websocket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from northgate_rmm import remote_gateway
 
-    async def scenario():
+    async def scenario() -> None:
         connected, closed = asyncio.Event(), asyncio.Event()
 
-        async def upstream_socket(request):
+        async def upstream_socket(request: web.Request) -> web.WebSocketResponse:
             ws = web.WebSocketResponse(protocols=("guacamole",))
             await ws.prepare(request)
             connected.set()
@@ -211,7 +231,12 @@ def test_browser_disconnect_closes_upstream_websocket(monkeypatch):
             monkeypatch.setattr(remote_gateway, "UPSTREAM", str(server.make_url("")))
             targets = parse_remote_targets(configuration())
             endpoint = next(iter(targets))
-            gateway = RemoteGateway(None, targets, bytes(16), "https://operator.test")
+            gateway = RemoteGateway(
+                cast(OperatorApplication, None),
+                targets,
+                bytes(16),
+                "https://operator.test",
+            )
             now = datetime.now(UTC)
             p = OperatorPrincipal(
                 "https://idp.test",
@@ -237,13 +262,14 @@ def test_browser_disconnect_closes_upstream_websocket(monkeypatch):
             gateway.leases["cookie"] = state
             gateway.receipt_store.create(lease, "rdp", "")
 
-            async def principal(*args, **kwargs):
+            async def principal(*args: object, **kwargs: object) -> OperatorPrincipal:
                 return p
 
-            async def audit(*args, **kwargs):
+            async def audit(*args: object, **kwargs: object) -> None:
                 pass
 
-            gateway.principal, gateway.audit = principal, audit
+            monkeypatch.setattr(gateway, "principal", principal)
+            monkeypatch.setattr(gateway, "audit", audit)
             headers = {"Origin": gateway.origin, "Cookie": COOKIE + "=cookie"}
             async with TestClient(TestServer(gateway.application())) as client:
                 denied = await client.get("/guacamole/tunnel", headers=headers)

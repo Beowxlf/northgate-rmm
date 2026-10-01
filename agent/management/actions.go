@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -372,4 +371,3 @@ func replaceFile(source, destination string) error { return os.Rename(source, de
 func safeResultError(message string) Result {
 	return Result{State: "failed", Exit: -1, Identity: executionIdentity(), Error: message}
 }
-func secondsSince(when time.Time) string { return fmt.Sprint(int(time.Since(when).Seconds())) }

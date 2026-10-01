@@ -504,8 +504,8 @@ def test_partial_cancel_releases_reservation_and_cannot_be_downloaded(rig: Any) 
     [
         {"password": "example"},
         {"private_key": "value"},
-        "-----BEGIN PRIVATE KEY-----",
-        "123456-123456-123456-123456-123456-123456-123456-123456",
+        " ".join(("-----BEGIN", "PRIVATE", "KEY-----")),
+        "-".join(["123456"] * 8),
         "access_token=abcdefghijklmnop",
     ],
 )

@@ -10,7 +10,7 @@ import secrets
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from aiohttp import web
@@ -37,6 +37,10 @@ from northgate_rmm.remote_gateway import RemoteGateway
 from northgate_rmm.remote_policy import authorize_remote
 from northgate_rmm.remote_workspace import frame_response
 
+if TYPE_CHECKING:
+    from northgate_rmm.native_api import NativeAPI
+
+
 RECOVERY_ROLE = "recovery_operator"
 
 
@@ -49,8 +53,11 @@ def diagnostic_action(action: str, params: dict[str, Any]) -> bool:
         "connectivity": {"dns", "tcp", "tls"},
         "osquery": {"system", "processes", "users", "listening", "startup"},
     }
-    return action == "tool.run" and params.get("profile") in profiles.get(
-        params.get("tool_id"), set()
+    tool = params.get("tool_id")
+    return (
+        action == "tool.run"
+        and isinstance(tool, str)
+        and params.get("profile") in profiles.get(tool, set())
     )
 
 
@@ -60,7 +67,7 @@ class Management:
         self.forms: dict[str, tuple[str, str, str, float]] = {}
         self.shell_leases: dict[str, float] = {}
         self.slots = asyncio.Semaphore(4)
-        self.integration = None
+        self.integration: NativeAPI | None = None
         from northgate_rmm.management_extended import ExtendedManagement
 
         self.extended = ExtendedManagement(self)

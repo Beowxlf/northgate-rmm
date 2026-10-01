@@ -11,15 +11,19 @@ const steps = workflow.jobs.scan.steps;
 test("independent security checks retain failures and run after earlier failures", () => {
   const independentChecks = [
     "Audit Python tool dependencies",
+    "Audit isolated Semgrep dependencies",
     "Check Python formatting",
     "Lint Python",
     "Check Python types",
     "Test Phase 1 Python domain slice",
     "Scan Phase 1 Python with Bandit",
     "Check Phase 2 Go agent",
+    "Check Windows agent types and pointers",
     "Build and test the Phase 2 Debian package in isolation",
     "Build and test the server Debian package in isolation",
-    "Run Semgrep Community Edition",
+    "Run Semgrep JavaScript checks",
+    "Run Semgrep Python checks",
+    "Run Semgrep Go checks",
     "Audit workflows with Zizmor",
     "Scan for secrets with Gitleaks",
     "Validate workflows with actionlint",
@@ -61,4 +65,13 @@ test("server qualification uses the current wheel version end to end", () => {
   );
   assert.match(packageTest, /expected_application_version="\$\{3:\?/);
   assert.match(packageTest, /"northgate-rmm": sys\.argv\[1\]/);
+});
+
+test("link validation retains repository-wide supported-file coverage", () => {
+  const linkCheck = steps.find(
+    (step) => step.name === "Validate documentation links with Lychee",
+  );
+  assert.ok(linkCheck);
+  assert.match(linkCheck.run, /(?:^|\s)\.\s*$/);
+  assert.doesNotMatch(linkCheck.run, /\*\*\/\*\.md/);
 });

@@ -20,9 +20,11 @@ import sys
 import tarfile
 import tempfile
 import threading
-from contextlib import closing, contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import IO, Protocol, TypedDict, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -41,6 +43,71 @@ from northgate_rmm.operations_models import MAX_CHUNK
 from northgate_rmm.recovery import digest, environment, executable, run
 from northgate_rmm.secure_files import regular_file_reference
 from northgate_rmm.workload_service import canonical, load_configuration, read_private
+
+Configuration = dict[str, object]
+
+
+class BackupChunk(TypedDict):
+    chunk_index: int
+    size: int
+    sha256: str
+
+
+class BackupArtifact(TypedDict):
+    id: str
+    size: int
+    sha256: str
+    chunks: list[BackupChunk]
+
+
+class BackupMember(TypedDict):
+    size: int
+    sha256: str
+
+
+class SnapshotReceipt(TypedDict):
+    snapshot_id: str
+    sha256: str
+    created_at: str
+
+
+class BackupManifest(TypedDict):
+    format: str
+    deployment_id: str
+    created_at: str
+    files: dict[str, BackupMember]
+    completed_artifacts: int
+    transient_uploads_excluded: bool
+    openbao_snapshot: SnapshotReceipt | None
+
+
+class PublicManifest(TypedDict):
+    format: str
+    deployment_id: str
+    ciphertext_sha256: str
+    ciphertext_bytes: int
+    manifest_sha256: str
+    openbao_snapshot: SnapshotReceipt | None
+
+
+class RestoreResult(TypedDict):
+    format: str
+    verified: bool
+    reconnection: bool
+    completed_artifacts: int
+    openbao_snapshot: SnapshotReceipt | None
+
+
+class ByteReader(Protocol):
+    def read(self, amount: int = -1) -> bytes: ...
+
+
+def configuration_text(config: Configuration, name: str) -> str:
+    value = config[name]
+    if not isinstance(value, str):
+        raise ValueError("Invalid recovery configuration field: " + name)
+    return value
+
 
 FORMAT = "northgate-operations-v1"
 SQLITE_SOURCES = frozenset(
@@ -63,28 +130,32 @@ DEFAULT_BUDGET = 8 * 1024**3
 CHUNK_NAME = re.compile(r"operations-evidence/([0-9a-f-]{36})\.([0-9]{1,3})\.aes\Z")
 
 
-def private_bytes(path, maximum):
+def private_bytes(path: Path | str, maximum: int) -> bytes:
     with regular_file_reference(
         Path(path), label="recovery input", maximum_bytes=maximum, private=True
     ) as held:
         return held.read_bytes()
 
 
-def evidence_key(config):
-    encoded = private_bytes(config["remote_key_credential"], 64).decode("ascii").strip()
+def evidence_key(config: Configuration) -> bytes:
+    encoded = (
+        private_bytes(configuration_text(config, "remote_key_credential"), 64)
+        .decode("ascii")
+        .strip()
+    )
     if not re.fullmatch(r"[0-9a-fA-F]{32}", encoded):
         raise ValueError("The preserved remote evidence key is invalid")
     return derive(bytes.fromhex(encoded), "operations-evidence")
 
 
-def source_path(root, name):
+def source_path(root: Path, name: str) -> Path:
     path = root / name
     if any(part.is_symlink() for part in [path, *path.parents]):
         raise ValueError("Backup source path must not traverse symbolic links")
     return path
 
 
-def new_directory(path):
+def new_directory(path: Path | str) -> Path:
     path = Path(path)
     if not path.is_absolute() or path.exists() or path.is_symlink():
         raise ValueError("A new absolute directory is required")
@@ -94,7 +165,7 @@ def new_directory(path):
     return path
 
 
-def exclusive(path):
+def exclusive(path: Path | str) -> IO[bytes]:
     return os.fdopen(
         os.open(
             path,
@@ -105,8 +176,8 @@ def exclusive(path):
     )
 
 
-def settings(config):
-    base = load_configuration(Path(config["recovery_config"]))
+def settings(config: Configuration) -> tuple[Configuration, int, list[str], Path]:
+    base = load_configuration(Path(configuration_text(config, "recovery_config")))
     for name in (
         "database_dsn_credential",
         "manifest_private_key",
@@ -116,7 +187,7 @@ def settings(config):
     ):
         if name in config:
             base[name] = config[name]
-    recipient = base["recipient"]
+    recipient = configuration_text(base, "recipient")
     if not isinstance(recipient, str) or not re.fullmatch(
         r"age1[0-9a-z]{50,100}", recipient
     ):
@@ -130,17 +201,20 @@ def settings(config):
     if (
         not isinstance(selected, list)
         or not selected
+        or any(not isinstance(item, str) for item in selected)
         or len(selected) != len(set(selected))
         or not set(selected) <= SQLITE_SOURCES
     ):
         raise ValueError("Invalid SQLite snapshot selection")
-    root = Path(config["remote_root"])
+    root = Path(configuration_text(config, "remote_root"))
     if not root.is_absolute() or not root.is_dir() or root.is_symlink():
         raise ValueError("Existing private RMM state root is required")
     return base, budget, selected, root
 
 
-def stream_process(arguments, env, destination, limit):
+def stream_process(
+    arguments: list[str], env: dict[str, str], destination: Path, limit: int
+) -> None:
     """Bound subprocess output on disk and in memory; suppress raw diagnostics."""
     with exclusive(destination) as output:
         process = subprocess.Popen(  # noqa: S603 - installed executables, no shell
@@ -155,6 +229,8 @@ def stream_process(arguments, env, destination, limit):
         timer.start()
         try:
             count = 0
+            if process.stdout is None:
+                raise ValueError("Recovery subprocess output is unavailable")
             while chunk := process.stdout.read(1024 * 1024):
                 count += len(chunk)
                 if count > limit:
@@ -169,17 +245,18 @@ def stream_process(arguments, env, destination, limit):
             if process.poll() is None:
                 process.kill()
             process.wait()
-            process.stdout.close()
+            if process.stdout is not None:
+                process.stdout.close()
 
 
 @contextmanager
-def age_writer(path, base):
+def age_writer(path: Path, base: Configuration) -> Iterator[IO[bytes]]:
     with exclusive(path) as output:
         arguments = [
-            executable(base["age"]),
+            executable(configuration_text(base, "age")),
             "--encrypt",
             "--recipient",
-            base["recipient"],
+            configuration_text(base, "recipient"),
         ]
         process = subprocess.Popen(  # noqa: S603 - installed age executable, no shell
             arguments,
@@ -191,6 +268,8 @@ def age_writer(path, base):
         timer.daemon = True
         timer.start()
         try:
+            if process.stdin is None:
+                raise ValueError("Age encryption input is unavailable")
             yield process.stdin
             process.stdin.close()
             if process.wait(timeout=30) != 0:
@@ -202,16 +281,17 @@ def age_writer(path, base):
             if process.poll() is None:
                 process.kill()
             process.wait()
-            if not process.stdin.closed:
+            if process.stdin is not None and not process.stdin.closed:
                 process.stdin.close()
 
 
 class Bundle:
-    def __init__(self, archive, budget):
+    def __init__(self, archive: tarfile.TarFile, budget: int) -> None:
         self.archive, self.budget = archive, budget
-        self.members, self.total = {}, 0
+        self.members: dict[str, BackupMember] = {}
+        self.total = 0
 
-    def add(self, name, stream, size):
+    def add(self, name: str, stream: ByteReader, size: int) -> None:
         if (
             not valid_member(name)
             or name in self.members
@@ -222,8 +302,8 @@ class Bundle:
             raise ValueError("Backup exceeds its archive budget")
         checksum = hashlib.sha256()
 
-        class Reader:
-            def read(self, amount):
+        class Reader(io.RawIOBase):
+            def read(self, amount: int = -1) -> bytes:
                 value = stream.read(amount)
                 checksum.update(value)
                 return value
@@ -234,7 +314,7 @@ class Bundle:
         self.members[name] = {"size": size, "sha256": checksum.hexdigest()}
         self.total += size
 
-    def file(self, name, path):
+    def file(self, name: str, path: Path | str) -> None:
         with (
             regular_file_reference(
                 Path(path),
@@ -247,7 +327,7 @@ class Bundle:
             self.add(name, stream, os.fstat(stream.fileno()).st_size)
 
 
-def valid_member(name):
+def valid_member(name: str) -> bool:
     if name in FIXED_MEMBERS:
         return True
     matched = CHUNK_NAME.fullmatch(name)
@@ -259,7 +339,7 @@ def valid_member(name):
         return False
 
 
-def sqlite_snapshot(source, target, limit):
+def sqlite_snapshot(source: Path, target: Path, limit: int) -> None:
     # Hold and validate the source inode while SQLite takes its online snapshot.
     with regular_file_reference(
         source, label="SQLite state", maximum_bytes=limit, private=True
@@ -268,7 +348,7 @@ def sqlite_snapshot(source, target, limit):
             pass
         started = datetime.now(UTC)
 
-        def progress(_status, _remaining, _total):
+        def progress(_status: int, _remaining: int, _total: int) -> None:
             if (
                 datetime.now(UTC) - started
             ).total_seconds() > 120 or target.stat().st_size > limit:
@@ -283,7 +363,9 @@ def sqlite_snapshot(source, target, limit):
                 raise ValueError("SQLite snapshot integrity failed")
 
 
-def artifact_rows(connection):
+def artifact_rows(
+    connection: psycopg.Connection[dict[str, object]],
+) -> Iterator[BackupArtifact]:
     with connection.cursor(
         name="ops_recovery_artifacts", row_factory=dict_row
     ) as cursor:
@@ -301,11 +383,16 @@ def artifact_rows(connection):
                 "id": row["id"],
                 "size": row["size"],
                 "sha256": row["sha256"],
-                "chunks": [dict(c) for c in chunks],
+                "chunks": [cast(BackupChunk, dict(c)) for c in chunks],
             }
 
 
-def verify_chunks(record, root, key, add=None):
+def verify_chunks(
+    record: BackupArtifact,
+    root: Path,
+    key: bytes,
+    add: Callable[[str, ByteReader, int], None] | None = None,
+) -> None:
     if root.is_symlink():
         raise ValueError("Evidence root must not be a symbolic link")
     identifier = str(UUID(record["id"]))
@@ -342,8 +429,10 @@ def verify_chunks(record, root, key, add=None):
 
 
 @contextmanager
-def postgres_snapshot(base, staging, budget):
-    dsn = load_database_dsn(Path(base["database_dsn_credential"]))
+def postgres_snapshot(
+    base: Configuration, staging: Path, budget: int
+) -> Iterator[tuple[Path, Iterator[BackupArtifact]]]:
+    dsn = load_database_dsn(Path(configuration_text(base, "database_dsn_credential")))
     with psycopg.connect(
         dsn, connect_timeout=5, autocommit=True, row_factory=dict_row
     ) as connection:
@@ -353,17 +442,20 @@ def postgres_snapshot(base, staging, budget):
             version = connection.execute(
                 "SELECT max(version) AS version FROM ops_schema"
             ).fetchone()
-            if version["version"] != 1:
+            if version is None or version["version"] != 1:
                 raise ValueError("Unsupported operations schema")
-            snapshot = connection.execute(
+            snapshot_row = connection.execute(
                 "SELECT pg_export_snapshot() AS snapshot"
-            ).fetchone()["snapshot"]
+            ).fetchone()
+            if snapshot_row is None:
+                raise ValueError("PostgreSQL snapshot identity is unavailable")
+            snapshot = snapshot_row["snapshot"]
             if not re.fullmatch(r"[0-9A-Fa-f-]{1,128}", snapshot):
                 raise ValueError("Invalid PostgreSQL snapshot identity")
             dump = staging / "operations.dump"
             stream_process(
                 [
-                    executable(base["pg_dump"]),
+                    executable(configuration_text(base, "pg_dump")),
                     "--format=custom",
                     "--no-owner",
                     "--no-acl",
@@ -380,10 +472,12 @@ def postgres_snapshot(base, staging, budget):
             connection.execute("ROLLBACK")
 
 
-def snapshot_link(config):
+def snapshot_link(config: Configuration) -> SnapshotReceipt | None:
     path = config.get("openbao_snapshot_receipt")
     if path is None:
         return None
+    if not isinstance(path, str):
+        raise ValueError("Invalid snapshot receipt path")
     record = json.loads(private_bytes(path, 8192))
     if set(record) != {"snapshot_id", "sha256", "created_at"}:
         raise ValueError("Invalid independent OpenBao snapshot receipt")
@@ -396,14 +490,25 @@ def snapshot_link(config):
         is None
     ):
         raise ValueError("Snapshot receipt requires a timezone")
-    return record
+    return cast(SnapshotReceipt, record)
 
 
-def backup(config, destination, *, snapshot=postgres_snapshot, encrypt=age_writer):
+def backup(
+    config: Configuration,
+    destination: Path,
+    *,
+    snapshot: Callable[
+        [Configuration, Path, int],
+        AbstractContextManager[tuple[Path, Iterator[BackupArtifact]]],
+    ] = postgres_snapshot,
+    encrypt: Callable[
+        [Path, Configuration], AbstractContextManager[IO[bytes]]
+    ] = age_writer,
+) -> PublicManifest:
     base, budget, selected, root = settings(config)
     key = evidence_key(config)
     signing_key = serialization.load_pem_private_key(
-        read_private(base["manifest_private_key"]), None
+        read_private(configuration_text(base, "manifest_private_key")), None
     )
     if not isinstance(signing_key, Ed25519PrivateKey):
         raise ValueError("Expected approved Ed25519 backup signing identity")
@@ -428,7 +533,10 @@ def backup(config, destination, *, snapshot=postgres_snapshot, encrypt=age_write
                 sqlite_snapshot(source_path(root, name), target, budget - bundle.total)
                 bundle.file(name, target)
             if config.get("credentials_file"):
-                bundle.file("remote-credentials.aes", Path(config["credentials_file"]))
+                bundle.file(
+                    "remote-credentials.aes",
+                    Path(configuration_text(config, "credentials_file")),
+                )
             index = staging / "evidence-index.jsonl"
             count = 0
             with exclusive(index) as output:
@@ -442,9 +550,9 @@ def backup(config, destination, *, snapshot=postgres_snapshot, encrypt=age_write
                         raise ValueError("Evidence index exceeded its budget")
                     output.write(line)
             bundle.file("evidence-index.jsonl", index)
-            manifest = {
+            manifest: BackupManifest = {
                 "format": FORMAT,
-                "deployment_id": base["deployment_id"],
+                "deployment_id": configuration_text(base, "deployment_id"),
                 "created_at": datetime.now(UTC).isoformat(),
                 "files": bundle.members,
                 "completed_artifacts": count,
@@ -457,9 +565,9 @@ def backup(config, destination, *, snapshot=postgres_snapshot, encrypt=age_write
             member = tarfile.TarInfo("manifest.json")
             member.size, member.mode = len(encoded), 0o600
             tar.addfile(member, io.BytesIO(encoded))
-        public = {
+        public: PublicManifest = {
             "format": FORMAT,
-            "deployment_id": base["deployment_id"],
+            "deployment_id": configuration_text(base, "deployment_id"),
             "ciphertext_sha256": digest(archive),
             "ciphertext_bytes": archive.stat().st_size,
             "manifest_sha256": hashlib.sha256(encoded).hexdigest(),
@@ -478,8 +586,12 @@ def backup(config, destination, *, snapshot=postgres_snapshot, encrypt=age_write
     return public
 
 
-def unpack(archive, destination, budget, expected_hash):
-    observed, total, encoded = {}, 0, None
+def unpack(
+    archive: Path, destination: Path, budget: int, expected_hash: str
+) -> BackupManifest:
+    observed: dict[str, BackupMember] = {}
+    total = 0
+    encoded: bytes | None = None
     with tarfile.open(archive, mode="r|") as tar:
         for member in tar:
             if (
@@ -527,27 +639,27 @@ def unpack(archive, destination, budget, expected_hash):
         ) as db:
             if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise ValueError("Restored SQLite state failed verification")
-    return manifest
+    return cast(BackupManifest, manifest)
 
 
-def restore_database(base, destination, key):
-    dsn = load_database_dsn(Path(base["database_dsn_credential"]))
+def restore_database(base: Configuration, destination: Path, key: bytes) -> None:
+    dsn = load_database_dsn(Path(configuration_text(base, "database_dsn_credential")))
     fields = conninfo_to_dict(dsn)
     if not re.fullmatch(
         r"northgate_restore_[a-z0-9_]{1,45}", str(fields.get("dbname", ""))
     ):
         raise ValueError("Only an isolated recovery database is permitted")
     with psycopg.connect(dsn, connect_timeout=5) as connection:
-        count = connection.execute(
+        count_row = connection.execute(
             "SELECT count(*) FROM pg_tables WHERE schemaname='public'"
-        ).fetchone()[0]
-        if count:
+        ).fetchone()
+        if count_row is None or count_row[0]:
             raise ValueError("The isolated recovery database must be empty")
     run(
         [
-            executable(base["pg_restore"]),
+            executable(configuration_text(base, "pg_restore")),
             "--dbname",
-            fields["dbname"],
+            str(fields["dbname"]),
             "--no-owner",
             "--no-acl",
             "--single-transaction",
@@ -560,7 +672,7 @@ def restore_database(base, destination, key):
         version = connection.execute(
             "SELECT max(version) AS version FROM ops_schema"
         ).fetchone()
-        if version["version"] != 1:
+        if version is None or version["version"] != 1:
             raise ValueError("Unsupported restored operations schema")
         with (destination / "evidence-index.jsonl").open("rb") as index:
             for record in artifact_rows(connection):
@@ -584,8 +696,13 @@ def restore_database(base, destination, key):
 
 
 def verify_restore(
-    config, source, destination, *, decrypt=stream_process, restore=restore_database
-):
+    config: Configuration,
+    source: Path,
+    destination: Path,
+    *,
+    decrypt: Callable[[list[str], dict[str, str], Path, int], None] = stream_process,
+    restore: Callable[[Configuration, Path, bytes], None] = restore_database,
+) -> RestoreResult:
     base, budget, _selected, _root = settings(config)
     if config.get("isolated_restore") is not True:
         raise ValueError("Explicit isolated restore configuration is required")
@@ -593,7 +710,7 @@ def verify_restore(
     envelope = json.loads(private_bytes(source / "manifest.json", MAX_MANIFEST))
     public = envelope["manifest"]
     with regular_file_reference(
-        Path(base["manifest_public_key"]),
+        Path(configuration_text(base, "manifest_public_key")),
         label="independent backup public key",
         maximum_bytes=65536,
         private=False,
@@ -613,7 +730,7 @@ def verify_restore(
     ):
         if (
             public.get("format") != FORMAT
-            or public.get("deployment_id") != base["deployment_id"]
+            or public.get("deployment_id") != configuration_text(base, "deployment_id")
             or archive.stat().st_size != public["ciphertext_bytes"]
             or digest(archive) != public["ciphertext_sha256"]
         ):
@@ -625,7 +742,7 @@ def verify_restore(
     # Validate custody; the installed age process alone reads the private identity.
     with (
         regular_file_reference(
-            Path(base["recovery_identity"]),
+            Path(configuration_text(base, "recovery_identity")),
             label="offline age identity",
             maximum_bytes=65536,
             private=True,
@@ -635,10 +752,10 @@ def verify_restore(
         tar_path = Path(temporary) / "operations.tar"
         decrypt(
             [
-                executable(base["age"]),
+                executable(configuration_text(base, "age")),
                 "--decrypt",
                 "--identity",
-                base["recovery_identity"],
+                configuration_text(base, "recovery_identity"),
                 str(archive),
             ],
             {},
@@ -646,12 +763,12 @@ def verify_restore(
             budget + 32 * 1024 * 1024,
         )
         manifest = unpack(tar_path, destination, budget, public["manifest_sha256"])
-    if manifest["deployment_id"] != base["deployment_id"] or manifest.get(
-        "openbao_snapshot"
-    ) != public.get("openbao_snapshot"):
+    if manifest["deployment_id"] != configuration_text(
+        base, "deployment_id"
+    ) or manifest.get("openbao_snapshot") != public.get("openbao_snapshot"):
         raise ValueError("Bundle deployment linkage mismatch")
     restore(base, destination, key)
-    result = {
+    result: RestoreResult = {
         "format": FORMAT,
         "verified": True,
         "reconnection": False,
@@ -663,7 +780,7 @@ def verify_restore(
     return result
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -673,6 +790,7 @@ def main(argv=None):
     verify.add_argument("source", type=Path)
     verify.add_argument("destination", type=Path)
     args = parser.parse_args(argv)
+    result: RestoreResult | PublicManifest
     try:
         config = load_configuration(args.config)
         if args.command == "verify-restore":

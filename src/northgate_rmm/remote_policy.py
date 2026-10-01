@@ -10,17 +10,21 @@ import ipaddress
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import TypeAlias
 from uuid import UUID
 
 from northgate_rmm.domain import EndpointStatus, require_aware
 from northgate_rmm.errors import AuthorizationError, ValidationError
 from northgate_rmm.operator_api import OperatorAuthorizationPolicy, OperatorPrincipal
 
+RemoteMethod: TypeAlias = tuple["RemoteTarget", dict[str, str]]
+RemoteMethods: TypeAlias = dict[UUID, dict[str, RemoteMethod]]
 
-class RemoteTargets(dict):
+
+class RemoteTargets(dict[UUID, RemoteMethod]):
     """Primary targets remain compatible; methods hold explicitly enrolled services."""
 
-    def __init__(self, methods):
+    def __init__(self, methods: RemoteMethods) -> None:
         self.methods = methods
         super().__init__(
             (endpoint, choices.get("ssh", next(iter(choices.values()))))
@@ -28,7 +32,7 @@ class RemoteTargets(dict):
         )
 
 
-def rdp_security(parameters):
+def rdp_security(parameters: dict[str, str]) -> str:
     """NLA by default; explicit, certificate-pinned TLS for xrdp deployments."""
     security = parameters.get("security", "nla")
     if security in {"nla", "nla-ext"}:
@@ -41,10 +45,10 @@ def rdp_security(parameters):
     raise ValueError("RDP requires NLA or explicitly configured certificate-pinned TLS")
 
 
-def parse_remote_targets(value):
+def parse_remote_targets(value: object) -> RemoteTargets:
     if not isinstance(value, list) or not 1 <= len(value) <= 8192:
         raise ValueError("invalid remote targets")
-    methods = {}
+    methods: RemoteMethods = {}
     allowed = {
         "username",
         "password",

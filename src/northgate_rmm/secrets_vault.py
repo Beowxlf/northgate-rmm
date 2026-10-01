@@ -7,11 +7,40 @@ import re
 import ssl
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
+from email.message import Message
 from pathlib import Path
+from typing import IO, NotRequired, Protocol, TypedDict, cast
 from urllib.parse import quote, urlsplit
 
 from northgate_rmm.errors import ValidationError
 from northgate_rmm.secure_files import regular_file_reference
+
+
+class VaultConfiguration(TypedDict):
+    origin: str
+    mount: str
+    token_file: str
+    ca_file: str
+
+
+# Provider version metadata may include additional vendor-defined JSON fields.
+VaultVersion = dict[str, object]
+
+
+class VaultMetadata(TypedDict):
+    current_version: int
+    versions: NotRequired[dict[str, VaultVersion]]
+
+
+class VaultProvider(Protocol):
+    def health(self) -> dict[str, bool]: ...
+    def metadata(self, path: str) -> VaultMetadata: ...
+    def read(self, path: str, version: int | None = None) -> dict[str, str]: ...
+    def write(self, path: str, fields: dict[str, str], *, cas: int) -> int: ...
+    def configure_metadata(self, path: str, label: str, kind: str) -> None: ...
+    def versions(self, path: str, action: str, versions: list[int]) -> None: ...
+
 
 MAX_VALUE = 65536
 MAX_RESPONSE = 1024 * 1024
@@ -20,17 +49,25 @@ MAX_RESPONSE = 1024 * 1024
 class VaultError(RuntimeError):
     """Public errors deliberately exclude provider bodies, URLs and credentials."""
 
-    def __init__(self, status=503):
+    def __init__(self, status: int = 503) -> None:
         self.status = status
         super().__init__("Secret provider request failed")
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: Message,
+        newurl: str,
+    ) -> None:
         raise VaultError(502)
 
 
-def relative_path(value):
+def relative_path(value: object) -> str:
     if (
         not isinstance(value, str)
         or len(value) > 512
@@ -41,7 +78,7 @@ def relative_path(value):
 
 
 class OpenBaoKV:
-    def __init__(self, config):
+    def __init__(self, config: VaultConfiguration) -> None:
         origin = config["origin"]
         url = urlsplit(origin)
         if (
@@ -74,7 +111,14 @@ class OpenBaoKV:
             urllib.request.HTTPSHandler(context=self.context),
         )
 
-    def _request(self, method, path, data=None, *, health=False):
+    def _request(
+        self,
+        method: str,
+        path: str,
+        data: Mapping[str, object] | None = None,
+        *,
+        health: bool = False,
+    ) -> dict[str, object]:
         body = None if data is None else json.dumps(data, allow_nan=False).encode()
         if body and len(body) > MAX_VALUE:
             raise ValueError("Secret exceeds provider value limit")
@@ -120,7 +164,7 @@ class OpenBaoKV:
         except (OSError, ValueError, urllib.error.URLError):
             raise VaultError() from None
 
-    def health(self):
+    def health(self) -> dict[str, bool]:
         result = self._request(
             "GET", "sys/health?standbyok=true&perfstandbyok=true", health=True
         )
@@ -130,10 +174,10 @@ class OpenBaoKV:
             "standby": result.get("standby") is True,
         }
 
-    def _path(self, section, path):
+    def _path(self, section: str, path: str) -> str:
         return self.mount + "/" + section + "/" + quote(relative_path(path), safe="/")
 
-    def metadata(self, path):
+    def metadata(self, path: str) -> VaultMetadata:
         result = self._request("GET", self._path("metadata", path)).get("data")
         if (
             not isinstance(result, dict)
@@ -143,9 +187,9 @@ class OpenBaoKV:
             or any(not isinstance(v, dict) for v in result.get("versions", {}).values())
         ):
             raise VaultError(502)
-        return result
+        return cast(VaultMetadata, result)
 
-    def read(self, path, version=None):
+    def read(self, path: str, version: int | None = None) -> dict[str, str]:
         suffix = ""
         if version is not None:
             if type(version) is not int or version < 1:
@@ -163,11 +207,13 @@ class OpenBaoKV:
         ).get("deletion_time"):
             raise VaultError(404)
         fields = result["data"].get("fields")
-        if not isinstance(fields, dict):
+        if not isinstance(fields, dict) or any(
+            not isinstance(k, str) or not isinstance(v, str) for k, v in fields.items()
+        ):
             raise VaultError(502)
         return fields
 
-    def write(self, path, fields, *, cas):
+    def write(self, path: str, fields: dict[str, str], *, cas: int) -> int:
         if type(cas) is not int or cas < 0 or not isinstance(fields, dict):
             raise ValueError("Invalid secret write")
         result = self._request(
@@ -175,15 +221,15 @@ class OpenBaoKV:
             self._path("data", path),
             {"options": {"cas": cas}, "data": {"fields": fields}},
         )
-        if (
-            not isinstance(result.get("data"), dict)
-            or type(result["data"].get("version")) is not int
-            or result["data"]["version"] < 1
-        ):
+        data = result.get("data")
+        if not isinstance(data, dict):
             raise VaultError(502)
-        return result["data"]["version"]
+        version = data.get("version")
+        if type(version) is not int or version < 1:
+            raise VaultError(502)
+        return version
 
-    def configure_metadata(self, path, label, kind):
+    def configure_metadata(self, path: str, label: str, kind: str) -> None:
         self._request(
             "POST",
             self._path("metadata", path),
@@ -194,7 +240,7 @@ class OpenBaoKV:
             },
         )
 
-    def versions(self, path, action, versions):
+    def versions(self, path: str, action: str, versions: list[int]) -> None:
         if (
             action not in {"delete", "undelete"}
             or not versions

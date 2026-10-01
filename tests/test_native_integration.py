@@ -3,28 +3,40 @@
 import asyncio
 import base64
 import hashlib
+import io
 import json
+import urllib.request
+from collections.abc import Mapping
+from email.message import Message
+from pathlib import Path
 from types import SimpleNamespace
-from uuid import uuid4
+from typing import Any, cast
+from uuid import UUID, uuid4
 
 import pytest
-from aiohttp import web
+from aiohttp import ClientResponse, web
 from aiohttp.test_utils import TestClient, TestServer
 
 from northgate_rmm.capture_store import CaptureStore
 from northgate_rmm.capture_ui import CaptureUI
-from northgate_rmm.inspection import InspectionStore
+from northgate_rmm.fleet import Fleet
+from northgate_rmm.inspection import InspectionStore, InspectionUI
 from northgate_rmm.management import Management
 from northgate_rmm.management_store import ManagementStore
 from northgate_rmm.native_api import NativeAPI
 from northgate_rmm.native_client import NativeClient, NoRedirect
+from northgate_rmm.operator_api import OperatorPrincipal
+from northgate_rmm.remote_gateway import RemoteGateway
+from northgate_rmm.remote_policy import RemoteTarget
 
 
 @pytest.mark.parametrize(
     "platform,expected", [("windows", b"whoami\r"), ("linux", b"whoami\n")]
 )
-def test_native_terminal_newline_submits_on_each_platform(tmp_path, platform, expected):
-    async def scenario():
+def test_native_terminal_newline_submits_on_each_platform(
+    tmp_path: Path, platform: str, expected: bytes
+) -> None:
+    async def scenario() -> None:
         f = fixture(tmp_path)
         f.device.platform.value = platform
         identifier = str(uuid4())
@@ -53,7 +65,7 @@ def test_native_terminal_newline_submits_on_each_platform(tmp_path, platform, ex
     asyncio.run(scenario())
 
 
-def fixture(tmp_path):
+def fixture(tmp_path: Path) -> SimpleNamespace:
     endpoint, identity = uuid4(), uuid4()
     registry = tmp_path / "integration.json"
     token = "A" * 43
@@ -65,7 +77,7 @@ def fixture(tmp_path):
         actions=["observe", "capabilities", "shell.start", "capture.control"],
     )
 
-    def save():
+    def save() -> None:
         registry.write_text(json.dumps(dict(schema=1, clients=[entry])))
         registry.chmod(0o600)
 
@@ -79,7 +91,9 @@ def fixture(tmp_path):
     )
     audit = []
 
-    async def log(principal, ep, action, correlation):
+    async def log(
+        principal: OperatorPrincipal, ep: UUID, action: str, correlation: UUID
+    ) -> None:
         assert principal.mfa is False and principal.subject == "integration:test"
         audit.append(action)
 
@@ -94,16 +108,26 @@ def fixture(tmp_path):
             )
         ),
     )
-    store = ManagementStore(tmp_path / "management", bytes(16))
-    store.worker = lambda _: dict(ready=True, identity=str(identity), capabilities={})
-    management = Management(gateway, store)
+
+    class ReadyStore(ManagementStore):
+        def worker(self, endpoint: UUID | str) -> dict[str, Any]:
+            return {"ready": True, "identity": str(identity), "capabilities": {}}
+
+    store = ReadyStore(tmp_path / "management", bytes(16))
+    management = Management(cast(RemoteGateway, gateway), store)
     rows = [dict(id=str(endpoint), identity=str(identity), health="online")]
     fleet = SimpleNamespace(
         inventory=lambda: rows, store=SimpleNamespace(list=lambda *a, **k: [])
     )
     capture_actions = []
 
-    async def capture_runner(target, params, platform, envelope, destination):
+    async def capture_runner(
+        target: RemoteTarget,
+        params: dict[str, str],
+        platform: str,
+        envelope: dict[str, str],
+        destination: Path | None,
+    ) -> dict[str, Any]:
         import base64
 
         claims = json.loads(base64.b64decode(envelope["payload"]))
@@ -115,9 +139,17 @@ def fixture(tmp_path):
             state="capturing",
         )
 
-    capture = CaptureUI(gateway, CaptureStore(tmp_path / "capture"), capture_runner)
+    capture = CaptureUI(
+        cast(RemoteGateway, gateway), CaptureStore(tmp_path / "capture"), capture_runner
+    )
     inspection = SimpleNamespace(store=InspectionStore(tmp_path / "inspection.sqlite3"))
-    api = NativeAPI(management, fleet, capture, inspection, registry)
+    api = NativeAPI(
+        management,
+        cast(Fleet, fleet),
+        capture,
+        cast(InspectionUI, inspection),
+        registry,
+    )
     return SimpleNamespace(
         api=api,
         endpoint=endpoint,
@@ -133,7 +165,9 @@ def fixture(tmp_path):
 
 
 @pytest.mark.parametrize("action", ["tool.run", "tool.artifact.read"])
-def test_case_scope_rechecked_before_submit_and_worker_dispatch(tmp_path, action):
+def test_case_scope_rechecked_before_submit_and_worker_dispatch(
+    tmp_path: Path, action: str
+) -> None:
     f = fixture(tmp_path)
     f.entry["actions"] += [action, "ops.view", "case.manage"]
     f.save()
@@ -141,7 +175,9 @@ def test_case_scope_rechecked_before_submit_and_worker_dispatch(tmp_path, action
     value = {"endpoints": [str(f.endpoint)], "status": "in_progress"}
     checks = []
 
-    def authorized_record(actor, kind, identifier, permission):
+    def authorized_record(
+        actor: OperatorPrincipal, kind: str, identifier: str, permission: str
+    ) -> dict[str, Any]:
         assert actor.subject == "integration:test"
         assert (kind, identifier, permission) == ("case", case_id, "case.manage")
         checks.append(identifier)
@@ -178,20 +214,22 @@ def test_case_scope_rechecked_before_submit_and_worker_dispatch(tmp_path, action
     assert len(checks) == 5
 
 
-def test_native_artifact_read_without_case_is_denied(tmp_path):
+def test_native_artifact_read_without_case_is_denied(tmp_path: Path) -> None:
     f = fixture(tmp_path)
     with pytest.raises(web.HTTPForbidden):
         f.api.authorize_case(f.entry, f.endpoint, "tool.artifact.read", {})
 
 
-def test_native_dispatch_idempotency_and_audit(tmp_path):
-    async def scenario():
+def test_native_dispatch_idempotency_and_audit(tmp_path: Path) -> None:
+    async def scenario() -> None:
         f = fixture(tmp_path)
         app = web.Application()
         f.api.register(app)
         async with TestClient(TestServer(app)) as client:
 
-            async def call(operation, arguments):
+            async def call(
+                operation: str, arguments: Mapping[str, object]
+            ) -> ClientResponse:
                 return await client.post(
                     "/native/v1/rpc",
                     json=dict(operation=operation, arguments=arguments),
@@ -242,8 +280,8 @@ def test_native_dispatch_idempotency_and_audit(tmp_path):
         "enrollment",
     ],
 )
-def test_native_jobs_fail_closed_when_changed(tmp_path, change):
-    async def scenario():
+def test_native_jobs_fail_closed_when_changed(tmp_path: Path, change: str) -> None:
+    async def scenario() -> None:
         f = fixture(tmp_path)
         result = await f.api.submit(
             f.entry, f.endpoint, f.device, "capabilities", {}, str(uuid4())
@@ -272,13 +310,14 @@ def test_native_jobs_fail_closed_when_changed(tmp_path, change):
 @pytest.mark.parametrize(
     "case", ["missing", "invalid", "browser", "scope", "secret", "offline", "oversized"]
 )
-def test_native_http_boundaries(tmp_path, case):
-    async def scenario():
+def test_native_http_boundaries(tmp_path: Path, case: str) -> None:
+    async def scenario() -> None:
         f = fixture(tmp_path)
         app = web.Application(client_max_size=2 * 1024 * 1024)
         f.api.register(app)
-        headers = {"Authorization": "Bearer " + f.token}
-        operation, arguments = "devices", {}
+        headers: dict[str, str] = {"Authorization": "Bearer " + f.token}
+        operation = "devices"
+        arguments: dict[str, object] = {}
         if case == "missing":
             headers = {}
         if case == "invalid":
@@ -313,8 +352,8 @@ def test_native_http_boundaries(tmp_path, case):
     asyncio.run(scenario())
 
 
-def test_native_capture_reservation_and_keepalive(tmp_path):
-    async def scenario():
+def test_native_capture_reservation_and_keepalive(tmp_path: Path) -> None:
+    async def scenario() -> None:
         f = fixture(tmp_path)
         args = dict(
             endpoint=str(f.endpoint), interface=1, request_id=str(uuid4()), seconds=5
@@ -334,8 +373,10 @@ def test_native_capture_reservation_and_keepalive(tmp_path):
 
 
 @pytest.mark.parametrize("race", [False, True])
-def test_native_capture_completion_does_not_renew_finished_job(tmp_path, race):
-    async def scenario():
+def test_native_capture_completion_does_not_renew_finished_job(
+    tmp_path: Path, race: str
+) -> None:
+    async def scenario() -> None:
         import base64
 
         f = fixture(tmp_path)
@@ -346,7 +387,13 @@ def test_native_capture_completion_does_not_renew_finished_job(tmp_path, race):
         )
         calls = []
 
-        async def runner(target, params, platform, envelope, destination):
+        async def runner(
+            target: RemoteTarget,
+            params: dict[str, Any],
+            platform: str,
+            envelope: dict[str, str],
+            destination: Path | None,
+        ) -> dict[str, Any]:
             action = json.loads(base64.b64decode(envelope["payload"]))["action"]
             calls.append(action)
             if action == "keepalive":
@@ -375,7 +422,7 @@ def test_native_capture_completion_does_not_renew_finished_job(tmp_path, race):
         "https://user:pass@host",
     ],
 )
-def test_native_client_rejects_unsafe_origins(tmp_path, origin):
+def test_native_client_rejects_unsafe_origins(tmp_path: Path, origin: str) -> None:
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"origin": origin}))
     path.chmod(0o600)
@@ -383,6 +430,13 @@ def test_native_client_rejects_unsafe_origins(tmp_path, origin):
         NativeClient(path)
 
 
-def test_native_client_never_forwards_credentials_on_redirect():
+def test_native_client_never_forwards_credentials_on_redirect() -> None:
     with pytest.raises(ValueError):
-        NoRedirect().redirect_request(None, None, 302, "", {}, "https://other.test")
+        NoRedirect().redirect_request(
+            urllib.request.Request("https://operator.test/"),
+            io.BytesIO(),
+            302,
+            "",
+            Message(),
+            "https://other.test",
+        )

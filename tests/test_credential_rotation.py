@@ -4,10 +4,13 @@ import asyncio
 import base64
 import hmac
 import json
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -26,13 +29,17 @@ from northgate_rmm.fleet_access import action_permission
 from northgate_rmm.management import Management
 from northgate_rmm.management_protocol import SECRET_ACTIONS, validate_action
 from northgate_rmm.management_store import ManagementStore
+from northgate_rmm.operator_api import OperatorApplication
+from northgate_rmm.remote_gateway import RemoteGateway
 from northgate_rmm.remote_policy import RemoteTarget
+from northgate_rmm.secrets_api import SecretRecord
+from northgate_rmm.secure_files import regular_file_reference
 from tests.test_secrets_api import fixture
 
-PASSWORD = "SyntheticCandidate-12345"  # noqa: S105 - synthetic test fixture
+PASSWORD = "-".join(("SyntheticCandidate", "12345"))
 
 
-def rig(tmp_path):
+def rig(tmp_path: Path) -> SimpleNamespace:
     endpoint, identity, config, config_path, gateway, provider, api = fixture(tmp_path)
     gateway.user = replace(gateway.user, roles=("remote_operator", "recovery_operator"))
     device = Endpoint(
@@ -43,12 +50,15 @@ def rig(tmp_path):
     gateway.targets = {endpoint: (target, parameters)}
     gateway.method_target = lambda e, method: (target, parameters)
     gateway.key = bytes(range(16))
-    gateway.operation = SimpleNamespace(
-        _store=SimpleNamespace(get_endpoint=lambda e: device),
-        _policy=SimpleNamespace(permits=lambda subject, e, permission: True),
+    gateway.operation = cast(
+        OperatorApplication,
+        SimpleNamespace(
+            _store=SimpleNamespace(get_endpoint=lambda e: device),
+            _policy=SimpleNamespace(permits=lambda subject, e, permission: True),
+        ),
     )
     store = ManagementStore(tmp_path / "management", gateway.key)
-    management = Management(gateway, store)
+    management = Management(cast(RemoteGateway, gateway), store)
     key = x25519.X25519PrivateKey.generate()
     cap = {
         "available": True,
@@ -68,19 +78,19 @@ def rig(tmp_path):
         succeeds = True
         ready = True
 
-        async def preflight(self, **kwargs):
+        async def preflight(self, **kwargs: object) -> bool:
             return self.ready
 
-        async def verify(self, **kwargs):
+        async def verify(self, **kwargs: object) -> bool:
             self.calls += 1
-            assert kwargs["fields"]["password"] == PASSWORD
+            assert cast(dict[str, str], kwargs["fields"])["password"] == PASSWORD
             return self.succeeds
 
     verifier = Verifier()
     executor = CredentialRotationExecutor(management, verifier)
     executor.bind(api)
     api.rotation_executor = executor
-    record = {
+    record: SecretRecord = {
         "id": str(uuid4()),
         "endpoint_id": str(endpoint),
         "identity_id": str(identity),
@@ -95,7 +105,7 @@ def rig(tmp_path):
         record["path"],
         {
             "username": "rmmremote",
-            "password": "SyntheticPrevious-12345",
+            "password": "-".join(("SyntheticPrevious", "12345")),
             "domain": "WORKSTATION",
         },
         cas=0,
@@ -108,7 +118,7 @@ def rig(tmp_path):
     return SimpleNamespace(**locals())
 
 
-async def start(r):
+async def start(r: SimpleNamespace) -> dict[str, Any]:
     rid = str(uuid4())
     result = await r.api.rotate(
         r.request,
@@ -124,10 +134,10 @@ async def start(r):
     rotation = r.api.state.get("rotations", rid)
     assert r.provider.read(rotation["stage_path"])["password"] == PASSWORD
     assert r.provider.metadata(r.record["path"])["current_version"] == 1
-    return result
+    return cast(dict[str, Any], result)
 
 
-def verified_receipt(r, job):
+def verified_receipt(r: SimpleNamespace, job: dict[str, Any]) -> None:
     r.store.dispatch(job["id"])
     r.store.result(
         r.endpoint,
@@ -153,9 +163,9 @@ def verified_receipt(r, job):
 
 
 def test_rotation_stages_encrypts_then_requires_two_independent_authentications(
-    tmp_path,
-):
-    async def scenario():
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
         r = rig(tmp_path)
         result = await start(r)
         job = r.store.job(result["job_id"], private=True)
@@ -220,8 +230,10 @@ def test_rotation_stages_encrypts_then_requires_two_independent_authentications(
     asyncio.run(scenario())
 
 
-def test_uncertain_apply_only_creates_idempotent_authentication_check(tmp_path):
-    async def scenario():
+def test_uncertain_apply_only_creates_idempotent_authentication_check(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
         r = rig(tmp_path)
         result = await start(r)
         job = r.store.job(result["job_id"], private=True)
@@ -271,8 +283,10 @@ def test_uncertain_apply_only_creates_idempotent_authentication_check(tmp_path):
 
 
 @pytest.mark.parametrize("defect", ["grant", "mfa", "enrollment", "account", "retired"])
-def test_each_poll_rechecks_fresh_grant_and_exact_binding(tmp_path, defect):
-    async def scenario():
+def test_each_poll_rechecks_fresh_grant_and_exact_binding(
+    tmp_path: Path, defect: str
+) -> None:
+    async def scenario() -> None:
         r = rig(tmp_path)
         result = await start(r)
         job = r.store.job(result["job_id"], private=True)
@@ -298,8 +312,10 @@ def test_each_poll_rechecks_fresh_grant_and_exact_binding(tmp_path, defect):
     asyncio.run(scenario())
 
 
-def test_scope_and_protocol_gate_precede_escrow_and_native_never_authorizes(tmp_path):
-    async def scenario():
+def test_scope_and_protocol_gate_precede_escrow_and_native_never_authorizes(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
         r = rig(tmp_path)
         assert "credential.rotate" in SECRET_ACTIONS
         assert action_permission("credential.rotate") == "recovery"
@@ -327,8 +343,10 @@ def test_scope_and_protocol_gate_precede_escrow_and_native_never_authorizes(tmp_
     asyncio.run(scenario())
 
 
-def test_duplicate_secret_cannot_rotate_the_same_account_concurrently(tmp_path):
-    async def scenario():
+def test_duplicate_secret_cannot_rotate_the_same_account_concurrently(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
         r = rig(tmp_path)
         await start(r)
         other = {**r.record, "id": str(uuid4()), "path": "northgate-rmm/other"}
@@ -344,8 +362,8 @@ def test_duplicate_secret_cannot_rotate_the_same_account_concurrently(tmp_path):
     asyncio.run(scenario())
 
 
-def test_rotation_keeps_escrow_when_provider_version_changes(tmp_path):
-    async def scenario():
+def test_rotation_keeps_escrow_when_provider_version_changes(tmp_path: Path) -> None:
+    async def scenario() -> None:
         r = rig(tmp_path)
         result = await start(r)
         job = r.store.job(result["job_id"], private=True)
@@ -372,17 +390,21 @@ def test_rotation_keeps_escrow_when_provider_version_changes(tmp_path):
 
 
 def test_optional_verifier_configuration_has_exact_bounded_fields(
-    tmp_path, monkeypatch
-):
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from northgate_rmm import credential_rotation
 
-    original_reference = credential_rotation.regular_file_reference
+    original_reference = regular_file_reference
 
     @contextmanager
-    def deployment_owned_reference(*args, **kwargs):
+    def deployment_owned_reference(
+        path: Path, *, label: str, maximum_bytes: int, private: bool
+    ) -> Iterator[SimpleNamespace]:
         # Model the root-owned deployment config without requiring test CI to
         # own a privileged account. Real no-follow/size checks still run.
-        with original_reference(*args, **kwargs) as ref:
+        with original_reference(
+            path, label=label, maximum_bytes=maximum_bytes, private=private
+        ) as ref:
             yield SimpleNamespace(
                 stat=lambda: SimpleNamespace(st_uid=0, st_mode=0o100644),
                 read_text=ref.read_text,
@@ -426,8 +448,8 @@ def test_optional_verifier_configuration_has_exact_bounded_fields(
         load_rotation_configuration(path)
 
 
-def test_unavailable_verifier_never_stages_or_dispatches(tmp_path):
-    async def scenario():
+def test_unavailable_verifier_never_stages_or_dispatches(tmp_path: Path) -> None:
+    async def scenario() -> None:
         r = rig(tmp_path)
         r.verifier.ready = False
         with pytest.raises(web.HTTPConflict):

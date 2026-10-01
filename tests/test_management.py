@@ -9,8 +9,10 @@ import re
 import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
-from uuid import uuid4
+from typing import Any, cast
+from uuid import UUID, uuid4
 
 import pytest
 from aiohttp import web
@@ -32,12 +34,13 @@ from northgate_rmm.management_protocol import (
     validate_action,
 )
 from northgate_rmm.management_store import ManagementStore
-from northgate_rmm.operator_api import OperatorAuthorizationPolicy
+from northgate_rmm.operator_api import OperatorAuthorizationPolicy, OperatorPrincipal
+from northgate_rmm.remote_gateway import RemoteGateway
 
 KEY = bytes(range(16))
 
 
-def test_upload_envelope_fits_existing_authentication_limit():
+def test_upload_envelope_fits_existing_authentication_limit() -> None:
     data = b"x" * (15 * 1024 * 1024)
     params = dict(
         path="/var/ops/boundary.bin",
@@ -62,7 +65,9 @@ def test_upload_envelope_fits_existing_authentication_limit():
         validate_action("files.write", params, "linux")
 
 
-def test_worker_certificate_uses_read_only_identity_checks(tmp_path, monkeypatch):
+def test_worker_certificate_uses_read_only_identity_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from northgate_rmm.domain import EndpointLifecycle
 
     endpoint, identity = uuid4(), uuid4()
@@ -89,21 +94,21 @@ def test_worker_certificate_uses_read_only_identity_checks(tmp_path, monkeypatch
         operation=SimpleNamespace(_store=reader),
         targets={endpoint: (SimpleNamespace(identity_id=identity), {})},
     )
-    m = Management(gateway, ManagementStore(tmp_path, KEY))
+    m = Management(cast(RemoteGateway, gateway), ManagementStore(tmp_path, KEY))
     request = SimpleNamespace(
         transport=SimpleNamespace(get_extra_info=lambda _: object())
     )
-    assert asyncio.run(m.worker_identity(request))[1] is record
+    assert asyncio.run(m.worker_identity(cast(web.Request, request)))[1] is record
     record.public_key_fingerprint = "sha256:" + "b" * 64
     with pytest.raises(web.HTTPForbidden):
-        asyncio.run(m.worker_identity(request))
+        asyncio.run(m.worker_identity(cast(web.Request, request)))
     record.public_key_fingerprint = peer.public_key_fingerprint
     record.status = EndpointLifecycle.REVOKED
     with pytest.raises(web.HTTPForbidden):
-        asyncio.run(m.worker_identity(request))
+        asyncio.run(m.worker_identity(cast(web.Request, request)))
 
 
-def principal():
+def principal() -> SimpleNamespace:
     return SimpleNamespace(
         subject="owner",
         session_id="session",
@@ -112,7 +117,7 @@ def principal():
     )
 
 
-def receipt(output="ok"):
+def receipt(output: str = "ok") -> dict[str, Any]:
     return dict(
         state="completed",
         exit_code=0,
@@ -122,7 +127,7 @@ def receipt(output="ok"):
     )
 
 
-def encrypted_receipt(job, result):
+def encrypted_receipt(job: str, result: dict[str, Any]) -> dict[str, str]:
     private = x25519.X25519PrivateKey.generate()
     remote = x25519.X25519PublicKey.from_public_bytes(
         base64.b64decode(public_configuration(KEY)["escrow_key"])
@@ -140,7 +145,7 @@ def encrypted_receipt(job, result):
     }
 
 
-def test_custody_rejects_changed_context_and_signature():
+def test_custody_rejects_changed_context_and_signature() -> None:
     blob = seal(KEY, {"secret": "synthetic-recovery"}, "job")
     assert b"synthetic-recovery" not in blob
     assert unseal(KEY, blob, "job")["secret"] == "synthetic-recovery"  # noqa: S105 -- synthetic fixture
@@ -161,11 +166,16 @@ def test_custody_rejects_changed_context_and_signature():
         open_worker_result(KEY, sealed, str(uuid4()))
 
 
-def test_durable_dispatch_receipt_and_secret_boundaries(tmp_path):
+def test_durable_dispatch_receipt_and_secret_boundaries(tmp_path: Path) -> None:
     store = ManagementStore(tmp_path, KEY)
     endpoint, identity = uuid4(), uuid4()
     job = store.add(
-        endpoint, identity, principal(), "bitlocker.escrow", {}, "Bearer synthetic"
+        endpoint,
+        identity,
+        cast(OperatorPrincipal, principal()),
+        "bitlocker.escrow",
+        {},
+        "Bearer synthetic",
     )
     assert b"Bearer synthetic" not in store.path.read_bytes()
     assert store.dispatch(job)
@@ -181,10 +191,17 @@ def test_durable_dispatch_receipt_and_secret_boundaries(tmp_path):
         assert db.execute("SELECT count(*) FROM escrow").fetchone()[0] == 1
 
 
-def test_expired_job_not_replayed_and_terminal_retry_integrity(tmp_path):
+def test_expired_job_not_replayed_and_terminal_retry_integrity(tmp_path: Path) -> None:
     store = ManagementStore(tmp_path, KEY)
     endpoint, identity = uuid4(), uuid4()
-    job = store.add(endpoint, identity, principal(), "posture", {}, "Bearer synthetic")
+    job = store.add(
+        endpoint,
+        identity,
+        cast(OperatorPrincipal, principal()),
+        "posture",
+        {},
+        "Bearer synthetic",
+    )
     store.dispatch(job)
     with store.connect() as db:
         db.execute("UPDATE jobs SET expires=? WHERE id=?", (time.time() - 1, job))
@@ -217,21 +234,25 @@ def test_expired_job_not_replayed_and_terminal_retry_integrity(tmp_path):
         ),
     ],
 )
-def test_unbounded_or_injected_operations_rejected(action, params):
+def test_unbounded_or_injected_operations_rejected(
+    action: str, params: dict[str, Any]
+) -> None:
     with pytest.raises((ValueError, TypeError)):
         validate_action(action, params, "linux")
 
 
-def test_management_routes_bind_session_role_csrf_and_dispatch(tmp_path):
-    async def scenario():
+def test_management_routes_bind_session_role_csrf_and_dispatch(tmp_path: Path) -> None:
+    async def scenario() -> None:
         p = principal()
         endpoint, identity = uuid4(), uuid4()
         events = []
 
-        async def audit(*args):
+        async def audit(*args: object) -> None:
             events.append(args[2])
 
-        async def authenticate(request, eid, **kwargs):
+        async def authenticate(
+            request: web.Request, eid: UUID, **kwargs: object
+        ) -> SimpleNamespace:
             if request.headers.get("Authorization") != "Bearer synthetic":
                 raise web.HTTPForbidden()
             return p
@@ -253,7 +274,7 @@ def test_management_routes_bind_session_role_csrf_and_dispatch(tmp_path):
             targets={},
         )
         store = ManagementStore(tmp_path, KEY)
-        m = Management(gateway, store)
+        m = Management(cast(RemoteGateway, gateway), store)
         app = web.Application(client_max_size=32 * 1024 * 1024)
         m.register(app)
         client = TestClient(TestServer(app))
@@ -269,8 +290,12 @@ def test_management_routes_bind_session_role_csrf_and_dispatch(tmp_path):
             html = await response.text()
             assert response.status == 200
             assert "script-src" in response.headers["Content-Security-Policy"]
-            csrf = re.search(r'"csrf": "([^"]+)"', html).group(1)
-            action = {"action": "bitlocker.escrow", "params": {}, "csrf": csrf}
+            csrf = re.findall(r'"csrf": "([^"]+)"', html)[0]
+            action: dict[str, object] = {
+                "action": "bitlocker.escrow",
+                "params": {},
+                "csrf": csrf,
+            }
             p.roles.remove("recovery_operator")
             assert (
                 await client.post(base + "/action", json=action, headers=headers)
@@ -306,30 +331,37 @@ def test_management_routes_bind_session_role_csrf_and_dispatch(tmp_path):
     asyncio.run(scenario())
 
 
-def test_worker_poll_revocation_and_duplicate_receipt(tmp_path):
-    async def scenario():
+def test_worker_poll_revocation_and_duplicate_receipt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    async def scenario() -> None:
         endpoint, identity = uuid4(), uuid4()
         store = ManagementStore(tmp_path, KEY)
-        m = Management(SimpleNamespace(key=KEY), store)
+        m = Management(cast(RemoteGateway, SimpleNamespace(key=KEY)), store)
         allowed = True
 
-        async def peer(request):
+        async def peer(request: web.Request) -> tuple[SimpleNamespace, SimpleNamespace]:
             return SimpleNamespace(endpoint_id=endpoint), SimpleNamespace(
                 identity_id=identity
             )
 
-        async def authorize(job):
+        async def authorize(job: dict[str, Any]) -> None:
             if not allowed:
                 raise ValueError("Session revoked")
 
-        m.worker_identity = peer
-        m.authorize_job = authorize
+        monkeypatch.setattr(m, "worker_identity", peer)
+        monkeypatch.setattr(m, "authorize_job", authorize)
         client = TestClient(TestServer(m.worker_application()))
         await client.start_server()
         body = {"nonce": "0123456789abcdef", "capabilities": {"privileged": True}}
         try:
             first = store.add(
-                endpoint, identity, principal(), "posture", {}, "Bearer synthetic"
+                endpoint,
+                identity,
+                cast(OperatorPrincipal, principal()),
+                "posture",
+                {},
+                "Bearer synthetic",
             )
             response = await client.post("/v1/management/poll", json=body)
             assert response.status == 200
@@ -348,7 +380,12 @@ def test_worker_poll_revocation_and_duplicate_receipt(tmp_path):
                 )
                 assert response.status == 200
             second = store.add(
-                endpoint, identity, principal(), "posture", {}, "Bearer synthetic"
+                endpoint,
+                identity,
+                cast(OperatorPrincipal, principal()),
+                "posture",
+                {},
+                "Bearer synthetic",
             )
             allowed = False
             response = await client.post("/v1/management/poll", json=body)
@@ -363,7 +400,7 @@ def test_worker_poll_revocation_and_duplicate_receipt(tmp_path):
     asyncio.run(scenario())
 
 
-def test_full_recovery_roundtrip_and_tamper_rejection(tmp_path):
+def test_full_recovery_roundtrip_and_tamper_rejection(tmp_path: Path) -> None:
     root = tmp_path / "state"
     ManagementStore(root / "management", KEY)
     for relative in ["captures/capture.sqlite3", "inspection.sqlite3"]:

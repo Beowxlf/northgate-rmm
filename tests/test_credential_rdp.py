@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import struct
 from collections.abc import Callable, Coroutine
 from functools import wraps
@@ -178,7 +179,7 @@ async def test_fresh_authentication_witness_and_no_secret_output(
         assert environment["KRB5CCNAME"].startswith("FILE:")
         return process
 
-    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     assert (
         await verifier.verify(target=TARGET, parameters=PARAMETERS, fields=FIELDS)
         is expected
@@ -199,7 +200,7 @@ async def test_unavailable_binary_fails_before_credentials_leave_process(
     async def forbidden_spawn(*args: object, **kwargs: object) -> None:
         raise AssertionError("unqualified executable launched")
 
-    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", forbidden_spawn)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", forbidden_spawn)
     assert not await verifier.verify(
         target=TARGET, parameters=PARAMETERS, fields=FIELDS
     )
@@ -228,9 +229,9 @@ async def test_deadline_kills_process_and_discards_possible_success(
         process.stopped.set()
         process.stdout.feed_eof()
 
-    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", spawn)
-    monkeypatch.setattr(module.os, "killpg", kill, raising=False)
-    monkeypatch.setattr(module.signal, "SIGKILL", 9, raising=False)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(os, "killpg", kill, raising=False)
+    monkeypatch.setattr(signal, "SIGKILL", 9, raising=False)
     assert not await verifier.verify(
         target=TARGET, parameters=PARAMETERS, fields=FIELDS
     )
@@ -358,11 +359,11 @@ async def test_optional_xvfb_is_private_bounded_and_always_cleaned(
         process.stopped.set()
         process.stdout.feed_eof()
 
-    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     monkeypatch.setattr(verifier, "_display_number", display_number)
     monkeypatch.setattr(verifier, "_run", client)
-    monkeypatch.setattr(module.os, "killpg", kill, raising=False)
-    monkeypatch.setattr(module.signal, "SIGKILL", 9, raising=False)
+    monkeypatch.setattr(os, "killpg", kill, raising=False)
+    monkeypatch.setattr(signal, "SIGKILL", 9, raising=False)
     task = asyncio.create_task(
         verifier.verify(target=TARGET, parameters=PARAMETERS, fields=FIELDS)
     )
@@ -402,7 +403,7 @@ async def test_preflight_checks_both_runtimes_without_sending_credentials(
         raise AssertionError("preflight sent credentials or launched a process")
 
     monkeypatch.setattr(verifier, "_open_binary", open_binary)
-    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", forbidden_spawn)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", forbidden_spawn)
     assert (
         await verifier.preflight(target=TARGET, parameters=PARAMETERS, fields=FIELDS)
         is not bad_runtime

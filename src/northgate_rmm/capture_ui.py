@@ -11,9 +11,11 @@ import json
 import re
 import secrets
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from aiohttp import web
@@ -22,7 +24,17 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from northgate_rmm.capture_store import CaptureStore
 from northgate_rmm.capture_transport import ARTIFACTS, request_tool
+from northgate_rmm.operator_api import OperatorPrincipal
+from northgate_rmm.remote_policy import RemoteTarget
 from northgate_rmm.remote_workspace import frame_response
+
+if TYPE_CHECKING:
+    from northgate_rmm.remote_gateway import RemoteGateway
+
+CaptureRunner = Callable[
+    [RemoteTarget, dict[str, str], str, dict[str, str], Path | None],
+    Awaitable[dict[str, Any]],
+]
 
 PRESETS = {
     "all": "All traffic",
@@ -36,13 +48,15 @@ TERMINAL = {"completed", "stopped", "expired", "failed", "interrupted"}
 STATES = TERMINAL | {"capturing", "analyzing", "stopping"}
 
 
-def signing_key(key: bytes):
+def signing_key(key: bytes) -> Ed25519PrivateKey:
     return Ed25519PrivateKey.from_private_bytes(
         hmac.digest(key, b"northgate-wxlfgar-signing-v1", "sha256")
     )
 
 
-def validate_job(value, job_id, endpoint, identity):
+def validate_job(
+    value: object, job_id: UUID | str, endpoint: UUID | str, identity: UUID | str
+) -> dict[str, Any]:
     if (
         not isinstance(value, dict)
         or value.get("id") != str(job_id)
@@ -104,17 +118,23 @@ def validate_job(value, job_id, endpoint, identity):
 
 
 class CaptureUI:
-    def __init__(self, gateway, store: CaptureStore, runner=request_tool, setup=False):
+    def __init__(
+        self,
+        gateway: RemoteGateway,
+        store: CaptureStore,
+        runner: CaptureRunner = request_tool,
+        setup: bool = False,
+    ) -> None:
         self.gateway, self.store, self.runner = gateway, store, runner
         self.setup = setup
         self.key = signing_key(gateway.key)
-        self.forms = {}
-        self.leases = {}
-        self.busy = set()
+        self.forms: dict[str, tuple[str, str, UUID, float]] = {}
+        self.leases: dict[str, tuple[str, str, UUID, str, float]] = {}
+        self.busy: set[UUID] = set()
         self.downloads = asyncio.Semaphore(2)
         self.slots = asyncio.Semaphore(4)
 
-    def register(self, app):
+    def register(self, app: web.Application) -> None:
         app.router.add_get("/remote/{endpoint}/capture", self.page)
         app.router.add_post("/remote/{endpoint}/capture", self.action)
         app.router.add_get("/remote/{endpoint}/capture/state", self.state)
@@ -124,7 +144,9 @@ class CaptureUI:
             "/remote/{endpoint}/capture/file/{job}/{artifact}", self.download
         )
 
-    async def context(self, request, online=False):
+    async def context(
+        self, request: web.Request, online: bool = False
+    ) -> tuple[UUID, OperatorPrincipal, RemoteTarget, dict[str, str], str]:
         try:
             endpoint = UUID(request.match_info["endpoint"])
         except ValueError:
@@ -138,7 +160,14 @@ class CaptureUI:
         )
         return endpoint, principal, target, parameters, device.platform.value
 
-    def envelope(self, target, principal, action, job_id=None, **fields):
+    def envelope(
+        self,
+        target: RemoteTarget,
+        principal: OperatorPrincipal,
+        action: str,
+        job_id: UUID | str | None = None,
+        **fields: object,
+    ) -> dict[str, str]:
         now = int(time.time())
         claims = {
             "schema": 1,
@@ -163,16 +192,16 @@ class CaptureUI:
 
     async def rpc(
         self,
-        target,
-        parameters,
-        platform,
-        principal,
-        action,
-        job_id=None,
-        destination=None,
-        request=None,
-        **fields,
-    ):
+        target: RemoteTarget,
+        parameters: dict[str, str],
+        platform: str,
+        principal: OperatorPrincipal,
+        action: str,
+        job_id: UUID | str | None = None,
+        destination: Path | None = None,
+        request: web.Request | None = None,
+        **fields: object,
+    ) -> dict[str, Any]:
         async with asyncio.timeout(185):
             async with self.slots:
                 if request is None:
@@ -188,7 +217,7 @@ class CaptureUI:
                     target, parameters, platform, envelope, destination
                 )
 
-    def nonce(self, principal, endpoint):
+    def nonce(self, principal: OperatorPrincipal, endpoint: UUID) -> str:
         now = time.time()
         self.forms = {k: v for k, v in self.forms.items() if v[3] > now}
         self.leases = {k: v for k, v in self.leases.items() if v[4] > now}
@@ -203,7 +232,7 @@ class CaptureUI:
         )
         return token
 
-    def origin(self, request):
+    def origin(self, request: web.Request) -> None:
         if request.headers.get("Origin") != self.gateway.origin:
             raise web.HTTPForbidden()
         if request.content_length is not None and request.content_length > 8192:
@@ -211,7 +240,13 @@ class CaptureUI:
                 max_size=8192, actual_size=request.content_length
             )
 
-    def row(self, endpoint, target, principal, job_id):
+    def row(
+        self,
+        endpoint: UUID,
+        target: RemoteTarget,
+        principal: OperatorPrincipal,
+        job_id: object,
+    ) -> dict[str, Any]:
         try:
             job_id = str(UUID(str(job_id)))
         except ValueError:
@@ -221,7 +256,7 @@ class CaptureUI:
             raise web.HTTPNotFound()
         return row
 
-    async def configuration(self, request):
+    async def configuration(self, request: web.Request) -> web.Response:
         endpoint, principal, target, _params, platform = await self.context(request)
         value = {
             "endpoint_id": str(endpoint),
@@ -247,7 +282,7 @@ class CaptureUI:
             },
         )
 
-    async def action(self, request):
+    async def action(self, request: web.Request) -> web.Response:
         endpoint, principal, target, params, platform = await self.context(
             request, online=True
         )
@@ -269,16 +304,16 @@ class CaptureUI:
                 job_id = uuid4()
                 try:
                     seconds, size, snaplen = (
-                        int(fields["seconds"]),
-                        int(fields["size"]) * 1024 * 1024,
-                        int(fields["snaplen"]),
+                        int(str(fields["seconds"])),
+                        int(str(fields["size"])) * 1024 * 1024,
+                        int(str(fields["snaplen"])),
                     )
-                    interface = str(int(fields["interface"]))
+                    interface = str(int(str(fields["interface"])))
                     preset = str(fields["preset"])
                     host = str(fields.get("host", "")).strip()
                     if host:
                         host = str(ipaddress.ip_address(host))
-                    port = int(fields.get("port") or 0)
+                    port = int(str(fields.get("port") or 0))
                     if not 0 <= port <= 65535:
                         raise ValueError("Invalid port")
                 except (KeyError, ValueError):
@@ -376,7 +411,7 @@ class CaptureUI:
         finally:
             self.busy.discard(endpoint)
 
-    async def state(self, request):
+    async def state(self, request: web.Request) -> web.Response:
         endpoint, principal, target, params, platform = await self.context(
             request, online=True
         )
@@ -400,7 +435,7 @@ class CaptureUI:
             ) from None
         return web.json_response(value, headers={"Cache-Control": "no-store"})
 
-    async def lease(self, request):
+    async def lease(self, request: web.Request) -> web.Response:
         endpoint, principal, target, params, platform = await self.context(
             request, online=True
         )
@@ -435,7 +470,7 @@ class CaptureUI:
             {"renewed": True}, headers={"Cache-Control": "no-store"}
         )
 
-    async def download(self, request):
+    async def download(self, request: web.Request) -> web.StreamResponse:
         endpoint, principal, target, params, platform = await self.context(request)
         row = self.row(endpoint, target, principal, request.match_info["job"])
         name = request.match_info["artifact"]
@@ -500,7 +535,7 @@ class CaptureUI:
             finally:
                 path.unlink(missing_ok=True)
 
-    async def page(self, request):
+    async def page(self, request: web.Request) -> web.Response:
         endpoint, principal, target, params, platform = await self.context(request)
         base = f"/remote/{endpoint}/capture"
         token = self.nonce(principal, endpoint)
@@ -523,7 +558,7 @@ class CaptureUI:
             capability = None
         ready = isinstance(capability, dict) and capability.get("state") == "ready"
         interface_options = ""
-        if ready:
+        if ready and capability is not None:
             for item in capability.get("interfaces", [])[:256]:
                 capture_name = str(item.get("CaptureName", ""))
                 if capture_name.isdigit() and 1 <= int(capture_name) <= 256:
@@ -605,7 +640,7 @@ class CaptureUI:
                 encoding="utf-8"
             ).replace("__SETUP__", json.dumps(base + "/setup"))
         if script:
-            response.text = response.text.replace(
+            response.text = (response.text or "").replace(
                 "</body>", f"<script>{script}</script></body>"
             )
             digest = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
@@ -615,7 +650,7 @@ class CaptureUI:
         return response
 
 
-def script_json(value):
+def script_json(value: object) -> str:
     # HTML parses script end tags before JavaScript parses JSON string literals.
     return json.dumps(value, ensure_ascii=True, allow_nan=False).replace("<", r"\u003c")
 

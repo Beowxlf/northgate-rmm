@@ -11,15 +11,47 @@ import sqlite3
 import tempfile
 import time
 from collections import defaultdict
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
+from typing import TYPE_CHECKING, TypedDict, cast
 from uuid import UUID, uuid4
 
 from aiohttp import web
 
 from northgate_rmm.presentation import STYLE_SOURCE, document
+from northgate_rmm.remote_policy import RemoteTarget
+
+if TYPE_CHECKING:
+    from northgate_rmm.remote_gateway import RemoteGateway
+
+
+class InspectionResult(TypedDict):
+    schema: int
+    category: str
+    platform: str
+    status: str
+    records: list[dict[str, str]]
+    collected_at: str
+    agent_version: str
+    error: str
+    exit_code: int
+    duration_ms: int
+
+
+class InspectionChange(TypedDict):
+    id: str
+    before: list[dict[str, str]]
+    after: list[dict[str, str]]
+
+
+class InspectionComparison(TypedDict):
+    added: list[list[dict[str, str]]]
+    removed: list[list[dict[str, str]]]
+    changed: list[InspectionChange]
+
 
 CATEGORIES = {
     "processes": "Processes",
@@ -35,7 +67,7 @@ CATEGORIES = {
 LIMIT = 1024 * 1024
 
 
-def validate_result(value: object, category: str) -> dict:
+def validate_result(value: object, category: str) -> InspectionResult:
     if not isinstance(value, dict) or value.get("schema") != 1:
         raise ValueError("Unsupported inspection response")
     if value.get("category") != category or value.get("platform") not in {
@@ -70,12 +102,14 @@ def validate_result(value: object, category: str) -> dict:
         or type(value.get("duration_ms")) is not int
     ):
         raise ValueError("Invalid inspection execution metadata")
-    return value
+    return cast(InspectionResult, value)
 
 
-def compare(before: list[dict], after: list[dict]) -> dict[str, list]:
-    def group(rows):
-        result = defaultdict(list)
+def compare(
+    before: list[dict[str, str]], after: list[dict[str, str]]
+) -> InspectionComparison:
+    def group(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
+        result: dict[str, list[dict[str, str]]] = defaultdict(list)
         for row in rows:
             result[row["id"]].append(row)
         return {
@@ -95,10 +129,20 @@ def compare(before: list[dict], after: list[dict]) -> dict[str, list]:
     }
 
 
+def comparison_items(
+    value: InspectionComparison,
+) -> tuple[tuple[str, Sequence[object]], ...]:
+    return (
+        ("added", value["added"]),
+        ("removed", value["removed"]),
+        ("changed", value["changed"]),
+    )
+
+
 class InspectionStore:
     """Private, bounded lab history; monitoring's PostgreSQL schema is unchanged."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path) -> None:
         self.path = path
         with self.connect() as db:
             db.executescript("""
@@ -120,7 +164,7 @@ class InspectionStore:
         path.chmod(0o600)
 
     @contextmanager
-    def connect(self):
+    def connect(self) -> Iterator[sqlite3.Connection]:
         db = sqlite3.connect(self.path, timeout=5)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA max_page_count=65536")
@@ -130,7 +174,14 @@ class InspectionStore:
         finally:
             db.close()
 
-    def add(self, endpoint, identity, category, operator, result):
+    def add(
+        self,
+        endpoint: UUID | str,
+        identity: UUID | str,
+        category: str,
+        operator: str,
+        result: InspectionResult,
+    ) -> str:
         validate_result(result, category)
         id = str(uuid4())
         payload = json.dumps(result)
@@ -155,7 +206,9 @@ class InspectionStore:
             )
         return id
 
-    def history(self, endpoint, identity, category):
+    def history(
+        self, endpoint: UUID | str, identity: UUID | str, category: str
+    ) -> list[dict[str, str]]:
         with self.connect() as db:
             rows = db.execute(
                 (
@@ -166,7 +219,9 @@ class InspectionStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def baseline(self, endpoint, identity, category):
+    def baseline(
+        self, endpoint: UUID | str, identity: UUID | str, category: str
+    ) -> dict[str, str] | None:
         with self.connect() as db:
             row = db.execute(
                 (
@@ -177,7 +232,14 @@ class InspectionStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def save_baseline(self, endpoint, identity, category, id, operator):
+    def save_baseline(
+        self,
+        endpoint: UUID | str,
+        identity: UUID | str,
+        category: str,
+        id: str,
+        operator: str,
+    ) -> None:
         with self.connect() as db:
             row = db.execute(
                 (
@@ -202,7 +264,9 @@ class InspectionStore:
             )
 
 
-async def run_inspection(target, parameters, platform, category):
+async def run_inspection(
+    target: RemoteTarget, parameters: dict[str, str], platform: str, category: str
+) -> InspectionResult:
     """Only fixed agent invocations are allowed; no command text comes from HTTP."""
     if category not in CATEGORIES or platform not in {"windows", "linux"}:
         raise ValueError("Unsupported inspection")
@@ -265,6 +329,8 @@ async def run_inspection(target, parameters, platform, category):
         )
         try:
             async with asyncio.timeout(40):
+                if proc.stdout is None:
+                    raise ValueError("Inspection subprocess output unavailable")
                 chunks = []
                 size = 0
                 while True:
@@ -291,16 +357,23 @@ async def run_inspection(target, parameters, platform, category):
 
 
 class InspectionUI:
-    def __init__(self, gateway, store, runner=run_inspection):
+    def __init__(
+        self,
+        gateway: RemoteGateway,
+        store: InspectionStore,
+        runner: Callable[
+            [RemoteTarget, dict[str, str], str, str], Awaitable[InspectionResult]
+        ] = run_inspection,
+    ) -> None:
         self.gateway, self.store, self.runner = gateway, store, runner
-        self.forms = {}
-        self.busy = set()
+        self.forms: dict[str, tuple[str, str, UUID, str, float]] = {}
+        self.busy: set[UUID] = set()
 
-    def register(self, app):
+    def register(self, app: web.Application) -> None:
         app.router.add_get("/remote/{endpoint}/inspect", self.handle)
         app.router.add_post("/remote/{endpoint}/inspect", self.handle)
 
-    async def handle(self, request):
+    async def handle(self, request: web.Request) -> web.Response:
         try:
             endpoint = UUID(request.match_info["endpoint"])
         except ValueError:
@@ -328,7 +401,7 @@ class InspectionUI:
                 raise web.HTTPForbidden(
                     text="This form expired; reload the inspection page"
                 )
-            action = form.get("action")
+            action = str(form.get("action", ""))
             if action not in {"collect", "baseline"}:
                 raise web.HTTPBadRequest()
             if endpoint in self.busy or len(self.busy) >= 4:
@@ -445,9 +518,11 @@ class InspectionUI:
             if baseline and value and value["status"] == "ok":
                 difference = {
                     kind: {"count": len(rows), "records": rows[:100]}
-                    for kind, rows in compare(
-                        json.loads(baseline["payload"])["records"], value["records"]
-                    ).items()
+                    for kind, rows in comparison_items(
+                        compare(
+                            json.loads(baseline["payload"])["records"], value["records"]
+                        )
+                    )
                 }
             return web.json_response(
                 {
@@ -491,10 +566,18 @@ class InspectionUI:
             },
         )
 
-    def render(self, endpoint, category, nonce, history, current, baseline):
+    def render(
+        self,
+        endpoint: UUID,
+        category: str,
+        nonce: str,
+        history: list[dict[str, str]],
+        current: dict[str, str] | None,
+        baseline: dict[str, str] | None,
+    ) -> str:
         base = f"/remote/{endpoint}/inspect?category={category}"
 
-        def form(action, label, extra=""):
+        def form(action: str, label: str, extra: str = "") -> str:
             return (
                 f'<form method="post" action="{base}"><input '
                 f'type="hidden" name="nonce" value="{nonce}"><input '
@@ -573,7 +656,7 @@ class InspectionUI:
                     diff = compare(
                         json.loads(baseline["payload"])["records"], value["records"]
                     )
-                    for kind, rows in diff.items():
+                    for kind, rows in comparison_items(diff):
                         content += (
                             f"<details><summary>{kind.title()}: {len(rows)}"
                             "</summary><pre>"

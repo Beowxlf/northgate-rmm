@@ -456,10 +456,10 @@ func treeSize(root string) (int64, error) {
 		}
 		count++
 		if count > 2048 {
-			return errors.New("Tool file count budget exceeded")
+			return errors.New("tool file count budget exceeded")
 		}
 		if d.Type()&os.ModeSymlink != 0 {
-			return errors.New("Tool symlink rejected")
+			return errors.New("tool symlink rejected")
 		}
 		if !d.IsDir() {
 			i, e := d.Info()

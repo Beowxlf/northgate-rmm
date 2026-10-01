@@ -17,3 +17,4 @@ pytest-cov==7.1.0
 ruff==0.16.5
 typing_extensions==4.16.0
 yarl==1.24.5
+mcp==1.30.0

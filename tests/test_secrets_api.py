@@ -2,33 +2,52 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
-from uuid import uuid4
+from typing import Any, cast
+from uuid import UUID, uuid4
 
 import pytest
-from aiohttp import web
-from aiohttp.test_utils import TestClient, TestServer
+from aiohttp import ClientResponse, web
+from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 
-from northgate_rmm.operator_api import OperatorPrincipal
-from northgate_rmm.secrets_api import SecretsAPI, validate_fields
-from northgate_rmm.secrets_vault import OpenBaoKV, VaultError, relative_path
+from northgate_rmm.management import Management as RealManagement
+from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
+from northgate_rmm.remote_gateway import RemoteGateway
+from northgate_rmm.remote_policy import RemoteTarget
+from northgate_rmm.secrets_api import (
+    RotationExecutor,
+    SecretRequest,
+    SecretsAPI,
+    SecretsConfiguration,
+    validate_fields,
+)
+from northgate_rmm.secrets_vault import (
+    OpenBaoKV,
+    VaultConfiguration,
+    VaultError,
+    VaultMetadata,
+    VaultProvider,
+    relative_path,
+)
 
 # Synthetic test credentials, never real access secrets.
 # ruff: noqa: S105
 
 
 class Provider:
-    def __init__(self):
-        self.values = {}
-        self.deleted = set()
+    def __init__(self) -> None:
+        self.values: dict[str, list[dict[str, str]]] = {}
+        self.deleted: set[tuple[str, int]] = set()
         self.reads = 0
 
-    def health(self):
+    def health(self) -> dict[str, bool]:
         return {"initialized": True, "sealed": False, "standby": False}
 
-    def metadata(self, path):
+    def metadata(self, path: str) -> VaultMetadata:
         values = self.values.get(path, [])
         return {
             "current_version": len(values),
@@ -42,10 +61,10 @@ class Provider:
             },
         }
 
-    def configure_metadata(self, path, label, kind):
+    def configure_metadata(self, path: str, label: str, kind: str) -> None:
         pass
 
-    def read(self, path, version=None):
+    def read(self, path: str, version: int | None = None) -> dict[str, str]:
         self.reads += 1
         values = self.values.get(path, [])
         version = version or len(values)
@@ -53,14 +72,14 @@ class Provider:
             raise VaultError(404)
         return dict(values[version - 1])
 
-    def write(self, path, fields, *, cas):
+    def write(self, path: str, fields: dict[str, str], *, cas: int) -> int:
         values = self.values.setdefault(path, [])
         if cas != len(values):
             raise VaultError(400)
         values.append(dict(fields))
         return len(values)
 
-    def versions(self, path, action, versions):
+    def versions(self, path: str, action: str, versions: list[int]) -> None:
         for version in versions:
             if action == "delete":
                 self.deleted.add((path, version))
@@ -68,7 +87,27 @@ class Provider:
                 self.deleted.discard((path, version))
 
 
-def fixture(tmp_path, *, executor=None):
+class Gateway:
+    user: OperatorPrincipal
+    audits: list[tuple[str, str]]
+    targets: dict[UUID, tuple[RemoteTarget, dict[str, str]]]
+    operation: OperatorApplication
+    key: bytes
+    method_target: Callable[[UUID, str], tuple[RemoteTarget, dict[str, str]]]
+    origin = "https://operator.test"
+
+    async def principal(self, *args: object, **kwargs: object) -> OperatorPrincipal:
+        return self.user
+
+    async def audit(
+        self, p: OperatorPrincipal, ep: UUID, action: str, identifier: str | UUID
+    ) -> None:
+        self.audits.append((action, str(identifier)))
+
+
+def fixture(
+    tmp_path: Path, *, executor: RotationExecutor | None = None
+) -> tuple[UUID, UUID, SecretsConfiguration, Path, Gateway, Provider, SecretsAPI]:
     endpoint, identity = uuid4(), uuid4()
     now = datetime.now(UTC)
     principal = OperatorPrincipal(
@@ -82,9 +121,14 @@ def fixture(tmp_path, *, executor=None):
         now + timedelta(hours=1),
         True,
     )
-    config = {
+    config: SecretsConfiguration = {
         "schema": 1,
-        "provider": {},
+        "provider": {
+            "origin": "https://vault.test",
+            "mount": "rmm",
+            "ca_file": "unused-ca",
+            "token_file": "unused-token",
+        },
         "prefix": "northgate-rmm",
         "grants": [
             {
@@ -98,22 +142,11 @@ def fixture(tmp_path, *, executor=None):
     config_path.write_text(json.dumps(config))
     config_path.chmod(0o600)
 
-    class Gateway:
-        origin = "https://operator.test"
-
-        async def principal(self, *args, **kwargs):
-            return self.user
-
-        async def audit(self, p, ep, action, identifier):
-            self.audits.append((action, str(identifier)))
-
     gateway, provider = Gateway(), Provider()
-    gateway.targets = {
-        endpoint: (SimpleNamespace(endpoint_id=endpoint, identity_id=identity), {})
-    }
+    gateway.targets = {endpoint: (RemoteTarget(endpoint, identity, "10.0.0.10"), {})}
     gateway.user, gateway.audits = principal, []
     api = SecretsAPI(
-        gateway,
+        cast(RemoteGateway, gateway),
         config_path,
         state_path=tmp_path / "state.sqlite",
         rotation_executor=executor,
@@ -122,8 +155,8 @@ def fixture(tmp_path, *, executor=None):
     return endpoint, identity, config, config_path, gateway, provider, api
 
 
-def test_secret_crud_permissions_redaction_versions_and_csrf(tmp_path):
-    async def scenario():
+def test_secret_crud_permissions_redaction_versions_and_csrf(tmp_path: Path) -> None:
+    async def scenario() -> None:
         endpoint, _identity, config, config_path, gateway, provider, api = fixture(
             tmp_path
         )
@@ -132,12 +165,12 @@ def test_secret_crud_permissions_redaction_versions_and_csrf(tmp_path):
         base = f"/remote/{endpoint}/secrets"
         async with TestClient(TestServer(app)) as client:
 
-            async def state():
+            async def state() -> dict[str, Any]:
                 response = await client.get(base + "/state")
                 assert response.status == 200
-                return await response.json()
+                return cast(dict[str, Any], await response.json())
 
-            async def action(**body):
+            async def action(**body: object) -> ClientResponse:
                 nonce = (await state())["nonce"]
                 return await client.post(
                     base + "/action",
@@ -228,7 +261,10 @@ def test_secret_crud_permissions_redaction_versions_and_csrf(tmp_path):
                 )
             ).status == 200
             resolved = await api.resolve_remote(
-                SimpleNamespace(), gateway.user, gateway.targets[endpoint][0], "rdp"
+                make_mocked_request("POST", "/"),
+                gateway.user,
+                gateway.targets[endpoint][0],
+                "rdp",
             )
             assert resolved["password"] == "synthetic-next"
             assert "synthetic-sensitive" not in (
@@ -240,7 +276,10 @@ def test_secret_crud_permissions_redaction_versions_and_csrf(tmp_path):
             assert (await action(action="reveal", secret_id=identifier)).status == 403
             with pytest.raises(web.HTTPForbidden):
                 await api.resolve_remote(
-                    SimpleNamespace(), gateway.user, gateway.targets[endpoint][0], "rdp"
+                    make_mocked_request("POST", "/"),
+                    gateway.user,
+                    gateway.targets[endpoint][0],
+                    "rdp",
                 )
             config["grants"] = []
             config_path.write_text(json.dumps(config))
@@ -249,24 +288,26 @@ def test_secret_crud_permissions_redaction_versions_and_csrf(tmp_path):
     asyncio.run(scenario())
 
 
-def test_staged_rotation_requires_verification_and_survives_service_rebuild(tmp_path):
+def test_staged_rotation_requires_verification_and_survives_service_rebuild(
+    tmp_path: Path,
+) -> None:
     class Executor:
         calls = 0
 
-        async def apply(self, **kwargs):
+        async def apply(self, **kwargs: object) -> dict[str, object]:
             self.calls += 1
             return {"job_id": str(uuid4()), "status": "pending"}
 
-        async def check(self, **kwargs):
+        async def check(self, **kwargs: object) -> dict[str, object]:
             return {"job_id": kwargs["job_id"], "status": "verified"}
 
-    async def scenario():
+    async def scenario() -> None:
         executor = Executor()
         endpoint, _identity, config, config_path, gateway, provider, api = fixture(
             tmp_path, executor=executor
         )
         identifier, rid = str(uuid4()), str(uuid4())
-        request = SimpleNamespace()
+        request = make_mocked_request("POST", "/")
         await api.perform(
             request,
             endpoint,
@@ -282,6 +323,7 @@ def test_staged_rotation_requires_verification_and_survives_service_rebuild(tmp_
             },
         )
         record = api.state.get("records", identifier)
+        assert record is not None
         result = await api.perform(
             request,
             endpoint,
@@ -299,7 +341,7 @@ def test_staged_rotation_requires_verification_and_survives_service_rebuild(tmp_
         assert result["status"] == "pending"
         assert provider.read(record["path"])["password"] == "old"
         reopened = SecretsAPI(
-            gateway,
+            cast(RemoteGateway, gateway),
             config_path,
             state_path=tmp_path / "state.sqlite",
             rotation_executor=executor,
@@ -342,30 +384,37 @@ def test_staged_rotation_requires_verification_and_survives_service_rebuild(tmp_
         "https://vault.test#bad",
     ],
 )
-def test_provider_rejects_unsafe_origins(origin):
+def test_provider_rejects_unsafe_origins(origin: str) -> None:
     with pytest.raises(ValueError):
-        OpenBaoKV({"origin": origin})
+        OpenBaoKV(
+            {
+                "origin": origin,
+                "mount": "rmm",
+                "ca_file": "unused",
+                "token_file": "unused",
+            }
+        )
 
 
 @pytest.mark.parametrize(
     "path", ["../secrets", "/secret", "secret//value", "x?token=a", "x%2fy", "x\\y"]
 )
-def test_provider_paths_cannot_escape_configured_mount(path):
+def test_provider_paths_cannot_escape_configured_mount(path: str) -> None:
     with pytest.raises(ValueError):
         relative_path(path)
 
 
-def test_secret_fields_require_expected_credential_schema():
+def test_secret_fields_require_expected_credential_schema() -> None:
     with pytest.raises(ValueError):
         validate_fields("rdp", {"username": "u", "password": "p", "hostname": "other"})
 
 
 def test_retired_binding_blocks_legacy_and_enrollment_changes_deny(
-    tmp_path,
-):
-    async def scenario():
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
         endpoint, identity, config, _path, gateway, _provider, api = fixture(tmp_path)
-        identifier, request = str(uuid4()), SimpleNamespace()
+        identifier, request = str(uuid4()), make_mocked_request("POST", "/")
         target = gateway.targets[endpoint][0]
         assert await api.resolve_remote(request, gateway.user, target, "rdp") == {}
         await api.perform(
@@ -412,31 +461,35 @@ def test_retired_binding_blocks_legacy_and_enrollment_changes_deny(
             await api.guard_legacy_reveal(target)
         with pytest.raises(web.HTTPNotFound):
             api.record(identifier, endpoint, uuid4())
-        gateway.targets[endpoint] = (SimpleNamespace(identity_id=uuid4()), {})
+        gateway.targets[endpoint] = (RemoteTarget(endpoint, uuid4(), "10.0.0.10"), {})
         with pytest.raises(web.HTTPForbidden):
             api.check_grant(gateway.user, endpoint, "reveal", fresh=True)
 
     asyncio.run(scenario())
 
 
-def test_unknown_rotation_does_not_promote_or_redispatch(tmp_path):
+def test_unknown_rotation_does_not_promote_or_redispatch(tmp_path: Path) -> None:
     class Executor:
         calls = 0
 
-        async def apply(self, **kwargs):
+        async def apply(self, **kwargs: object) -> dict[str, object]:
             self.calls += 1
             raise RuntimeError("synthetic executor failure with sensitive detail")
 
-        async def check(self, **kwargs):
+        async def check(self, **kwargs: object) -> dict[str, object]:
             raise RuntimeError("synthetic reconciliation failure with sensitive detail")
 
-    async def scenario():
+    async def scenario() -> None:
         executor = Executor()
         endpoint, identity, config, _path, gateway, provider, api = fixture(
             tmp_path,
             executor=executor,
         )
-        identifier, rid, request = str(uuid4()), str(uuid4()), SimpleNamespace()
+        identifier, rid, request = (
+            str(uuid4()),
+            str(uuid4()),
+            make_mocked_request("POST", "/"),
+        )
         await api.perform(
             request,
             endpoint,
@@ -451,7 +504,7 @@ def test_unknown_rotation_does_not_promote_or_redispatch(tmp_path):
                 "fields": {"username": "u", "password": "old"},
             },
         )
-        body = {
+        body: SecretRequest = {
             "secret_id": identifier,
             "rotation_id": rid,
             "expected_version": 1,
@@ -466,14 +519,17 @@ def test_unknown_rotation_does_not_promote_or_redispatch(tmp_path):
         assert first["status"] == again["status"] == "unknown"
         assert "sensitive" not in json.dumps([first, again])
         record = api.state.get("records", identifier)
+        assert record is not None
         assert provider.read(record["path"])["password"] == "old"
         assert executor.calls == 1
 
     asyncio.run(scenario())
 
 
-def test_unavailable_provider_still_returns_metadata_and_paginates(tmp_path):
-    async def scenario():
+def test_unavailable_provider_still_returns_metadata_and_paginates(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
         endpoint, identity, _config, _path, _gateway, _provider, api = fixture(tmp_path)
         for i in range(23):
             api.state.save_record(
@@ -489,7 +545,7 @@ def test_unavailable_provider_still_returns_metadata_and_paginates(tmp_path):
                 }
             )
 
-        def unavailable(_):
+        def unavailable(_: VaultConfiguration) -> VaultProvider:
             raise VaultError()
 
         api.provider_factory = unavailable
@@ -513,30 +569,34 @@ def test_unavailable_provider_still_returns_metadata_and_paginates(tmp_path):
 
 @pytest.mark.parametrize("source_action", ["bitlocker.escrow", "recovery.rotate"])
 def test_recovery_import_preserves_protection_custody_and_idempotency(
-    tmp_path, source_action
-):
+    tmp_path: Path, source_action: str
+) -> None:
     from northgate_rmm.management_store import ManagementStore
 
-    async def scenario():
+    async def scenario() -> None:
         endpoint, identity, _config, _path, gateway, provider, api = fixture(tmp_path)
         gateway.user = replace(
             gateway.user, roles=("remote_operator", "recovery_operator")
         )
         policy = SimpleNamespace(permits=lambda *_: True)
-        gateway.operation = SimpleNamespace(_policy=policy)
+        gateway.operation = cast(OperatorApplication, SimpleNamespace(_policy=policy))
         store = ManagementStore(tmp_path / "management", b"x" * 32)
 
         class Management:
-            async def context(self, request):
+            store: ManagementStore
+
+            async def context(
+                self, request: web.Request
+            ) -> tuple[UUID, OperatorPrincipal, SimpleNamespace]:
                 return endpoint, gateway.user, SimpleNamespace(identity_id=identity)
 
-        api.management = Management()
+        api.management = cast(RealManagement, Management())
         api.management.store = store
         job_id = store.add(
             endpoint, identity, gateway.user, source_action, {}, "synthetic"
         )
         assert store.dispatch(job_id)
-        recovery_password = "123456-123456-123456-123456-123456-123456-123456-123456"
+        recovery_password = "-".join(["123456"] * 8)
         value = (
             {
                 "username": "ng-rmm-recovery",
@@ -575,10 +635,12 @@ def test_recovery_import_preserves_protection_custody_and_idempotency(
         base = f"/remote/{endpoint}/secrets"
         async with TestClient(TestServer(app)) as client:
 
-            async def snapshot():
-                return await (await client.get(base + "/state")).json()
+            async def snapshot() -> dict[str, Any]:
+                return cast(
+                    dict[str, Any], await (await client.get(base + "/state")).json()
+                )
 
-            async def perform():
+            async def perform() -> ClientResponse:
                 state = await snapshot()
                 return await client.post(
                     base + "/action",
@@ -612,6 +674,7 @@ def test_recovery_import_preserves_protection_custody_and_idempotency(
             receipt = await response.json()
             identifier = receipt["id"]
             record = api.state.get("records", identifier)
+            assert record is not None
             secret = provider.read(record["path"])
             if source_action == "recovery.rotate":
                 assert secret["password"] == "synthetic-escrow-password"

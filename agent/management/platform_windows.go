@@ -57,9 +57,6 @@ func captureInstalled() bool {
 	_, e := os.Stat(`C:\Program Files\NorthGateWxlfgar\wulfgar.exe`)
 	return e == nil
 }
-func platformRecoveryStatus() map[string]any {
-	return map[string]any{"managed_account": "ng-rmm-recovery", "status": "query recovery metadata"}
-}
 func platformCapabilities() map[string]any {
 	_, winget := exec.LookPath("winget.exe")
 	_, bitlocker := os.Stat(`C:\Windows\System32\WindowsPowerShell\v1.0\Modules\BitLocker`)

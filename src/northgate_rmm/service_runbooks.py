@@ -12,15 +12,72 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from aiohttp import web
 
+from northgate_rmm.integration_auth import IntegrationEntry
+from northgate_rmm.operator_api import OperatorPrincipal
+
+if TYPE_CHECKING:
+    from northgate_rmm.fleet import Fleet
+    from northgate_rmm.management import Management
+    from northgate_rmm.native_api import NativeAPI
+
 from northgate_rmm.fleet_models import READ_ACTIONS, window, window_open
 from northgate_rmm.management_protocol import TERMINAL, canonical, seal, unseal
 from northgate_rmm.secure_files import regular_file_reference
+
+
+class RunbookStep(TypedDict):
+    name: str
+    action: str
+    params: dict[str, object]
+
+
+class RunbookPlan(TypedDict):
+    id: str
+    name: str
+    client: str
+    endpoints: dict[str, str]
+    steps: list[RunbookStep]
+    interval: int
+    window: dict[str, object]
+    enabled: bool
+    concurrency: int
+    failure_limit: int
+    case_id: str
+    digest: str
+
+
+class RunbookDevice(TypedDict):
+    step: int
+    job: str | None
+    state: str
+    history: list[dict[str, str]]
+    error: NotRequired[str]
+
+
+class RunbookRun(TypedDict):
+    id: str
+    plan: str
+    digest: str
+    state: str
+    created: float
+    updated: float
+    devices: dict[str, RunbookDevice]
+    error: str
+    case_id: str
+
+
+class RunbookSettings(TypedDict):
+    paused: bool
+    next_due: float
+
 
 LOGGER = logging.getLogger(__name__)
 ALLOWED = READ_ACTIONS | {
@@ -34,7 +91,7 @@ ALLOWED = READ_ACTIONS | {
 }
 
 
-def load_plans(path: Path | None) -> dict:
+def load_plans(path: Path | None) -> dict[str, RunbookPlan]:
     if path is None:
         return {}
     with regular_file_reference(
@@ -49,7 +106,7 @@ def load_plans(path: Path | None) -> dict:
         raise ValueError("Invalid service runbook configuration")
     if not isinstance(data["plans"], list) or len(data["plans"]) > 64:
         raise ValueError("Invalid runbook count")
-    result = {}
+    result: dict[str, RunbookPlan] = {}
     for plan in data["plans"]:
         if not isinstance(plan, dict) or set(plan) != {
             "id",
@@ -107,31 +164,36 @@ def load_plans(path: Path | None) -> dict:
                 and (step["params"].get("case_id") or "") != plan["case_id"]
             ):
                 raise ValueError("Tool step case must match the runbook case")
-        result[identifier] = {
-            **plan,
-            "digest": hashlib.sha256(canonical(plan)).hexdigest(),
-        }
+        result[identifier] = cast(
+            RunbookPlan,
+            {
+                **plan,
+                "digest": hashlib.sha256(canonical(plan)).hexdigest(),
+            },
+        )
     return result
 
 
 class ServiceRunbooks:
     def __init__(
         self,
-        management,
-        fleet,
-        native,
-        path=None,
+        management: Management,
+        fleet: Fleet,
+        native: NativeAPI | None,
+        path: Path | str | None = None,
         *,
-        evidence_sink=None,
-        case_authorizer=None,
-    ):
+        evidence_sink: Callable[[IntegrationEntry, str, str], Awaitable[object]]
+        | None = None,
+        case_authorizer: Callable[[IntegrationEntry, RunbookPlan], Awaitable[None]]
+        | None = None,
+    ) -> None:
         self.m, self.fleet, self.native = management, fleet, native
         self.path = Path(path) if path else None
         self.evidence_sink = evidence_sink
         self.case_authorizer = case_authorizer
         self.lock = asyncio.Lock()
-        self.last_error = None
-        self.last_tick = None
+        self.last_error: str | None = None
+        self.last_tick: float | None = None
         with self.m.store.connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS service_plan_state (
@@ -145,19 +207,19 @@ class ServiceRunbooks:
                     ON service_plan_runs(plan,created);
             """)
 
-    def register(self, app):
+    def register(self, app: web.Application) -> None:
         app.router.add_get("/remote/runbooks/state", self.state)
         app.router.add_post("/remote/runbooks/action", self.action)
         app.cleanup_ctx.append(self.lifecycle)
 
-    def permitted(self, principal, plan):
+    def permitted(self, principal: OperatorPrincipal, plan: RunbookPlan) -> bool:
         policy = self.m.gateway.operation._policy
         return all(
             policy.permits(principal.subject, e, "automation.manage")
             for e in plan["endpoints"]
         )
 
-    def authority(self, plan):
+    def authority(self, plan: RunbookPlan) -> IntegrationEntry:
         if self.native is None:
             raise ValueError("Native service authorization is not configured")
         entry = self.native.auth.entries().get(plan["client"])
@@ -176,7 +238,7 @@ class ServiceRunbooks:
                 raise ValueError("Tool step case must match the runbook case")
         return entry
 
-    async def authorize_case(self, entry, plan):
+    async def authorize_case(self, entry: IntegrationEntry, plan: RunbookPlan) -> None:
         if plan["case_id"]:
             if self.evidence_sink is None or self.case_authorizer is None:
                 raise ValueError(
@@ -184,7 +246,7 @@ class ServiceRunbooks:
                 )
             await self.case_authorizer(entry, plan)
 
-    def settings(self, identifier):
+    def settings(self, identifier: str) -> RunbookSettings:
         with self.m.store.connect() as db:
             row = db.execute(
                 "SELECT paused,next_due FROM service_plan_state WHERE id=?",
@@ -196,7 +258,7 @@ class ServiceRunbooks:
             else {"paused": False, "next_due": 0}
         )
 
-    def runs(self, plan=None, active=False):
+    def runs(self, plan: str | None = None, active: bool = False) -> list[RunbookRun]:
         where, args = [], []
         if plan:
             where.append("plan=?")
@@ -216,7 +278,7 @@ class ServiceRunbooks:
             for r in rows
         ]
 
-    def save_run(self, run):
+    def save_run(self, run: RunbookRun) -> None:
         run["updated"] = time.time()
         with self.m.store.connect() as db:
             db.execute(
@@ -233,7 +295,7 @@ class ServiceRunbooks:
                 ),
             )
 
-    async def state(self, request):
+    async def state(self, request: web.Request) -> web.Response:
         principal = await self.fleet.principal(request)
         try:
             plans = load_plans(self.path)
@@ -275,7 +337,7 @@ class ServiceRunbooks:
             headers=self.fleet.headers(),
         )
 
-    async def action(self, request):
+    async def action(self, request: web.Request) -> web.Response:
         principal = await self.fleet.principal(request)
         if request.headers.get("Origin") != self.m.gateway.origin:
             raise web.HTTPForbidden()
@@ -329,14 +391,14 @@ class ServiceRunbooks:
         except (ValueError, KeyError, TypeError) as exc:
             raise web.HTTPBadRequest(text=str(exc)[:200]) from None
 
-    async def begin(self, plan, identifier):
+    async def begin(self, plan: RunbookPlan, identifier: str) -> RunbookRun:
         with self.m.store.connect() as db:
             existing_row = db.execute(
                 "SELECT plan,payload FROM service_plan_runs WHERE id=?", (identifier,)
             ).fetchone()
         if existing_row and existing_row["plan"] != plan["id"]:
             raise ValueError("Request identifier already belongs to another plan")
-        existing = (
+        existing: RunbookRun | None = (
             unseal(
                 self.m.gateway.key, existing_row["payload"], "service-run/" + identifier
             )
@@ -357,7 +419,7 @@ class ServiceRunbooks:
         if self.runs(plan["id"], active=True):
             raise ValueError("This runbook already has an active run")
         now = time.time()
-        run = {
+        run: RunbookRun = {
             "id": identifier,
             "plan": plan["id"],
             "digest": plan["digest"],
@@ -386,16 +448,16 @@ class ServiceRunbooks:
         )
         return run
 
-    def stop(self, run, reason):
+    def stop(self, run: RunbookRun, reason: str) -> None:
         for device in run["devices"].values():
             if device["job"]:
                 self.m.store.cancel(device["job"])
             if device["state"] not in {"completed", "failed"}:
                 device["state"] = "cancel_requested" if device["job"] else "cancelled"
-        run.update(state="stopped", error=reason)
+        run.update({"state": "stopped", "error": reason})
         self.save_run(run)
 
-    async def advance(self, run, plan):
+    async def advance(self, run: RunbookRun, plan: RunbookPlan | None) -> None:
         if (
             not plan
             or plan["digest"] != run["digest"]
@@ -403,6 +465,9 @@ class ServiceRunbooks:
             or self.settings(plan["id"])["paused"]
         ):
             self.stop(run, "Plan changed, removed, disabled or paused")
+            return
+        if self.native is None:
+            self.stop(run, "Native service authorization is not configured")
             return
         try:
             entry = self.authority(plan)
@@ -430,7 +495,11 @@ class ServiceRunbooks:
                     await self.evidence_sink(entry, plan["case_id"], job["id"])
                 except Exception:
                     row.update(
-                        state="failed", error="Unable to retain case evidence", job=None
+                        {
+                            "state": "failed",
+                            "error": "Unable to retain case evidence",
+                            "job": None,
+                        }
                     )
                     continue
             row["job"] = None
@@ -438,7 +507,9 @@ class ServiceRunbooks:
                 job["state"] != "completed"
                 or job.get("receipt", {}).get("exit_code", 0) != 0
             ):
-                row.update(state="failed", error="Step did not complete successfully")
+                row.update(
+                    {"state": "failed", "error": "Step did not complete successfully"}
+                )
             else:
                 row["step"] += 1
                 row["state"] = (
@@ -494,16 +565,19 @@ class ServiceRunbooks:
                         step["params"],
                         identifier,
                     )
-                    row.update(job=result["job"], state="running")
+                    row.update({"job": result["job"], "state": "running"})
                     active += 1
                 except (ValueError, web.HTTPException, KeyError):
                     row.update(
-                        state="failed", error="Endpoint or operation no longer eligible"
+                        {
+                            "state": "failed",
+                            "error": "Endpoint or operation no longer eligible",
+                        }
                     )
                 self.save_run(run)  # Persist each submission before another target.
         self.save_run(run)
 
-    async def tick(self):
+    async def tick(self) -> None:
         async with self.lock:
             try:
                 plans = load_plans(self.path)
@@ -528,8 +602,8 @@ class ServiceRunbooks:
                         continue
             self.last_tick, self.last_error = time.time(), None
 
-    async def lifecycle(self, app):
-        async def loop():
+    async def lifecycle(self, app: web.Application) -> AsyncIterator[None]:
+        async def loop() -> None:
             while True:
                 try:
                     await self.tick()

@@ -20,22 +20,22 @@ exercised by local regressions; their live behavior was not requalified.
 
 ## Findings and corrections
 
-| ID | Finding | Correction and evidence |
-| --- | --- | --- |
-| R01 | Automation previews could ignore their saved group | Resolve the saved automation group server-side and reject a conflicting override; regression reproduced and passes |
-| R02 | Rollouts could attach an inaccessible or nonexistent exercise | Validate the exercise ID and author/admin access before preview creation; scoped regression passes |
-| R03 | Bulk script execution accepted inputs rejected by individual execution | Centralize string/type/length validation in the shared action contract; three invalid-input cases pass |
-| R04 | Export output/checkpoint aliases could overwrite a log or database | Reject identical files, hardlink aliases, state-directory destinations and encryption-key destinations before writing; alias/database cases pass |
-| R05 | A newly failed job could remain acknowledged under an older alert | Reopen when the condition fingerprint changes and restart incident timing; regression passes |
-| R06 | Expired jobs could stall a rollout when the worker stopped polling | Reconcile job expiry independently before advancing rollout state; offline expiry regression passes |
-| R07 | Reads stopped below the supported record capacity | Read to the 10,000-record ceiling so active runs, metadata and dependency checks are not silently omitted; reviewed all internal list callers |
-| R08 | Export could silently skip evidence after output deletion/truncation | Bind the cursor to output path and committed size; reject missing/mismatched output; output-loss regression passes |
-| R09 | Interrupted cancellation could lose the operator's intent | Persist a token-free cancelling state before queue mutations; restart finishes cancellation; injected-write-failure regression passes |
-| R10 | Queued patch work could survive withdrawal of its management grant | Recheck management permission as well as the action permission during dispatch/lease authorization; hide disallowed tool actions; revocation regression passes |
-| R11 | Partial bulk assignment could not be retried | Retain successful revisions and remove completed devices from the remaining selection; browser fault injection passes |
-| R12 | Navigating away during search raised a JavaScript exception | Clear pending search callbacks on navigation and verify the search element before focusing; browser reproduction passes |
-| R13 | Deleted default alert rules returned after process restart | Seed defaults once using an atomic persistent marker; restart regression passes |
-| R14 | Fleet configuration writes bypassed the management storage guard | Enforce the guard for edited configuration, baselines and previews while preserving cancellation/status persistence; capacity regression passes |
+| ID  | Finding                                                                | Correction and evidence                                                                                                                                        |
+| --- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R01 | Automation previews could ignore their saved group                     | Resolve the saved automation group server-side and reject a conflicting override; regression reproduced and passes                                             |
+| R02 | Rollouts could attach an inaccessible or nonexistent exercise          | Validate the exercise ID and author/admin access before preview creation; scoped regression passes                                                             |
+| R03 | Bulk script execution accepted inputs rejected by individual execution | Centralize string/type/length validation in the shared action contract; three invalid-input cases pass                                                         |
+| R04 | Export output/checkpoint aliases could overwrite a log or database     | Reject identical files, hardlink aliases, state-directory destinations and encryption-key destinations before writing; alias/database cases pass               |
+| R05 | A newly failed job could remain acknowledged under an older alert      | Reopen when the condition fingerprint changes and restart incident timing; regression passes                                                                   |
+| R06 | Expired jobs could stall a rollout when the worker stopped polling     | Reconcile job expiry independently before advancing rollout state; offline expiry regression passes                                                            |
+| R07 | Reads stopped below the supported record capacity                      | Read to the 10,000-record ceiling so active runs, metadata and dependency checks are not silently omitted; reviewed all internal list callers                  |
+| R08 | Export could silently skip evidence after output deletion/truncation   | Bind the cursor to output path and committed size; reject missing/mismatched output; output-loss regression passes                                             |
+| R09 | Interrupted cancellation could lose the operator's intent              | Persist a token-free cancelling state before queue mutations; restart finishes cancellation; injected-write-failure regression passes                          |
+| R10 | Queued patch work could survive withdrawal of its management grant     | Recheck management permission as well as the action permission during dispatch/lease authorization; hide disallowed tool actions; revocation regression passes |
+| R11 | Partial bulk assignment could not be retried                           | Retain successful revisions and remove completed devices from the remaining selection; browser fault injection passes                                          |
+| R12 | Navigating away during search raised a JavaScript exception            | Clear pending search callbacks on navigation and verify the search element before focusing; browser reproduction passes                                        |
+| R13 | Deleted default alert rules returned after process restart             | Seed defaults once using an atomic persistent marker; restart regression passes                                                                                |
+| R14 | Fleet configuration writes bypassed the management storage guard       | Enforce the guard for edited configuration, baselines and previews while preserving cancellation/status persistence; capacity regression passes                |
 
 Also updated an outdated management test fixture for the real access-policy
 contract, preserved generic rollout failure reasons in the UI, and corrected

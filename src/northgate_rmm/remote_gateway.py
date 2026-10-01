@@ -17,10 +17,17 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html import escape
+from typing import Protocol
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
-from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
+from aiohttp import (
+    ClientSession,
+    ClientTimeout,
+    ClientWebSocketResponse,
+    WSMsgType,
+    web,
+)
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -29,6 +36,8 @@ from northgate_rmm.native_desktop import NativeDesktopProfiles
 from northgate_rmm.operator_api import OperatorApplication, OperatorPrincipal
 from northgate_rmm.remote_policy import (
     RemoteLease,
+    RemoteMethod,
+    RemoteMethods,
     RemoteTarget,
     authorize_remote,
     rdp_security,
@@ -68,6 +77,17 @@ class LeaseState:
     secret_id: str = ""
 
 
+class SecretAuthorizer(Protocol):
+    async def __call__(
+        self,
+        request: web.Request,
+        endpoint: UUID,
+        secret_id: str,
+        *,
+        principal: OperatorPrincipal | None = None,
+    ) -> None: ...
+
+
 class RemoteGateway:
     def __init__(
         self,
@@ -82,7 +102,7 @@ class RemoteGateway:
             raise ValueError("remote origin must be an exact HTTPS origin")
         self.operation = operation
         self.targets = targets
-        self.methods = getattr(
+        self.methods: RemoteMethods = getattr(
             targets,
             "methods",
             {
@@ -91,7 +111,13 @@ class RemoteGateway:
             },
         )
         self.receipt_store = receipt_store or RemoteSessionStore()
-        self.secret_resolver = None
+        self.secret_resolver: (
+            Callable[
+                [web.Request, OperatorPrincipal, RemoteTarget, str],
+                Awaitable[dict[str, str]],
+            ]
+            | None
+        ) = None
         self.native_profiles: NativeDesktopProfiles | None = None
         self.native_secret_resolver: (
             Callable[
@@ -100,13 +126,17 @@ class RemoteGateway:
             ]
             | None
         ) = None
-        self.secret_authorizer = None
-        self.legacy_credential_guard = None
-        self.case_authorizer = None
+        self.secret_authorizer: SecretAuthorizer | None = None
+        self.legacy_credential_guard: (
+            Callable[[RemoteTarget], Awaitable[None]] | None
+        ) = None
+        self.case_authorizer: (
+            Callable[[OperatorPrincipal, UUID, str], Awaitable[None]] | None
+        ) = None
         self.key = key
         self.origin = origin
         self.leases: dict[str, LeaseState] = {}
-        self.forms: dict[str, tuple] = {}
+        self.forms: dict[str, tuple[str, str, UUID, datetime, str, str]] = {}
         self.client: ClientSession | None = None
         # The verifier admits four connections per workload identity. Leave room
         # for the operator service while browser assets arrive concurrently.
@@ -152,7 +182,7 @@ class RemoteGateway:
                 await self._verification_slots.acquire()
             task = asyncio.create_task(asyncio.to_thread(verify))
 
-            def completed(result) -> None:
+            def completed(result: asyncio.Task[OperatorPrincipal]) -> None:
                 self._verification_slots.release()
                 if not result.cancelled():
                     result.exception()
@@ -197,7 +227,7 @@ class RemoteGateway:
                 )
                 self.leases.pop(key, None)
 
-    def method_target(self, endpoint, method):
+    def method_target(self, endpoint: UUID, method: str) -> RemoteMethod:
         try:
             return self.methods[endpoint][method]
         except KeyError:
@@ -205,7 +235,7 @@ class RemoteGateway:
                 text="This remote method is not configured for this enrollment"
             ) from None
 
-    async def sessions(self, request):
+    async def sessions(self, request: web.Request) -> web.Response:
         try:
             endpoint = UUID(request.match_info["endpoint"])
         except ValueError:
@@ -498,7 +528,9 @@ class RemoteGateway:
             )
         except AuthorizationError:
             raise web.HTTPForbidden() from None
-        state.authorization = authorization or request.headers.get("Authorization", "")
+        state.authorization = (
+            authorization or request.headers.get("Authorization") or ""
+        )
         if state.case_id:
             if self.case_authorizer is None:
                 raise web.HTTPForbidden()
@@ -573,7 +605,7 @@ class RemoteGateway:
             fields = await request.post()
             if any(len(fields.getall(name)) != 1 for name in fields):
                 raise web.HTTPForbidden()
-            data = str(fields.get("data", ""))
+            ticket_data = str(fields.get("data", ""))
             body_token = str(fields.get("token", ""))
             if state.auth_token:
                 # Guacamole revalidates its token when Angular changes routes.
@@ -585,14 +617,14 @@ class RemoteGateway:
                 forwarded_body = urlencode({"token": body_token}).encode()
             else:
                 if (
-                    not data
+                    not ticket_data
                     or not state.auth_data
-                    or not hmac.compare_digest(data, state.auth_data)
+                    or not hmac.compare_digest(ticket_data, state.auth_data)
                 ):
                     raise web.HTTPForbidden()
                 state.auth_data = ""
                 # Ignore a stale token retained by Guacamole from an older lease.
-                forwarded_body = urlencode({"data": data}).encode()
+                forwarded_body = urlencode({"data": ticket_data}).encode()
         if request.headers.get("Upgrade", "").lower() == "websocket":
             if (
                 request.headers.get("Origin") != self.origin
@@ -702,7 +734,10 @@ class RemoteGateway:
                     outcome="transport_connected",
                 )
 
-                async def forward(source, destination) -> None:
+                async def forward(
+                    source: web.WebSocketResponse | ClientWebSocketResponse,
+                    destination: web.WebSocketResponse | ClientWebSocketResponse,
+                ) -> None:
                     async for message in source:
                         if message.type == WSMsgType.TEXT:
                             await destination.send_str(message.data)
